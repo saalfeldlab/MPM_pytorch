@@ -6,12 +6,12 @@ Cédric Allier
 
 Janelia Research Campus, Howard Hughes Medical Institute
 
-python -o generate 'multimaterial_4_0'
-
-other yaml setup files in 'config' folder
 
 ![Results of MPM simulation](ressources/Fig_0.png)
 
+```python
+python -o generate 'multimaterial_4_0'
+```
 
 ### Setup
 Run the following line from the terminal to create a new environment particle-graph:
