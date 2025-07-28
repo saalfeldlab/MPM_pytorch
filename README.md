@@ -1,5 +1,13 @@
 # MPM pytorch
-MPM pytorch version of https://github.com/yuanming-hu/taichi_mpm
+
+# MPM pytorch version of https://github.com/yuanming-hu/taichi_mpm
+Cédric Allier
+
+Janelia Research Campus, Howard Hughes Medical Institute
+
+
+![Results of MPM simulation](ressources/MPM-simu.png)
+
 
 ### Setup
 Run the following line from the terminal to create a new environment particle-graph:
