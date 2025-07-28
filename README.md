@@ -20,5 +20,5 @@ pip install -e .
 Then, you should be able to import all the modules from the package in python:
 
 ```python
-from MPM_pytorch import *
+from MPM-pytorch import *
 ```
