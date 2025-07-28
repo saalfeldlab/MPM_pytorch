@@ -1,0 +1,7 @@
+LICENSE
+README.md
+setup.py
+src/ParticleGraph.egg-info/PKG-INFO
+src/ParticleGraph.egg-info/SOURCES.txt
+src/ParticleGraph.egg-info/dependency_links.txt
+src/ParticleGraph.egg-info/top_level.txt
