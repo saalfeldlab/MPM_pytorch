@@ -1,4 +1,4 @@
-name: particle-graph
+name: MPM-pytorch
 channels:
   - conda-forge
 dependencies:
