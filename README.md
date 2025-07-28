@@ -7,7 +7,7 @@ Cédric Allier
 Janelia Research Campus, Howard Hughes Medical Institute
 
 
-![Results of MPM simulation](ressources/MPM-simu.png)
+![Results of MPM simulation](ressources/Fig_0.png)
 
 
 ### Setup
