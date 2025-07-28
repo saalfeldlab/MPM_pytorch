@@ -1,5 +1,5 @@
-# ParticleGraph
-Graph network fitting particle trajectories
+# MPM pytorch
+MPM pytorch version of https://github.com/yuanming-hu/taichi_mpm
 
 ### Setup
 Run the following line from the terminal to create a new environment particle-graph:
@@ -9,7 +9,7 @@ conda env create -f environment.yaml
 
 Activate the environment:
 ```
-conda activate particle-graph
+conda activate MPM-pytorch
 ```
 
 Install the package by executing the following command from the root of this directory:
