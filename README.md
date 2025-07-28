@@ -6,8 +6,10 @@ Cédric Allier
 
 Janelia Research Campus, Howard Hughes Medical Institute
 
-
+python -o generate 'multimaterial_4_0'
 ![Results of MPM simulation](ressources/Fig_0.png)
+
+python -o generate 'multimaterial_4_0'
 
 
 ### Setup
