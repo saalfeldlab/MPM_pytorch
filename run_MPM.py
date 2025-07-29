@@ -87,28 +87,7 @@ if __name__ == "__main__":
                 bSave=True,
                 step=20,
             )  # config.simulation.n_frames // 100)
-            
-        if "train" in task:
-            data_train(config=config, erase=False, best_model=best_model, device=device)
-            
-        if "test" in task:
-            # for run_ in range(2,10):
-            # data_test(config=config, visualize=True, style='black color name', verbose=False, best_model='best',
-            #           run=run_, test_mode='fixed_bounce_all', sample_embedding=False, step=4,
-            #           device=device)  # particle_of_interest=100, 'fixed_bounce_all'
-            data_test(
-                config=config,
-                visualize=True,
-                style="black color name",
-                verbose=False,
-                best_model="best",
-                run=0,
-                test_mode="",
-                sample_embedding=False,
-                step=2,
-                device=device,
-                particle_of_interest=0,
-            )  # particle_of_interest=100,  'fixed_bounce_all'
+
 
 
 # bsub -n 4 -gpu "num=1" -q gpu_h100 -Is "python GNN_particles_Ntype.py"
