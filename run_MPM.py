@@ -62,7 +62,7 @@ if __name__ == "__main__":
         best_model = ''
         config_list = ['multimaterial_4_0']
         # config_list = ['multimaterial_2_2_stars']
-        
+
         # viz in MPM/graphs_data/multimaterial/multimaterial_4_0_3D/Fig
         # other config files to be found in ./config/*.yaml
         # out of memory: diminish n_particles
