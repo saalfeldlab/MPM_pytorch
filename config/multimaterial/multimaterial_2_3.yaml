@@ -16,7 +16,7 @@ simulation:
 
   MPM_expansion_factor: 1.0005
   MPM_n_objects: 25
-  MPM_object_type : 'discs'
+  MPM_object_type : 'stars'
   MPM_gravity: 0
   MPM_rho_list: [1.0, 0.5, 0.25]
   MPM_friction: 0.1
