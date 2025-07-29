@@ -789,9 +789,11 @@ def data_generate_MPM(
                     fig, ax = fig_init(formatx="%.1f", formaty="%.1f")
                     for n in range(3):
                         pos = torch.argwhere(T == n)[:,0]
-                        plt.scatter(to_numpy(x[pos, 1]), to_numpy(x[pos, 2]), s=1, color=cmap.color(n))
+                        plt.scatter(to_numpy(x[pos, 1]), to_numpy(x[pos, 2]), s=5, color=cmap.color(n))
                     plt.xlim([0, 1])
                     plt.ylim([0, 1])
+                    plt.xticks([])
+                    plt.yticks([])
                     plt.tight_layout()
                     num = f"{it:06}"
                     plt.savefig(f"graphs_data/{dataset_name}/Fig/Fig_{run}_{num}.tif", dpi=80)

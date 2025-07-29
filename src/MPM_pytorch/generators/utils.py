@@ -170,7 +170,7 @@ def init_MPM_shapes(
     elif n_shapes == 25:
         shape_row = group_indices // 5
         shape_col = group_indices % 5
-        size, spacing, start_x, start_y = 0.07, 0.16, 0.15, 0.2
+        size, spacing, start_x, start_y = 0.05, 0.16, 0.15, 0.2
     elif n_shapes == 36:
         shape_row = group_indices // 6
         shape_col = group_indices % 6

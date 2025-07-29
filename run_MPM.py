@@ -60,10 +60,14 @@ if __name__ == "__main__":
     else:
         task = 'generate'  # 'generate', 'train', 'test'
         best_model = ''
-        config_list = ['multimaterial_2_0']
+        config_list = ['multimaterial_4_0']
+        # config_list = ['multimaterial_2_2_stars']
+        
+        # viz in MPM/graphs_data/multimaterial/multimaterial_4_0_3D/Fig
         # other config files to be found in ./config/*.yaml
         # out of memory: diminish n_particles
 
+    for config_file_ in config_list:
         print(" ")
         config_root = os.path.dirname(os.path.abspath(__file__)) + "/config"
         config_file, pre_folder = add_pre_folder(config_file_)
@@ -86,7 +90,7 @@ if __name__ == "__main__":
                 alpha=1,
                 erase=False,
                 bSave=True,
-                step=200,
+                step=20,
             )  # config.simulation.n_frames // 100)
 
 
