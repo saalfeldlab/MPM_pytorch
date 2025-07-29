@@ -3,7 +3,6 @@ import torch_geometric.utils as pyg_utils
 from MPM_pytorch.models.MLP import MLP
 from MPM_pytorch.utils import to_numpy, reparameterize
 from MPM_pytorch.models.Siren_Network import *
-from MPM_pytorch.models.Gumbel import gumbel_softmax_sample, gumbel_softmax
 from MPM_pytorch.generators.MPM_P2G import MPM_P2G
 from MPM_pytorch.utils import *
 import torch_geometric.data as data

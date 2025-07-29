@@ -16,7 +16,7 @@ simulation:
 
   MPM_expansion_factor: 1.00025
   MPM_n_objects: 27
-  MPM_object_type : 'discs'
+  MPM_object_type : 'cubes'
   MPM_gravity: -20
   MPM_rho_list: [1.0, 0.5, 0.25]
   MPM_friction: 0.02

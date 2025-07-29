@@ -8,11 +8,18 @@ simulation:
   n_particles: 9000
   n_grid: 128
   n_particle_types: 3
-  n_frames: 1000
+  n_frames: 10000
   delta_t: 1.E-4
   dpos_init: 1.0
   boundary: 'no'
-  start_frame: -1000
+  start_frame: 0
+
+  MPM_expansion_factor: 1.0000
+  MPM_n_objects: 3
+  MPM_object_type: 'cubes'
+  MPM_gravity: -50
+  MPM_rho_list: [ 1.0, 0.5, 0.25 ]
+  MPM_friction: 0.1
 
 graph_model:
   particle_model_name: 'PDE_MPM'
