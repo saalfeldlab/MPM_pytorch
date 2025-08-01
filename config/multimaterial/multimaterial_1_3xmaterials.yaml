@@ -1,5 +1,5 @@
 description: 'system of particles falling down in a box'
-dataset: 'multimaterial_1'
+dataset: 'multimaterial_1_3xmaterials'
 
 simulation:
   params: [[0, 0.2, 0.4, 0.6, 0.8], [0.2, 0.2, 0.2, 0.2, 0.2]]

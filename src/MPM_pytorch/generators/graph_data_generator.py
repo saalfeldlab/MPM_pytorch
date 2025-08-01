@@ -529,143 +529,164 @@ def data_generate_MPM_3D(
                 x_list.append(x.clone().detach())
 
             # 3D MPM step
-            X, V, C, F, T, Jp, M, S, GM, GV = MPM_3D_step(
-                model_MPM, X, V, C, F, T, Jp, M, n_particles, n_grid,
-                delta_t, dx, inv_dx, mu_0, lambda_0, p_vol, offsets, particle_offsets,
-                expansion_factor, gravity, friction, it, device
-            )
+            with torch.no_grad():
+                X, V, C, F, T, Jp, M, S, GM, GV = MPM_3D_step(
+                    model_MPM, X, V, C, F, T, Jp, M, n_particles, n_grid,
+                    delta_t, dx, inv_dx, mu_0, lambda_0, p_vol, offsets, particle_offsets,
+                    expansion_factor, gravity, friction, it, device
+                )
 
-            # 3D visualization (if enabled)
-            if visualize & (run == run_vizualized) & (it % step == 0) & (it >= 0):
+                # 3D visualization (if enabled)
+                if visualize & (run == run_vizualized) & (it % step == 0) & (it >= 0):
 
-                if 'black' in style:
-                    plt.style.use('dark_background')
+                    if 'black' in style:
+                        plt.style.use('dark_background')
 
-                if 'latex' in style:
-                    plt.rcParams['text.usetex'] = True
-                    rc('font', **{'family': 'serif', 'serif': ['Palatino']})
+                    if 'latex' in style:
+                        plt.rcParams['text.usetex'] = True
+                        rc('font', **{'family': 'serif', 'serif': ['Palatino']})
 
-                if 'color' in style:
-                    # 1. 3D Angled View
-                    from mpl_toolkits.mplot3d import Axes3D
+                    if 'color' in style:
+                        # 1. 3D Angled View
+                        from mpl_toolkits.mplot3d import Axes3D
 
-                    import pyvista as pv
+                        import pyvista as pv
 
-                    def plot_3d_shaded_pointcloud(X, ID, T, output_path):
-                        plotter = pv.Plotter(off_screen=True, window_size=(1800, 1200))
-                        plotter.set_background("lightgray")
+                        def plot_3d_shaded_pointcloud(X, F, ID, T, output_path, style='object'):
+                            plotter = pv.Plotter(off_screen=True, window_size=(1800, 1200))
+                            plotter.set_background("lightgray")
 
-                        MPM_n_objects = 3
-
-                        for n in range(min(3, MPM_n_objects)):
-                            pos = torch.argwhere(T == n)[:, 0]
-                            if len(pos) > 0:
-                                # pts = to_numpy(X[pos])
-                                pts = to_numpy(X[pos])[:, [0, 2, 1]]
-                                ids = to_numpy(ID[pos].squeeze())
+                            if style=='object':
+                                MPM_n_objects = 3
+                                # Plot each object with its own color
+                                for n in range(min(3, MPM_n_objects)):
+                                    pos = torch.argwhere(T == n)[:, 0]
+                                    if len(pos) > 0:
+                                        pts = to_numpy(X[pos])[:, [0, 2, 1]]
+                                for n in range(min(3, MPM_n_objects)):
+                                    pos = torch.argwhere(T == n)[:, 0]
+                                    if len(pos) > 0:
+                                        # pts = to_numpy(X[pos])
+                                        pts = to_numpy(X[pos])[:, [0, 2, 1]]
+                                        ids = to_numpy(ID[pos].squeeze())
+                                        cloud = pv.PolyData(pts)
+                                        cloud["ID"] = ids
+                                        plotter.add_points(
+                                            cloud,
+                                            scalars="ID",
+                                            cmap="nipy_spectral",
+                                            point_size=5,
+                                            render_points_as_spheres=True,
+                                            opacity=0.9,
+                                            show_scalar_bar=False  # ✅ correct
+                                        )
+                            elif style=='F':
+                                pts = to_numpy(X)[:, [0, 2, 1]]
+                                ids = to_numpy(ID.squeeze())
                                 cloud = pv.PolyData(pts)
-                                cloud["ID"] = ids
+                                cloud["F"] = torch.norm(F.view(n_particles, -1), dim=1).cpu().numpy()# Use F as scalar field
                                 plotter.add_points(
                                     cloud,
-                                    scalars="ID",
-                                    cmap="nipy_spectral",
+                                    scalars="F",
+                                    cmap="coolwarm",
+                                    clim=[1.73-0.05, 1.73+0.05],
                                     point_size=5,
                                     render_points_as_spheres=True,
                                     opacity=0.9,
                                     show_scalar_bar=False  # ✅ correct
                                 )
 
-                        # Add bounding box (wireframe cube)
-                        cube = pv.Cube(center=(0.5, 0.5, 0.5), x_length=1.0, y_length=1.0, z_length=1.0)
-                        frame = cube.extract_all_edges()
-                        plotter.add_mesh(frame, color='white', line_width=1.0, opacity=0.5)
+                            # Add bounding box (wireframe cube)
+                            cube = pv.Cube(center=(0.5, 0.5, 0.5), x_length=1.0, y_length=1.0, z_length=1.0)
+                            frame = cube.extract_all_edges()
+                            plotter.add_mesh(frame, color='white', line_width=1.0, opacity=0.5)
 
-                        # Add axes with bounds
-                        # plotter.show_bounds(grid='back', location='outer', all_edges=True,
-                        #                     color='white', line_width=1.5,
-                        #                     xlabel='X', ylabel='Y', zlabel='Z')
+                            # Add axes with bounds
+                            # plotter.show_bounds(grid='back', location='outer', all_edges=True,
+                            #                     color='white', line_width=1.5,
+                            #                     xlabel='X', ylabel='Y', zlabel='Z')
 
-                        plotter.view_vector((1.1, 0.9, 0.45))
+                            plotter.view_vector((0.7, 1.3, 0.05))
 
-                        plotter.enable_eye_dome_lighting()
+                            plotter.enable_eye_dome_lighting()
 
-                        plotter.camera.zoom(1.1)
+                            plotter.camera.zoom(1.3)
 
-                        plotter.screenshot(output_path)
-                        plotter.close()
+                            plotter.screenshot(output_path)
+                            plotter.close()
 
-                    def plot_3d_material_pointcloud_separated(X, ID, T, output_path):
-                        """Alternative version that plots each material type separately for better control"""
-                        plotter = pv.Plotter(off_screen=True, window_size=(1800, 1200))
-                        plotter.set_background("lightgray")
+                        def plot_3d_material_pointcloud_separated(X, F, ID, T, output_path):
+                            """Alternative version that plots each material type separately for better control"""
+                            plotter = pv.Plotter(off_screen=True, window_size=(1800, 1200))
+                            plotter.set_background("lightgray")
 
-                        # Get unique material types
-                        unique_materials = torch.unique(T).cpu().numpy()
+                            # Get unique material types
+                            unique_materials = torch.unique(T).cpu().numpy()
 
-                        # Define colors for different materials
-                        material_colors = ['blue', 'red', 'green', 'yellow', 'purple', 'orange', 'cyan', 'magenta']
-                        material_names = ['Liquid', 'Jelly', 'Snow', 'Material_3', 'Material_4', 'Material_5',
-                                          'Material_6', 'Material_7']
+                            # Define colors for different materials
+                            material_colors = ['blue', 'red', 'green', 'yellow', 'purple', 'orange', 'cyan', 'magenta']
+                            material_names = ['Liquid', 'Jelly', 'Snow', 'Material_3', 'Material_4', 'Material_5',
+                                              'Material_6', 'Material_7']
 
-                        for i, mat in enumerate(unique_materials):
-                            pos = torch.argwhere(T.squeeze() == mat)[:, 0]
-                            if len(pos) > 0:
-                                pts = to_numpy(X[pos])[:, [0, 2, 1]]  # Swap y and z coordinates
+                            for i, mat in enumerate(unique_materials):
+                                pos = torch.argwhere(T.squeeze() == mat)[:, 0]
+                                if len(pos) > 0:
+                                    pts = to_numpy(X[pos])[:, [0, 2, 1]]  # Swap y and z coordinates
 
-                                cloud = pv.PolyData(pts)
-                                color = material_colors[i % len(material_colors)]
-                                mat_name = material_names[i % len(material_names)]
+                                    cloud = pv.PolyData(pts)
+                                    color = material_colors[i % len(material_colors)]
+                                    mat_name = material_names[i % len(material_names)]
 
-                                plotter.add_points(
-                                    cloud,
-                                    color=color,
-                                    point_size=15,
-                                    render_points_as_spheres=True,
-                                    opacity=0.05,
-                                    label=f'{mat_name} (Type {mat})'
-                                )
+                                    plotter.add_points(
+                                        cloud,
+                                        color=color,
+                                        point_size=15,
+                                        render_points_as_spheres=True,
+                                        opacity=0.05,
+                                        label=f'{mat_name} (Type {mat})'
+                                    )
 
-                        # Add bounding box (wireframe cube)
-                        cube = pv.Cube(center=(0.5, 0.5, 0.5), x_length=1.0, y_length=1.0, z_length=1.0)
-                        frame = cube.extract_all_edges()
-                        plotter.add_mesh(frame, color='white', line_width=1.0, opacity=0.5)
+                            # Add bounding box (wireframe cube)
+                            cube = pv.Cube(center=(0.5, 0.5, 0.5), x_length=1.0, y_length=1.0, z_length=1.0)
+                            frame = cube.extract_all_edges()
+                            plotter.add_mesh(frame, color='white', line_width=1.0, opacity=0.5)
 
-                        plotter.view_vector((1.1, 0.9, 0.45))
-                        plotter.enable_eye_dome_lighting()
-                        plotter.camera.zoom(1.1)
+                            plotter.view_vector((1.1, 0.9, 0.45))
+                            plotter.enable_eye_dome_lighting()
+                            plotter.camera.zoom(1.1)
 
-                        plotter.screenshot(output_path)
-                        plotter.close()
+                            plotter.screenshot(output_path)
+                            plotter.close()
 
-                    output_path_3d = f"graphs_data/{dataset_name}/Fig/Fig_{run}_{it:06}_3D.png"
-                    plot_3d_shaded_pointcloud(X, ID, T, output_path_3d)
+                        output_path_3d = f"graphs_data/{dataset_name}/Fig/Fig_{run}_{it:06}_3D.png"
+                        plot_3d_shaded_pointcloud(X, F, ID, T, output_path_3d)
 
-                    #
-                    # fig = plt.figure(figsize=(18, 12))
-                    # ax = fig.add_subplot(2, 3, 1, projection='3d')
-                    # ax.set_title('3D Angled View')
-                    # for n in range(min(3, MPM_n_objects)):
-                    #     pos = torch.argwhere(T == n)[:,0]
-                    #     if len(pos) > 0:
-                    #         ax.scatter(to_numpy(X[pos, 0]), to_numpy(X[pos, 2]), to_numpy(X[pos, 1]),
-                    #                    cmap='nipy_spectral', edgecolors = 'none',
-                    #                    s=20, c=to_numpy(ID.squeeze()), alpha=0.7)
-                    #
-                    #         # plt.scatter(to_numpy(x[:, 1]), to_numpy(x[:, 2]), c=to_numpy(ID.squeeze()), s=2, alpha=0.3,
-                    #         #             cmap='nipy_spectral', edgecolors = 'none')
-                    #
-                    # ax.set_xlim([0, 1])
-                    # ax.set_ylim([0, 1])
-                    # ax.set_zlim([0, 1])
-                    # ax.set_xlabel('X')
-                    # ax.set_ylabel('Y')
-                    # ax.set_zlabel('Z')
-                    # # Set viewing angle (elevation, azimuth)
-                    # ax.view_init(elev=20, azim=45)
-                    # plt.tight_layout()
-                    # num = f"{it:06}"
-                    # plt.savefig(f"graphs_data/{dataset_name}/Fig/Fig_{run}_{num}.png", dpi=150, bbox_inches='tight')
-                    # plt.close()
+                        #
+                        # fig = plt.figure(figsize=(18, 12))
+                        # ax = fig.add_subplot(2, 3, 1, projection='3d')
+                        # ax.set_title('3D Angled View')
+                        # for n in range(min(3, MPM_n_objects)):
+                        #     pos = torch.argwhere(T == n)[:,0]
+                        #     if len(pos) > 0:
+                        #         ax.scatter(to_numpy(X[pos, 0]), to_numpy(X[pos, 2]), to_numpy(X[pos, 1]),
+                        #                    cmap='nipy_spectral', edgecolors = 'none',
+                        #                    s=20, c=to_numpy(ID.squeeze()), alpha=0.7)
+                        #
+                        #         # plt.scatter(to_numpy(x[:, 1]), to_numpy(x[:, 2]), c=to_numpy(ID.squeeze()), s=2, alpha=0.3,
+                        #         #             cmap='nipy_spectral', edgecolors = 'none')
+                        #
+                        # ax.set_xlim([0, 1])
+                        # ax.set_ylim([0, 1])
+                        # ax.set_zlim([0, 1])
+                        # ax.set_xlabel('X')
+                        # ax.set_ylabel('Y')
+                        # ax.set_zlabel('Z')
+                        # # Set viewing angle (elevation, azimuth)
+                        # ax.view_init(elev=20, azim=45)
+                        # plt.tight_layout()
+                        # num = f"{it:06}"
+                        # plt.savefig(f"graphs_data/{dataset_name}/Fig/Fig_{run}_{num}.png", dpi=150, bbox_inches='tight')
+                        # plt.close()
 
         if bSave:
             torch.save(x_list, f'graphs_data/{dataset_name}/generated_data_{run}.pt')
@@ -770,9 +791,10 @@ def data_generate_MPM(
             if (it >= 0):
                 x_list.append(x.clone().detach())
 
-            X, V, C, F, T, Jp, M, S, GM, GV = MPM_step(model_MPM, X, V, C, F, T, Jp, M, n_particles, n_grid,
-                                                       delta_t, dx, inv_dx, mu_0, lambda_0, p_vol, offsets, particle_offsets,
-                                                       expansion_factor, gravity, friction, it, device)
+            with torch.no_grad():
+                X, V, C, F, T, Jp, M, S, GM, GV = MPM_step(model_MPM, X, V, C, F, T, Jp, M, n_particles, n_grid,
+                                                           delta_t, dx, inv_dx, mu_0, lambda_0, p_vol, offsets, particle_offsets,
+                                                           expansion_factor, gravity, friction, it, device)
 
             # output plots
             if visualize & (run == run_vizualized) & (it % step == 0) & (it >= 0):

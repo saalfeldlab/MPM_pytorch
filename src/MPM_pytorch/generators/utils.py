@@ -473,7 +473,7 @@ def init_MPM_3D_shapes(
     C = torch.zeros((n_particles, 3, 3), dtype=torch.float32, device=device)  # 3x3 affine matrix
     F = torch.eye(3, dtype=torch.float32, device=device).unsqueeze(0).expand(n_particles, -1,
                                                                              -1)  # 3x3 deformation gradient
-    T = torch.ones((n_particles, 1), dtype=torch.int32, device=device)
+    T = torch.ones((n_particles, 1), dtype=torch.int32, device=device)*2
     Jp = torch.ones((n_particles, 1), dtype=torch.float32, device=device)
     S = torch.zeros((n_particles, 3, 3), dtype=torch.float32, device=device)  # 3x3 stress tensor
 
