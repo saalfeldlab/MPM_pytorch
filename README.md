@@ -6,11 +6,17 @@ Cédric Allier
 
 Janelia Research Campus, Howard Hughes Medical Institute
 
-![Simulation Demo](assets/4_0_shader.gif)
+![Simulation Demo](assets/cubes.gif)
 
 ```python
 python -o generate 'multimaterial_4_0'
 ```
+
+![Simulation Demo](assets/cubes_F.gif)
+
+```python
+plot_3d_shaded_pointcloud(X, ID, T, output_path_3d, 'F')  
+``` (line 1148 graph_data_generator.py)
 
 ### Setup
 Run the following line from the terminal to create a new environment particle-graph:
