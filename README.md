@@ -16,8 +16,7 @@ python -o generate 'multimaterial_4_0'
 
 ```python
 plot_3d_shaded_pointcloud(X, ID, T, output_path_3d, 'F')  
-``` (line 1148 graph_data_generator.py)
-
+```
 
 
 ### Setup
