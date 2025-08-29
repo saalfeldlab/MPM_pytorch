@@ -1,7 +1,0 @@
-LICENSE
-README.md
-setup.py
-src/MPM_pytorch.egg-info/PKG-INFO
-src/MPM_pytorch.egg-info/SOURCES.txt
-src/MPM_pytorch.egg-info/dependency_links.txt
-src/MPM_pytorch.egg-info/top_level.txt
