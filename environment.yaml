@@ -1,0 +1,36 @@
+name: MPM-pytorch
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10.0
+  - pytorch
+  - torchvision
+  - umap-learn
+  - numpy
+  - scipy
+  - ipython
+  - pandas
+  - matplotlib
+  - networkx
+  - prettytable
+  - tqdm
+  - PyYAML
+  - tifffile
+  - pydantic
+  - gputil
+  - pip
+  - imageio
+  - astropy
+  - scikit-image
+  - pysr
+  - shapely
+  - seaborn
+  - pyvista
+  - pip:
+    - geomloss
+    - torch_geometric
+    - PyQt5
+    - tables
+    - vedo
+    - joblib
+    - taichi

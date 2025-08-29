@@ -1,0 +1,10 @@
+# MPM Simulation Requirements
+torch>=1.9.0
+torch-geometric>=2.0.0
+numpy
+matplotlib
+pyvista
+taichi
+PyYAML
+scipy
+tqdm
