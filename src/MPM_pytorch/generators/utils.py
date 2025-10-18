@@ -1206,6 +1206,7 @@ def init_MPM_3D_cells(
 
     return N, x, v, C, F, T, Jp, M, S, ID
 
+
 def init_MPM_cells(
         n_shapes=3,
         seed=42,
