@@ -1,0 +1,28 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "▶ Python: Current File (Conda MPM-pytorch)",
+      "type": "python",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+
+  // Make sure we use your conda env
+
+      // Don’t skip anything as “library code”
+      "justMyCode": false,
+
+      // Catch code that spawns subprocesses (multiprocessing, CLI wrappers)
+      "subProcess": true,
+
+      // Useful if your code imports your own packages from the repo
+      "env": { "PYTHONPATH": "${workspaceFolder}" },
+      "envFile": "${workspaceFolder}/.env",
+
+      // Optional: pass args here if your script needs them
+      "args": []
+    }
+  ]
+}
+

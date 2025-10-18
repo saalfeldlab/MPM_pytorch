@@ -60,7 +60,7 @@ if __name__ == "__main__":
     else:
         task = 'generate'  # 'generate', 'train', 'test'
         best_model = ''
-        config_list = ['multimaterial_1_1']
+        config_list = ['multimaterial_1_cells']
 
         # viz in MPM/graphs_data/multimaterial/multimaterial_4_0_3D/Fig
         # other config files to be found in ./config/*.yaml
@@ -89,7 +89,7 @@ if __name__ == "__main__":
                 alpha=1,
                 erase=False,
                 bSave=True,
-                step=20,
+                step=200,
             )  # config.simulation.n_frames // 100)
 
 
