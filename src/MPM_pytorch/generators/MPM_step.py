@@ -266,4 +266,9 @@ def MPM_step(
     # Particle advection
     X = X + dt * V
 
+    # margin = 2 * dx  # Keep particles away from boundaries
+    # X = torch.clamp(X, margin, 1.0 - margin)
+
+
+
     return X, V, C, F, Jp, T, M, stress, grid_m, grid_v

@@ -77,7 +77,7 @@ def data_generate(
                 bSave=bSave,
             )
         else:
-            data_generate_MPM(
+            data_generate_MPM_2D(
                 config,
                 visualize=visualize,
                 run_vizualized=run_vizualized,
@@ -561,7 +561,7 @@ def data_generate_MPM_3D(
 
     print(f'3D MPM data generation completed for {config.training.n_runs} runs')
 
-def data_generate_MPM(
+def data_generate_MPM_2D(
         config,
         visualize=True,
         run_vizualized=0,
@@ -649,8 +649,8 @@ def data_generate_MPM(
                            F.reshape(n_particles, 4).clone().detach(),
                            Jp.clone().detach(), T.clone().detach(), M.clone().detach(),
                            S.reshape(n_particles, 4).clone().detach(),ID.clone().detach()), 1)
-            # if (it >= 0):
-            #     x_list.append(to_numpy(x))
+            if (it >= 0):
+                x_list.append(x.clone().detach())
 
             X, V, C, F, Jp, T, M, S, GM, GV = MPM_step(model_MPM, X, V, C, F, Jp, T, M, n_particles, n_grid,
                                                        delta_t, dx, inv_dx, mu_0, lambda_0, p_vol, offsets, particle_offsets,
