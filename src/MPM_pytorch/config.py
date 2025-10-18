@@ -44,7 +44,7 @@ class SimulationConfig(BaseModel):
 
     MPM_expansion_factor: float = 1.0
     MPM_n_objects: int = 9
-    MPM_object_type: Literal['cubes', 'discs', 'spheres', 'stars', 'letters'] = 'discs'
+    MPM_object_type: Literal['cubes', 'discs', 'spheres', 'stars', 'letters', 'gummy_bear'] = 'discs'
     MPM_gravity: float = -50
     MPM_rho_list: list[float] = [1.0, 1.0, 1.0]
     MPM_friction: float = 0.0
@@ -55,11 +55,6 @@ class SimulationConfig(BaseModel):
     angular_sigma: float = 0
     angular_Bernouilli: list[float] = [-1]
 
-    noise_visual_input: float = 0.0
-    only_noise_visual_input: float = 0.0
-    visual_input_type: str = ""
-    blank_freq: int = 2  # Frequency of blank frames in visual input
-    simulation_initial_state: bool = False
 
     n_grid: int = 128
 
@@ -69,17 +64,8 @@ class SimulationConfig(BaseModel):
     node_value_map: Optional[str] = "input_data/pattern_Null.tif"
     node_proliferation_map: Optional[str] = None
 
-    adjacency_matrix: str = ""
 
-    short_term_plasticity_mode: str = "depression"
 
-    connectivity_file: str = ""
-    connectivity_init: list[float] = [-1]
-    connectivity_filling_factor: float = 1
-    connectivity_type: Literal["none", "distance", "voronoi", "k_nearest"] = "distance"
-    connectivity_parameter: float = 1.0
-    connectivity_distribution: str = "Gaussian"
-    connectivity_distribution_params: float = 1
 
     excitation_value_map: Optional[str] = None
     excitation: str = "none"
@@ -90,27 +76,6 @@ class SimulationConfig(BaseModel):
     phi: str = "tanh"
     tau: float = 1.0
     sigma: float = 0.005
-
-    cell_cycle_length: list[float] = [-1]
-    cell_death_rate: list[float] = [-1]
-    cell_area: list[float] = [-1]
-    cell_type_map: Optional[str] = None
-    final_cell_mass: list[float] = [-1]
-    pos_rate: list[list[float]] = None
-    neg_rate: list[list[float]] = None
-    has_cell_division: bool = False
-    has_cell_death: bool = False
-    has_cell_state: bool = False
-    non_discrete_level: float = 0
-    cell_active_model_coeff: float = 1
-    cell_inert_model_coeff: float = 0
-    coeff_area: float = 1
-    coeff_perimeter: float = 0
-    kill_cell_leaving: bool = False
-
-    state_type: Literal["discrete", "sequence", "continuous"] = "discrete"
-    state_params: list[float] = [-1]
-
 
 class GraphModelConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")

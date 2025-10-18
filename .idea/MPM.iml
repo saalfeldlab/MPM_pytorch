@@ -5,7 +5,7 @@
       <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/graphs_data" />
     </content>
-    <orderEntry type="jdk" jdkName="particle-graph" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="MPM-pytorch" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="PyDocumentationSettings">

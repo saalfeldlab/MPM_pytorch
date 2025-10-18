@@ -1,4 +1,4 @@
-LICENSE
+LICENSE.md
 README.md
 setup.py
 src/MPM_pytorch.egg-info/PKG-INFO

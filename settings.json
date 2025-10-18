@@ -1,0 +1,7 @@
+{
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda",
+    "python.defaultInterpreterPath": "/home/allierc@hhmi.org/anaconda3/envs/neural-graph/bin/python",
+    "files.autoSave": "afterDelay",
+    "files.autoSaveDelay": 500
+}

@@ -60,9 +60,7 @@ if __name__ == "__main__":
     else:
         task = 'generate'  # 'generate', 'train', 'test'
         best_model = ''
-        config_list = ['multimaterial_4_0']
-        # config_list = ['multimaterial_1_3xmaterials']
-        # config_list = ['multimaterial_2_2_stars']
+        config_list = ['multimaterial_1_1']
 
         # viz in MPM/graphs_data/multimaterial/multimaterial_4_0_3D/Fig
         # other config files to be found in ./config/*.yaml
@@ -85,7 +83,7 @@ if __name__ == "__main__":
             data_generate(
                 config,
                 device=device,
-                visualize=True,
+                visualize=False,
                 run_vizualized=0,
                 style="black color",
                 alpha=1,

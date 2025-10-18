@@ -241,7 +241,46 @@ def init_MPM_shapes(
             return segments
 
     # Generate particles based on geometry
-    if geometry == 'cubes':
+
+    if geometry == 'gummy_bear':
+
+        valid_particles = []
+        particles_per_shape = group_size
+        positions = generate_gummy_bear_particles(particles_per_shape, torch.zeros(2, device=device), 0.15, device=device)
+        c_positions = positions - positions.mean(dim=0, keepdim=True)
+        for shape_idx in range(n_shapes):
+
+            shape_center_x = center_x[shape_idx * group_size]
+            shape_center_y = center_y[shape_idx * group_size]
+
+
+            object_positions = c_positions.clone()
+            angle = shape_rotations[shape_idx]
+            cos_a, sin_a = torch.cos(angle), torch.sin(angle)
+            object_positions[:,0] = c_positions[:,0] * cos_a - c_positions[:,1]  * sin_a
+            object_positions[:,1] = c_positions[:,0] * sin_a + c_positions[:,1]  * cos_a
+
+
+            shape_center_x = shape_center_x.unsqueeze(0)  # shape [1]
+            shape_center_y = shape_center_y.unsqueeze(0)  # shape [1]
+            object_positions[:, 0] += shape_center_x
+            object_positions[:, 1] += shape_center_y
+
+            valid_particles.append(object_positions)
+
+        all_positions = torch.cat(valid_particles, dim=0)
+        x[:, 0] = all_positions[:, 0]
+        x[:, 1] = all_positions[:, 1]
+
+        plt.figure(figsize=(5,5))
+        plt.scatter(x[:,0].cpu(), x[:,1].cpu(), s=1)
+        plt.xlim(0,1)
+        plt.ylim(0,1)
+        plt.savefig('gummy_bear_particles.png', dpi=300)
+        plt.close()
+
+
+    elif geometry == 'cubes':
         # Generate cube particles relative to center
         rel_x = torch.rand(n_particles, device=device) * (size * 2) - size
         rel_y = torch.rand(n_particles, device=device) * (size * 2) - size
@@ -427,6 +466,9 @@ def init_MPM_shapes(
     if n_particle_types> 1:
         shape_materials = torch.randperm(n_shapes, device=device) % n_particle_types
         T = shape_materials[group_indices].unsqueeze(1).int()
+    if geometry == 'gummy_bear':
+        T = torch.ones((n_particles, 1), dtype=torch.int32, device=device)
+
 
     # Calculate mass based on material type
     # Material 0: water (density = 1.0)
@@ -447,6 +489,55 @@ def init_MPM_shapes(
 
 
     return N, x, v, C, F, T, Jp, M, S, ID
+
+
+def generate_gummy_bear_particles(n_particles, center, size, device='cpu'):
+    """
+    Generate particles approximating a 2D gummy bear shape with legs touching the body.
+    """
+    cx, cy = center
+    positions = []
+
+    while len(positions) < n_particles:
+        px = (torch.rand(1, device=device) - 0.5) * size * 2
+        py = (torch.rand(1, device=device) - 0.5) * size * 2
+        x_rel, y_rel = px.item(), py.item()
+
+        # Head
+        head_radius = 0.2 * size
+        head_center = (0, 0.35 * size)
+        head_dist = (x_rel - head_center[0]) ** 2 + (y_rel - head_center[1]) ** 2
+
+        # Body
+        body_width = 0.4 * size
+        body_height = 0.5 * size
+        body_xmin, body_xmax = -body_width / 2, body_width / 2
+        body_ymin, body_ymax = -0.15 * size, 0.25 * size
+
+        # Arms
+        arm_radius = 0.1 * size
+        left_arm_center = (-0.25 * size, 0.1 * size)
+        right_arm_center = (0.25 * size, 0.1 * size)
+
+        # Legs – moved up so they touch the body
+        leg_radius = 0.12 * size
+        leg_offset = body_ymin + leg_radius  # top of leg touches bottom of body
+        left_leg_center = (-0.15 * size, leg_offset - leg_radius)  # adjust so circle top touches body
+        right_leg_center = (0.15 * size, leg_offset - leg_radius)
+
+        # Check if point is inside any part
+        inside_head = head_dist <= head_radius ** 2
+        inside_body = (body_xmin <= x_rel <= body_xmax) and (body_ymin <= y_rel <= body_ymax)
+        inside_left_arm = (x_rel - left_arm_center[0]) ** 2 + (y_rel - left_arm_center[1]) ** 2 <= arm_radius ** 2
+        inside_right_arm = (x_rel - right_arm_center[0]) ** 2 + (y_rel - right_arm_center[1]) ** 2 <= arm_radius ** 2
+        inside_left_leg = (x_rel - left_leg_center[0]) ** 2 + (y_rel - left_leg_center[1]) ** 2 <= leg_radius ** 2
+        inside_right_leg = (x_rel - right_leg_center[0]) ** 2 + (y_rel - right_leg_center[1]) ** 2 <= leg_radius ** 2
+
+        if inside_head or inside_body or inside_left_arm or inside_right_arm or inside_left_leg or inside_right_leg:
+            positions.append([cx + x_rel, cy + y_rel])
+
+    return torch.tensor(positions, dtype=torch.float32, device=device)
+
 
 
 def random_rotation_matrix(device='cpu'):
@@ -679,8 +770,30 @@ def init_MPM_3D_shapes(
 
     rotation_matrices = create_rotation_matrix(shape_rotations_x, shape_rotations_y, shape_rotations_z)
 
-    # Generate particles within each shape
-    if geometry == 'cubes':
+
+    if geometry == 'gummy_bear':
+
+        thickness = size * 0.2 * 2.5 # Small Z thickness
+        for shape_idx in range(n_shapes):
+            start_idx = shape_idx * group_size
+            end_idx = min(start_idx + group_size, n_particles)
+            actual_particles = end_idx - start_idx
+            positions_2d = generate_gummy_bear_particles(
+                actual_particles,
+                center=(0.0, 0.0),
+                size=size*2.5,
+                device=device
+            )
+            z_offsets = (torch.rand(actual_particles, 1, device=device) - 0.5) * thickness
+            positions_3d = torch.cat([positions_2d[:, :2], z_offsets], dim=1)
+
+            rotated_positions = torch.matmul(positions_3d, rotation_matrices[shape_idx].T)
+
+            x[start_idx:end_idx, 0] = center_x[start_idx] + rotated_positions[:, 0]
+            x[start_idx:end_idx, 1] = center_y[start_idx] + rotated_positions[:, 1]
+            x[start_idx:end_idx, 2] = center_z[start_idx] + rotated_positions[:, 2]
+
+    elif geometry == 'cubes':
         # Generate particles in cubic volumes with rotation
         particles_per_dim = int(round((group_size) ** (1 / 3)))
         if particles_per_dim ** 3 < group_size:

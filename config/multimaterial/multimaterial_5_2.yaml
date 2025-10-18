@@ -8,11 +8,11 @@ simulation:
   n_particles: 9000
   n_grid: 128
   n_particle_types: 3
-  n_frames: 1000
+  n_frames: 2000
   delta_t: 1.E-4
   dpos_init: 1.0
   boundary: 'no'
-  start_frame: -1000
+  start_frame: 0
 
 graph_model:
   particle_model_name: 'PDE_MPM'

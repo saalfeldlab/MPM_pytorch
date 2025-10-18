@@ -5,8 +5,8 @@ import torch_geometric as pyg
 class MPM_P2G(pyg.nn.MessagePassing):
     def __init__(self, aggr_type='add', device='cpu'):
         super(MPM_P2G, self).__init__(aggr=aggr_type)
-        self.device = device
-
+        self.device = device   
+    
     def forward(self, data):
         x, edge_index, fx_per_edge, affine_per_edge, dpos_per_edge = (data.x, data.edge_index,
                                                                       data.fx_per_edge, data.affine_per_edge, data.dpos_per_edge)

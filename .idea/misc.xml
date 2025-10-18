@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="particle-graph" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="particle-graph" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="MPM-pytorch" project-jdk-type="Python SDK" />
 </project>
