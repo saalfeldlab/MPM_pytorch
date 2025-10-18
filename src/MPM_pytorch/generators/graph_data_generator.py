@@ -47,19 +47,11 @@ def data_generate(
     device=None,
     bSave=True,
 ):
-    has_particle_field = (
-        "PDE_ParticleField" in config.graph_model.particle_model_name
-    ) | ("PDE_F" in config.graph_model.particle_model_name)
-    has_signal = "PDE_N" in config.graph_model.signal_model_name
-    has_mesh = config.graph_model.mesh_model_name != ""
-    has_WBI = "WBI" in config.dataset
-    has_fly = "fly" in config.dataset
-    has_city = ("mouse_city" in config.dataset) | ("rat_city" in config.dataset)
-    has_MPM = "MPM" in config.graph_model.particle_model_name
+
     dataset_name = config.dataset
 
     print("")
-    print(f"dataset_name: {dataset_name}")
+    print(f"\033[92mdataset_name: {dataset_name}\033[0m")
 
     if (os.path.isfile(f"./graphs_data/{dataset_name}/x_list_0.npy")) | (
         os.path.isfile(f"./graphs_data/{dataset_name}/x_list_0.pt")
@@ -69,21 +61,7 @@ def data_generate(
 
     if config.data_folder_name != "none":
         generate_from_data(config=config, device=device, visualize=visualize)
-    elif has_mesh:
-        data_generate_mesh(
-            config,
-            visualize=visualize,
-            run_vizualized=run_vizualized,
-            style=style,
-            erase=erase,
-            step=step,
-            alpha=0.2,
-            ratio=ratio,
-            scenario=scenario,
-            device=device,
-            bSave=bSave,
-        )
-    elif has_MPM:
+    else:
         if '3D' in config.dataset:
             data_generate_MPM_3D(
                 config,
@@ -112,20 +90,6 @@ def data_generate(
                 device=device,
                 bSave=bSave,
             )
-    else:
-        data_generate_particle(
-            config,
-            visualize=visualize,
-            run_vizualized=run_vizualized,
-            style=style,
-            erase=erase,
-            step=step,
-            alpha=0.2,
-            ratio=ratio,
-            scenario=scenario,
-            device=device,
-            bSave=bSave,
-        )
 
     plt.style.use("default")
 
@@ -611,13 +575,12 @@ def data_generate_MPM(
         device=None,
         bSave=True
 ):
-    #taichi_MPM_deubg()
 
     simulation_config = config.simulation
     training_config = config.training
     model_config = config.graph_model
 
-    print(f'generating data ... {model_config.particle_model_name} {model_config.mesh_model_name}')
+    print(f'generating 2D data ... {model_config.particle_model_name} {model_config.mesh_model_name}')
 
     dimension = simulation_config.dimension
     max_radius = simulation_config.max_radius
@@ -680,14 +643,14 @@ def data_generate_MPM(
         #                                              n_grid=n_grid, dx=dx, rho_list=rho_list, nucleus_ratio=0.6, device=device)
 
         # Main simulation loop
-        for it in trange(simulation_config.start_frame, n_frames):
+        for it in trange(simulation_config.start_frame, n_frames, ncols=150):
             x = torch.cat((N.clone().detach(), X.clone().detach(), V.clone().detach(),
                            C.reshape(n_particles, 4).clone().detach(),
                            F.reshape(n_particles, 4).clone().detach(),
                            Jp.clone().detach(), T.clone().detach(), M.clone().detach(),
                            S.reshape(n_particles, 4).clone().detach(),ID.clone().detach()), 1)
-            if (it >= 0):
-                x_list.append(x.clone().detach())
+            # if (it >= 0):
+            #     x_list.append(to_numpy(x))
 
             X, V, C, F, Jp, T, M, S, GM, GV = MPM_step(model_MPM, X, V, C, F, Jp, T, M, n_particles, n_grid,
                                                        delta_t, dx, inv_dx, mu_0, lambda_0, p_vol, offsets, particle_offsets,
@@ -708,7 +671,8 @@ def data_generate_MPM(
                     fig, ax = fig_init(formatx="%.1f", formaty="%.1f")
                     for n in range(3):
                         pos = torch.argwhere(T == n)[:,0]
-                        plt.scatter(to_numpy(x[pos, 1]), to_numpy(x[pos, 2]), s=1, color=cmap.color(n))
+                        if len(pos) > 0:
+                            plt.scatter(to_numpy(x[pos, 1]), to_numpy(x[pos, 2]), s=10, color=cmap.color(n))
                     plt.xlim([0, 1])
                     plt.ylim([0, 1])
                     plt.xticks([])
@@ -719,7 +683,6 @@ def data_generate_MPM(
                     plt.close()
 
                     plt.figure(figsize=(15, 10))
-
                     # 1. V particle level
                     plt.subplot(2, 3, 1)
                     plt.title('objects')
@@ -811,7 +774,7 @@ def data_generate_MPM(
 
                     plt.tight_layout()
                     num = f"{it:06}"
-                    plt.savefig(f"graphs_data/{dataset_name}/Grid/Fig_{run}_{num}.tif", dpi=80)
+                    plt.savefig(f"graphs_data/{dataset_name}/Grid/Fig_{run}_{num}.tif", dpi=160)
                     plt.close()
 
         # Save results
