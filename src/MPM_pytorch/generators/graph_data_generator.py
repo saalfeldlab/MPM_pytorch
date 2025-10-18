@@ -638,7 +638,7 @@ def data_generate_MPM_2D(
 
         if 'cells' in config.dataset:
             # Initialize 2D MPM shapes as cells
-            N, X, V, C, F, T, Jp, M, S, ID = init_MPM_2D_cells(
+            N, X, V, C, F, T, Jp, M, S, ID = init_MPM_cells(
                 n_shapes=MPM_n_objects,
                 seed=simulation_config.seed,
                 n_particles=n_particles,
@@ -796,7 +796,7 @@ def data_generate_MPM_2D(
 
                     plt.tight_layout()
                     num = f"{it:06}"
-                    plt.savefig(f"graphs_data/{dataset_name}/Grid/Fig_{run}_{num}.tif", dpi=160)
+                    plt.savefig(f"graphs_data/{dataset_name}/Grid/Fig_{run}_{num}.tif", dpi=100)
                     plt.close()
 
         # Save results

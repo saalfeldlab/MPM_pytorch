@@ -14,7 +14,7 @@ simulation:
   boundary: 'no'
   start_frame: 0
 
-  MPM_expansion_factor: 2.0000
+  MPM_expansion_factor: 1.0005
   MPM_n_objects: 25
   MPM_object_type : 'discs'
   MPM_gravity: 0
