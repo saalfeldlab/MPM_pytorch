@@ -636,11 +636,33 @@ def data_generate_MPM_2D(
         x_list = []
 
 
-        N, X, V, C, F, T, Jp, M, S, ID = init_MPM_shapes(geometry=MPM_object_type, n_shapes=MPM_n_objects, seed=simulation_config.seed, n_particles=n_particles,
-                                                     n_particle_types=n_particle_types, n_grid=n_grid, dx=dx, rho_list=rho_list, device=device)
+        if 'cells' in config.dataset:
+            # Initialize 2D MPM shapes as cells
+            N, X, V, C, F, T, Jp, M, S, ID = init_MPM_2D_cells(
+                n_shapes=MPM_n_objects,
+                seed=simulation_config.seed,
+                n_particles=n_particles,
+                n_grid=n_grid,
+                dx=dx,
+                rho_list=rho_list,
+                nucleus_ratio=0.6,
+                device=device
+            )
+        else:
+            # Initialize 2D MPM shapes
+            N, X, V, C, F, T, Jp, M, S, ID = init_MPM_shapes(
+                geometry=MPM_object_type,
+                n_shapes=MPM_n_objects,
+                seed=simulation_config.seed,
+                n_particles=n_particles,
+                n_particle_types=n_particle_types,
+                n_grid=n_grid,
+                dx=dx,
+                rho_list=rho_list,
+                device=device
+            )
+        # N, X, V, C, F, T, Jp, M, S, ID = init_MPM_shapes(geometry=MPM_object_type, n_shapes=MPM_n_objects, seed=simulation_config.seed, n_particles=n_particles,n_particle_types=n_particle_types, n_grid=n_grid, dx=dx, rho_list=rho_list, device=device)
 
-        # N, X, V, C, F, T, Jp, M, S, ID = init_MPM_cells(n_shapes=MPM_n_objects, seed=simulation_config.seed, n_particles=n_particles,
-        #                                              n_grid=n_grid, dx=dx, rho_list=rho_list, nucleus_ratio=0.6, device=device)
 
         # Main simulation loop
         for it in trange(simulation_config.start_frame, n_frames, ncols=150):
