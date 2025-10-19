@@ -9,7 +9,7 @@ Janelia Research Campus, Howard Hughes Medical Institute
 ![Simulation Demo](assets/cubes.gif)
 
 ```python
-python -o generate 'multimaterial_4_0'
+python -o generate 'multimaterial_1_1_3D.yaml'
 ```
 
 ![Simulation Demo](assets/cubes_F.gif)
