@@ -1453,25 +1453,95 @@ def save_gaussian_splat_ply(output_path, positions, colors, scales, rotations, o
 
 
 
-def export_for_gaussian_splatting(pos, particle_colors, frame_idx, output_dir, dataset_name, particle_volumes=None):
+def export_for_gaussian_splatting(X, ID, T, frame_idx, output_dir, dataset_name, 
+                                 particle_volumes=None, color_mode='id', F=None):
     """
     Export MPM particle data in Gaussian Splatting PLY format.
     
     Parameters:
-        pos: particle positions (N, 3) - numpy array
-        particle_colors: particle colors (N, 3) RGB values [0-1] - numpy array
+        X: particle positions (N, 3) - torch tensor or numpy array
+        ID: particle IDs (N, 1) or (N,) - torch tensor or numpy array
+        T: particle material types (N, 1) or (N,) - torch tensor or numpy array
         frame_idx: current frame number
         output_dir: base directory to save the splat files
         dataset_name: name of the dataset for folder organization
         particle_volumes: optional (N,) array of particle volumes for adaptive scaling
+        color_mode: str, one of:
+            - 'id': Use particle IDs with nipy_spectral colormap (default)
+            - 'material': Use material type with predefined colors
+            - 'uniform': Use uniform gray color for all particles
+            - 'F': Use deformation gradient magnitude for colors
+        F: deformation gradient tensor (N, 3, 3) - required if color_mode='F'
     """
     import numpy as np
     import os
+    from matplotlib import cm
     
-    num_particles = pos.shape[0]
+    # Prepare position data (swap y and z to match visualization)
+    pos_np = to_numpy(X)[:, [0, 2, 1]]
     
-    # Create dataset-specific directory for Gaussian Splats
-    splat_dir = os.path.join(output_dir, dataset_name, "GaussianSplats")
+    # Prepare color data based on color_mode
+    if color_mode == 'id':
+        # Option 1: Use ID for colors (as in the shaded pointcloud)
+        ids_np = to_numpy(ID.squeeze())
+        # Normalize IDs to [0, 1] range for colors
+        id_min, id_max = ids_np.min(), ids_np.max()
+        if id_max > id_min:
+            id_normalized = (ids_np - id_min) / (id_max - id_min)
+        else:
+            id_normalized = np.zeros_like(ids_np)
+        
+        # Create RGB colors using nipy_spectral colormap
+        cmap = cm.get_cmap('nipy_spectral')
+        colors_np = cmap(id_normalized)[:, :3]  # Get RGB, drop alpha
+        
+    elif color_mode == 'material':
+        # Option 2: Use material type for colors
+        material_colors_rgb = {
+            0: [0.0, 0.0, 1.0],  # blue - Liquid
+            1: [1.0, 0.0, 0.0],  # red - Jelly
+            2: [0.0, 1.0, 0.0],  # green - Snow
+            3: [1.0, 1.0, 0.0],  # yellow - Material_3
+            4: [0.5, 0.0, 0.5],  # purple - Material_4
+            5: [1.0, 0.5, 0.0],  # orange - Material_5
+            6: [0.0, 1.0, 1.0],  # cyan - Material_6
+            7: [1.0, 0.0, 1.0],  # magenta - Material_7
+        }
+        T_np = to_numpy(T.squeeze())
+        colors_np = np.array([material_colors_rgb.get(int(t), [0.5, 0.5, 0.5]) for t in T_np])
+        
+    elif color_mode == 'uniform':
+        # Option 3: Uniform gray color
+        num_particles = pos_np.shape[0]
+        colors_np = np.ones((num_particles, 3)) * 0.7  # Light gray
+        
+    elif color_mode == 'F':
+        # Option 4: Use deformation gradient magnitude for colors
+        if F is None:
+            raise ValueError("color_mode='F' requires F parameter to be provided")
+        
+        F_np = to_numpy(F)
+        # Compute Frobenius norm of deformation gradient for each particle
+        F_norm = np.linalg.norm(F_np.reshape(-1, 9), axis=1)
+        
+        # Normalize to [0, 1] range
+        F_min, F_max = F_norm.min(), F_norm.max()
+        if F_max > F_min:
+            F_normalized = (F_norm - F_min) / (F_max - F_min)
+        else:
+            F_normalized = np.zeros_like(F_norm)
+        
+        # Create RGB colors using a colormap (e.g., viridis or jet for deformation)
+        cmap = cm.get_cmap('jet')  # 'jet' is common for deformation visualization
+        colors_np = cmap(F_normalized)[:, :3]  # Get RGB, drop alpha
+        
+    else:
+        raise ValueError(f"Invalid color_mode: {color_mode}. Must be 'id', 'material', 'uniform', or 'F'")
+    
+    num_particles = pos_np.shape[0]
+    
+    # Create dataset-specific directory for PLY files
+    splat_dir = os.path.join(output_dir, dataset_name, "Ply")
     os.makedirs(splat_dir, exist_ok=True)
     
     # Scale: use particle volumes if provided, otherwise uniform
@@ -1492,6 +1562,6 @@ def export_for_gaussian_splatting(pos, particle_colors, frame_idx, output_dir, d
     
     # Save as PLY file
     output_path = os.path.join(splat_dir, f"splat_{frame_idx:06d}.ply")
-    save_gaussian_splat_ply(output_path, pos, particle_colors, scales, rotations, opacities)
+    save_gaussian_splat_ply(output_path, pos_np, colors_np, scales, rotations, opacities)
     
     return output_path

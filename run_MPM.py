@@ -79,18 +79,24 @@ if __name__ == "__main__":
         print(f"\033[92mdevice  {device}\033[0m")
         print(f"data folder  {config.dataset}")
 
-        if "generate" in task:
-            data_generate(
-                config,
-                device=device,
-                visualize=True,
-                run_vizualized=0,
-                style="black color",
-                alpha=1,
-                erase=False,
-                bSave=True,
-                step=200,
-            )  # config.simulation.n_frames // 100)
+    if "generate" in task:
+        data_generate(
+            config,
+            device=device,
+            visualize=True,
+            run_vizualized=0,
+            style="black",  # Style options: "black", "latex", "F", "M"
+                            # - "black": dark background
+                            # - "latex": use LaTeX rendering
+                            # - "F": color by deformation gradient magnitude
+                            # - "M": color by material type
+                            # - default (no "F" or "M"): color by particle ID
+                            # Can combine: e.g., "black F" or "black latex M"
+            alpha=1,
+            erase=False,
+            bSave=True,
+            step=200,
+        ) # config.simulation.n_frames // 100)
 
 
 
