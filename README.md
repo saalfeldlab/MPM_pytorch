@@ -14,8 +14,24 @@ python -o generate 'multimaterial_4_0'
 
 ![Simulation Demo](assets/cubes_F.gif)
 
-```python
-plot_3d_shaded_pointcloud(X, ID, T, output_path_3d, 'F')  # change line 1148 graph_data_generator.py
+```
+data_generate(
+    config,
+    device=device,
+    visualize=True,
+    run_vizualized=0,
+    style="black",  # Style options: "black", "latex", "F", "M"
+                    # - "black": dark background
+                    # - "latex": use LaTeX rendering
+                    # - "F": color by deformation gradient magnitude
+                    # - "M": color by material type
+                    # - default (no "F" or "M"): color by particle ID
+                    # Can combine: e.g., "black F" or "black latex M"
+    alpha=1,
+    erase=False,
+    bSave=True,
+    step=200,
+)
 ```
 
 
