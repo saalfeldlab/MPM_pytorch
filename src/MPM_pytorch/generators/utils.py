@@ -9,7 +9,7 @@ from tqdm import trange
 from torch_geometric.utils import dense_to_sparse
 from scipy import stats
 import seaborn as sns
-
+from plyfile import PlyData, PlyElement
 
 
 def choose_model(config=[], W=[], device=[]):
@@ -120,7 +120,6 @@ def choose_model(config=[], W=[], device=[]):
 
 
     return model, bc_pos, bc_dpos
-
 
 
 def init_MPM_shapes(
@@ -537,7 +536,6 @@ def generate_gummy_bear_particles(n_particles, center, size, device='cpu'):
             positions.append([cx + x_rel, cy + y_rel])
 
     return torch.tensor(positions, dtype=torch.float32, device=device)
-
 
 
 def random_rotation_matrix(device='cpu'):
@@ -1208,6 +1206,7 @@ def init_MPM_3D_cells(
 
 
 def init_MPM_cells(
+        
         n_shapes=3,
         seed=42,
         n_particles=[],
@@ -1340,3 +1339,159 @@ def init_MPM_cells(
     ID = id_permutation[ID.squeeze()].unsqueeze(1)
 
     return N, x, v, C, F, T, Jp, M, S, ID
+
+def generate_compressed_video_mp4(output_dir, run=0, framerate=10, output_name=".mp4", config_indices=None, crf=23):
+    """
+    Generate a compressed video using ffmpeg's libx264 codec in MP4 format.
+    Automatically handles odd dimensions by scaling to even dimensions.
+    Parameters:
+        output_dir (str): Path to directory containing Fig/Fig_*.png.
+        run (int): Run index to use in filename pattern.
+        framerate (int): Desired video framerate.
+        output_name (str): Name of output .mp4 file.
+        config_indices: Configuration indices for filename.
+        crf (int): Constant Rate Factor for quality (0-51, lower = better quality, 23 is default).
+    """
+    import os
+    import subprocess
+    fig_dir = os.path.join(output_dir, "Fig")
+    input_pattern = os.path.join(fig_dir, f"Fig_{run}_%06d.png")
+    output_path = os.path.join(output_dir, f"input_{config_indices}{output_name}")
+    
+    ffmpeg_cmd = [
+        "ffmpeg",
+        "-y",
+        "-loglevel", "error",
+        "-framerate", str(framerate),
+        "-i", input_pattern,
+        "-vf", "scale='trunc(iw/2)*2:trunc(ih/2)*2'",
+        "-c:v", "libx264",
+        "-crf", str(crf),
+        "-preset", "medium",
+        "-pix_fmt", "yuv420p",
+        output_path,
+    ]
+    
+    subprocess.run(ffmpeg_cmd, check=True)
+    print(f"compressed video (libx264) saved to: {output_path}")
+
+
+
+def save_gaussian_splat_ply(output_path, positions, colors, scales, rotations, opacities):
+    """
+    Save Gaussian Splatting data in PLY format.
+    
+    Parameters:
+        output_path: Path to save PLY file
+        positions: (N, 3) xyz coordinates
+        colors: (N, 3) RGB values [0-1]
+        scales: (N, 3) scale per axis
+        rotations: (N, 4) quaternions (w, x, y, z)
+        opacities: (N, 1) opacity values [0-1]
+    """
+    import numpy as np
+    from plyfile import PlyData, PlyElement
+    
+    num_points = positions.shape[0]
+    
+    # Convert colors from [0-1] to [0-255]
+    colors_255 = (np.clip(colors, 0, 1) * 255).astype(np.uint8)
+    
+    # Create structured array for PLY format
+    # Standard 3D Gaussian Splatting format
+    dtype = [
+        ('x', 'f4'), ('y', 'f4'), ('z', 'f4'),
+        ('nx', 'f4'), ('ny', 'f4'), ('nz', 'f4'),  # Normals (unused, set to 0)
+        ('f_dc_0', 'f4'), ('f_dc_1', 'f4'), ('f_dc_2', 'f4'),  # RGB colors
+        ('opacity', 'f4'),
+        ('scale_0', 'f4'), ('scale_1', 'f4'), ('scale_2', 'f4'),
+        ('rot_0', 'f4'), ('rot_1', 'f4'), ('rot_2', 'f4'), ('rot_3', 'f4'),  # Quaternion
+    ]
+    
+    elements = np.empty(num_points, dtype=dtype)
+    
+    # Positions
+    elements['x'] = positions[:, 0]
+    elements['y'] = positions[:, 1]
+    elements['z'] = positions[:, 2]
+    
+    # Normals (not used in Gaussian Splatting, set to 0)
+    elements['nx'] = 0
+    elements['ny'] = 0
+    elements['nz'] = 0
+    
+    # Colors (convert to spherical harmonics DC component)
+    # For DC component: (color - 0.5) / 0.28209479177387814
+    SH_C0 = 0.28209479177387814
+    elements['f_dc_0'] = (colors[:, 0] - 0.5) / SH_C0
+    elements['f_dc_1'] = (colors[:, 1] - 0.5) / SH_C0
+    elements['f_dc_2'] = (colors[:, 2] - 0.5) / SH_C0
+    
+    # Opacity (convert to logit space for better optimization)
+    # logit(x) = log(x / (1 - x))
+    opacities_clamped = np.clip(opacities.flatten(), 0.001, 0.999)
+    elements['opacity'] = np.log(opacities_clamped / (1 - opacities_clamped))
+    
+    # Scales (convert to log space)
+    scales_clamped = np.clip(scales, 1e-6, None)
+    elements['scale_0'] = np.log(scales_clamped[:, 0])
+    elements['scale_1'] = np.log(scales_clamped[:, 1])
+    elements['scale_2'] = np.log(scales_clamped[:, 2])
+    
+    # Rotations (quaternion: w, x, y, z)
+    elements['rot_0'] = rotations[:, 0]  # w
+    elements['rot_1'] = rotations[:, 1]  # x
+    elements['rot_2'] = rotations[:, 2]  # y
+    elements['rot_3'] = rotations[:, 3]  # z
+    
+    # Create PLY element and save
+    vertex_element = PlyElement.describe(elements, 'vertex')
+    ply_data = PlyData([vertex_element])
+    ply_data.write(output_path)
+
+
+
+
+
+def export_for_gaussian_splatting(pos, particle_colors, frame_idx, output_dir, dataset_name, particle_volumes=None):
+    """
+    Export MPM particle data in Gaussian Splatting PLY format.
+    
+    Parameters:
+        pos: particle positions (N, 3) - numpy array
+        particle_colors: particle colors (N, 3) RGB values [0-1] - numpy array
+        frame_idx: current frame number
+        output_dir: base directory to save the splat files
+        dataset_name: name of the dataset for folder organization
+        particle_volumes: optional (N,) array of particle volumes for adaptive scaling
+    """
+    import numpy as np
+    import os
+    
+    num_particles = pos.shape[0]
+    
+    # Create dataset-specific directory for Gaussian Splats
+    splat_dir = os.path.join(output_dir, dataset_name, "GaussianSplats")
+    os.makedirs(splat_dir, exist_ok=True)
+    
+    # Scale: use particle volumes if provided, otherwise uniform
+    if particle_volumes is not None:
+        # Scale based on volume: scale ~ volume^(1/3)
+        base_scale = np.cbrt(particle_volumes)
+        scales = np.stack([base_scale, base_scale, base_scale], axis=1) * 0.5
+    else:
+        # Default uniform scale
+        scales = np.ones((num_particles, 3)) * 0.01
+    
+    # Rotations: identity quaternion (w=1, x=0, y=0, z=0)
+    rotations = np.zeros((num_particles, 4))
+    rotations[:, 0] = 1.0  # w component
+    
+    # Opacities: semi-transparent
+    opacities = np.ones((num_particles, 1)) * 0.8
+    
+    # Save as PLY file
+    output_path = os.path.join(splat_dir, f"splat_{frame_idx:06d}.ply")
+    save_gaussian_splat_ply(output_path, pos, particle_colors, scales, rotations, opacities)
+    
+    return output_path
