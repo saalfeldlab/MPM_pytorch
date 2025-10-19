@@ -400,7 +400,7 @@ def data_generate_MPM_3D(
         # )
 
         # Main simulation loop
-        for it in trange(simulation_config.start_frame, n_frames):
+        for it in trange(simulation_config.start_frame, n_frames, ncols=150):
             # Concatenate state tensors - 3D matrices flattened to 9 components
             x = torch.cat((N.clone().detach(), X.clone().detach(), V.clone().detach(),
                            C.reshape(n_particles, 9).clone().detach(),  # 3x3 matrix flattened
@@ -429,137 +429,154 @@ def data_generate_MPM_3D(
                     plt.rcParams['text.usetex'] = True
                     rc('font', **{'family': 'serif', 'serif': ['Palatino']})
 
-                if 'color' in style:
-                    # 1. 3D Angled View
-                    from mpl_toolkits.mplot3d import Axes3D
 
-                    import pyvista as pv
+                # 1. 3D Angled View
+                from mpl_toolkits.mplot3d import Axes3D
 
-                    def plot_3d_shaded_pointcloud(X, ID, T, output_path):
-                        plotter = pv.Plotter(off_screen=True, window_size=(1800, 1200))
-                        plotter.set_background("lightgray")
+                import pyvista as pv
 
-                        MPM_n_objects = 3
+                def plot_3d_shaded_pointcloud(X, ID, T, output_path):
+                    plotter = pv.Plotter(off_screen=True, window_size=(1800, 1200))
+                    plotter.set_background("lightgray")
 
-                        for n in range(min(3, MPM_n_objects)):
-                            pos = torch.argwhere(T == n)[:, 0]
-                            if len(pos) > 0:
-                                # pts = to_numpy(X[pos])
-                                pts = to_numpy(X[pos])[:, [0, 2, 1]]
-                                ids = to_numpy(ID[pos].squeeze())
-                                cloud = pv.PolyData(pts)
-                                cloud["ID"] = ids
-                                plotter.add_points(
-                                    cloud,
-                                    scalars="ID",
-                                    cmap="nipy_spectral",
-                                    point_size=5,
-                                    render_points_as_spheres=True,
-                                    opacity=0.9,
-                                    show_scalar_bar=False  # ✅ correct
-                                )
+                    MPM_n_objects = 3
 
-                        # Add bounding box (wireframe cube)
-                        cube = pv.Cube(center=(0.5, 0.5, 0.5), x_length=1.0, y_length=1.0, z_length=1.0)
-                        frame = cube.extract_all_edges()
-                        plotter.add_mesh(frame, color='white', line_width=1.0, opacity=0.5)
+                    for n in range(min(3, MPM_n_objects)):
+                        pos = torch.argwhere(T == n)[:, 0]
+                        if len(pos) > 0:
+                            # pts = to_numpy(X[pos])
+                            pts = to_numpy(X[pos])[:, [0, 2, 1]]
+                            ids = to_numpy(ID[pos].squeeze())
+                            cloud = pv.PolyData(pts)
+                            cloud["ID"] = ids
+                            plotter.add_points(
+                                cloud,
+                                scalars="ID",
+                                cmap="nipy_spectral",
+                                point_size=5,
+                                render_points_as_spheres=True,
+                                opacity=0.9,
+                                show_scalar_bar=False  # ✅ correct
+                            )
 
-                        # Add axes with bounds
-                        # plotter.show_bounds(grid='back', location='outer', all_edges=True,
-                        #                     color='white', line_width=1.5,
-                        #                     xlabel='X', ylabel='Y', zlabel='Z')
+                    # Add bounding box (wireframe cube)
+                    cube = pv.Cube(center=(0.5, 0.5, 0.5), x_length=1.0, y_length=1.0, z_length=1.0)
+                    frame = cube.extract_all_edges()
+                    plotter.add_mesh(frame, color='white', line_width=1.0, opacity=0.5)
 
-                        plotter.view_vector((0.7, 1.3, 0.05))
+                    # Add axes with bounds
+                    # plotter.show_bounds(grid='back', location='outer', all_edges=True,
+                    #                     color='white', line_width=1.5,
+                    #                     xlabel='X', ylabel='Y', zlabel='Z')
 
-                        plotter.enable_eye_dome_lighting()
+                    plotter.view_vector((0.7, 1.3, 0.05))
 
-                        plotter.camera.zoom(1.3)
+                    plotter.enable_eye_dome_lighting()
 
-                        plotter.screenshot(output_path)
-                        plotter.close()
+                    plotter.camera.zoom(1.3)
 
-                    def plot_3d_material_pointcloud_separated(X, ID, T, output_path):
-                        """Alternative version that plots each material type separately for better control"""
-                        plotter = pv.Plotter(off_screen=True, window_size=(1800, 1200))
-                        plotter.set_background("lightgray")
+                    plotter.screenshot(output_path)
+                    plotter.close()
 
-                        # Get unique material types
-                        unique_materials = torch.unique(T).cpu().numpy()
+                def plot_3d_material_pointcloud_separated(X, ID, T, output_path):
+                    """Alternative version that plots each material type separately for better control"""
+                    plotter = pv.Plotter(off_screen=True, window_size=(1800, 1200))
+                    plotter.set_background("lightgray")
 
-                        # Define colors for different materials
-                        material_colors = ['blue', 'red', 'green', 'yellow', 'purple', 'orange', 'cyan', 'magenta']
-                        material_names = ['Liquid', 'Jelly', 'Snow', 'Material_3', 'Material_4', 'Material_5',
-                                          'Material_6', 'Material_7']
+                    # Get unique material types
+                    unique_materials = torch.unique(T).cpu().numpy()
 
-                        for i, mat in enumerate(unique_materials):
-                            pos = torch.argwhere(T.squeeze() == mat)[:, 0]
-                            if len(pos) > 0:
-                                pts = to_numpy(X[pos])[:, [0, 2, 1]]  # Swap y and z coordinates
+                    # Define colors for different materials
+                    material_colors = ['blue', 'red', 'green', 'yellow', 'purple', 'orange', 'cyan', 'magenta']
+                    material_names = ['Liquid', 'Jelly', 'Snow', 'Material_3', 'Material_4', 'Material_5',
+                                        'Material_6', 'Material_7']
 
-                                cloud = pv.PolyData(pts)
-                                color = material_colors[i % len(material_colors)]
-                                mat_name = material_names[i % len(material_names)]
+                    for i, mat in enumerate(unique_materials):
+                        pos = torch.argwhere(T.squeeze() == mat)[:, 0]
+                        if len(pos) > 0:
+                            pts = to_numpy(X[pos])[:, [0, 2, 1]]  # Swap y and z coordinates
 
-                                plotter.add_points(
-                                    cloud,
-                                    color=color,
-                                    point_size=15,
-                                    render_points_as_spheres=True,
-                                    opacity=0.05,
-                                    label=f'{mat_name} (Type {mat})'
-                                )
+                            cloud = pv.PolyData(pts)
+                            color = material_colors[i % len(material_colors)]
+                            mat_name = material_names[i % len(material_names)]
 
-                        # Add bounding box (wireframe cube)
-                        cube = pv.Cube(center=(0.5, 0.5, 0.5), x_length=1.0, y_length=1.0, z_length=1.0)
-                        frame = cube.extract_all_edges()
-                        plotter.add_mesh(frame, color='white', line_width=1.0, opacity=0.5)
+                            plotter.add_points(
+                                cloud,
+                                color=color,
+                                point_size=15,
+                                render_points_as_spheres=True,
+                                opacity=0.05,
+                                label=f'{mat_name} (Type {mat})'
+                            )
 
-                        plotter.view_vector((1.1, 0.9, 0.45))
-                        plotter.enable_eye_dome_lighting()
-                        plotter.camera.zoom(1.1)
+                    # Add bounding box (wireframe cube)
+                    cube = pv.Cube(center=(0.5, 0.5, 0.5), x_length=1.0, y_length=1.0, z_length=1.0)
+                    frame = cube.extract_all_edges()
+                    plotter.add_mesh(frame, color='white', line_width=1.0, opacity=0.5)
 
-                        plotter.screenshot(output_path)
-                        plotter.close()
+                    plotter.view_vector((1.1, 0.9, 0.45))
+                    plotter.enable_eye_dome_lighting()
+                    plotter.camera.zoom(1.1)
 
-                    output_path_3d = f"graphs_data/{dataset_name}/Fig/Fig_{run}_{it:06}_3D.png"
-                    plot_3d_shaded_pointcloud(X, ID, T, output_path_3d)
+                    plotter.screenshot(output_path)
+                    plotter.close()
 
-                    #
-                    # fig = plt.figure(figsize=(18, 12))
-                    # ax = fig.add_subplot(2, 3, 1, projection='3d')
-                    # ax.set_title('3D Angled View')
-                    # for n in range(min(3, MPM_n_objects)):
-                    #     pos = torch.argwhere(T == n)[:,0]
-                    #     if len(pos) > 0:
-                    #         ax.scatter(to_numpy(X[pos, 0]), to_numpy(X[pos, 2]), to_numpy(X[pos, 1]),
-                    #                    cmap='nipy_spectral', edgecolors = 'none',
-                    #                    s=20, c=to_numpy(ID.squeeze()), alpha=0.7)
-                    #
-                    #         # plt.scatter(to_numpy(x[:, 1]), to_numpy(x[:, 2]), c=to_numpy(ID.squeeze()), s=2, alpha=0.3,
-                    #         #             cmap='nipy_spectral', edgecolors = 'none')
-                    #
-                    # ax.set_xlim([0, 1])
-                    # ax.set_ylim([0, 1])
-                    # ax.set_zlim([0, 1])
-                    # ax.set_xlabel('X')
-                    # ax.set_ylabel('Y')
-                    # ax.set_zlabel('Z')
-                    # # Set viewing angle (elevation, azimuth)
-                    # ax.view_init(elev=20, azim=45)
-                    # plt.tight_layout()
-                    # num = f"{it:06}"
-                    # plt.savefig(f"graphs_data/{dataset_name}/Fig/Fig_{run}_{num}.png", dpi=150, bbox_inches='tight')
-                    # plt.close()
+                output_path_3d = f"graphs_data/{dataset_name}/Fig/Fig_{run}_{it:06}_3D.png"
+
+                plot_3d_shaded_pointcloud(X, ID, T, output_path_3d)
+
+
+                # Prepare position data (swap y and z to match visualization)
+                pos_np = to_numpy(X)[:, [0, 2, 1]]
+                
+                # Prepare color data from ID or material type
+                # Option 1: Use ID for colors (as in the shaded pointcloud)
+                ids_np = to_numpy(ID.squeeze())
+                # Normalize IDs to [0, 1] range for colors
+                id_min, id_max = ids_np.min(), ids_np.max()
+                if id_max > id_min:
+                    id_normalized = (ids_np - id_min) / (id_max - id_min)
+                else:
+                    id_normalized = np.zeros_like(ids_np)
+                
+                # Create RGB colors using nipy_spectral colormap
+                from matplotlib import cm
+                cmap = cm.get_cmap('nipy_spectral')
+                colors_np = cmap(id_normalized)[:, :3]  # Get RGB, drop alpha
+                
+                # Option 2: Use material type for colors (uncomment if preferred)
+                # material_colors_rgb = {
+                #     0: [0.0, 0.0, 1.0],  # blue - Liquid
+                #     1: [1.0, 0.0, 0.0],  # red - Jelly
+                #     2: [0.0, 1.0, 0.0],  # green - Snow
+                # }
+                # T_np = to_numpy(T.squeeze())
+                # colors_np = np.array([material_colors_rgb.get(int(t), [0.5, 0.5, 0.5]) for t in T_np])
+                
+                output_path = export_for_gaussian_splatting(
+                    pos=pos_np,
+                    particle_colors=colors_np,
+                    frame_idx=it,
+                    output_dir="./graphs_data",
+                    dataset_name=dataset_name,
+                    particle_volumes=None
+                )
+
+
 
         if bSave:
             torch.save(x_list, f'graphs_data/{dataset_name}/generated_data_{run}.pt')
             print(f'data saved at: graphs_data/{dataset_name}/generated_data_{run}.pt')
+
+
+
 
     # Save configuration
     with open(f"graphs_data/{dataset_name}/model_config.json", "w") as json_file:
         json.dump(config, json_file, default=lambda o: dict(o) if hasattr(o, '__dict__') else str(o))
 
     print(f'3D MPM data generation completed for {config.training.n_runs} runs')
+
 
 def data_generate_MPM_2D(
         config,
@@ -661,8 +678,6 @@ def data_generate_MPM_2D(
                 rho_list=rho_list,
                 device=device
             )
-        # N, X, V, C, F, T, Jp, M, S, ID = init_MPM_shapes(geometry=MPM_object_type, n_shapes=MPM_n_objects, seed=simulation_config.seed, n_particles=n_particles,n_particle_types=n_particle_types, n_grid=n_grid, dx=dx, rho_list=rho_list, device=device)
-
 
         # Main simulation loop
         for it in trange(simulation_config.start_frame, n_frames, ncols=150):
@@ -796,7 +811,7 @@ def data_generate_MPM_2D(
 
                     plt.tight_layout()
                     num = f"{it:06}"
-                    plt.savefig(f"graphs_data/{dataset_name}/Grid/Fig_{run}_{num}.tif", dpi=100)
+                    plt.savefig(f"graphs_data/{dataset_name}/Grid/Fig_{run}_{num}.png", dpi=100)
                     plt.close()
 
         # Save results
@@ -804,3 +819,16 @@ def data_generate_MPM_2D(
             dataset_name = config.dataset
             x_list = np.array(to_numpy(torch.stack(x_list)))
             np.save(f"graphs_data/{dataset_name}/x_list_{run}.npy", x_list)
+
+        if visualize & (run == run_vizualized):
+            print('generating lossless video ...')
+            config_indices = dataset_name.split('fly_N9_')[1] if 'fly_N9_' in dataset_name else 'no_id'
+            src = f"./graphs_data/{dataset_name}/Fig/Fig_0_000000.png"
+            dst = f"./graphs_data/{dataset_name}/input_{config_indices}.png"
+            with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
+                fdst.write(fsrc.read())
+            generate_compressed_video_mp4(output_dir=f"./graphs_data/{dataset_name}", run=run,
+                                        config_indices=config_indices, framerate=20)
+            files = glob.glob(f'./graphs_data/{dataset_name}/Fig/*')
+            for f in files:
+                os.remove(f)

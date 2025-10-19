@@ -26,6 +26,7 @@ dependencies:
   - shapely
   - seaborn
   - pyvista
+  - plyfile
   - pip:
     - geomloss
     - torch_geometric
