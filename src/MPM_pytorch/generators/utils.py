@@ -10,6 +10,11 @@ from torch_geometric.utils import dense_to_sparse
 from scipy import stats
 import seaborn as sns
 from plyfile import PlyData, PlyElement
+from mpl_toolkits.mplot3d import Axes3D
+import pyvista as pv
+import numpy as np
+import os
+from matplotlib import cm
 
 
 def choose_model(config=[], W=[], device=[]):
@@ -1340,6 +1345,7 @@ def init_MPM_cells(
 
     return N, x, v, C, F, T, Jp, M, S, ID
 
+
 def generate_compressed_video_mp4(output_dir, run=0, framerate=10, output_name=".mp4", config_indices=None, crf=23):
     """
     Generate a compressed video using ffmpeg's libx264 codec in MP4 format.
@@ -1357,6 +1363,14 @@ def generate_compressed_video_mp4(output_dir, run=0, framerate=10, output_name="
     fig_dir = os.path.join(output_dir, "Fig")
     input_pattern = os.path.join(fig_dir, f"Fig_{run}_%06d.png")
     output_path = os.path.join(output_dir, f"input_{config_indices}{output_name}")
+
+    # count number of files
+    num_files = len([name for name in os.listdir(fig_dir) if name.startswith(f"Fig_{run}_") and name.endswith(".png")])
+    if num_files == 0:
+        print(f"no image files found in {fig_dir} for run {run}. skipping video generation.")
+        return
+    else:
+        print(f"found {num_files} image files in {fig_dir} for run {run}. generating video...")
     
     ffmpeg_cmd = [
         "ffmpeg",
@@ -1376,87 +1390,126 @@ def generate_compressed_video_mp4(output_dir, run=0, framerate=10, output_name="
     print(f"compressed video (libx264) saved to: {output_path}")
 
 
-
-def save_gaussian_splat_ply(output_path, positions, colors, scales, rotations, opacities):
+def plot_3d_pointcloud(X, ID, T, frame_idx, output_dir, dataset_name, run, color_mode='id', F=None, debug=False):
     """
-    Save Gaussian Splatting data in PLY format.
+    Plot 3D point cloud with various coloring options.
     
     Parameters:
-        output_path: Path to save PLY file
-        positions: (N, 3) xyz coordinates
-        colors: (N, 3) RGB values [0-1]
-        scales: (N, 3) scale per axis
-        rotations: (N, 4) quaternions (w, x, y, z)
-        opacities: (N, 1) opacity values [0-1]
+        X: particle positions (N, 3)
+        ID: particle IDs (N,) or (N, 1)
+        T: particle material types (N,) or (N, 1)
+        frame_idx: current frame number
+        output_dir: base directory to save the figure
+        dataset_name: name of the dataset
+        run: run index
+        color_mode: str, one of:
+            - 'id': color by particle ID with nipy_spectral colormap
+            - 'material': color by material type with distinct colors
+            - 'F': color by deformation gradient magnitude
+        F: deformation gradient tensor (N, 3, 3) - required if color_mode='F'
     """
-    import numpy as np
-    from plyfile import PlyData, PlyElement
-    
-    num_points = positions.shape[0]
-    
-    # Convert colors from [0-1] to [0-255]
-    colors_255 = (np.clip(colors, 0, 1) * 255).astype(np.uint8)
-    
-    # Create structured array for PLY format
-    # Standard 3D Gaussian Splatting format
-    dtype = [
-        ('x', 'f4'), ('y', 'f4'), ('z', 'f4'),
-        ('nx', 'f4'), ('ny', 'f4'), ('nz', 'f4'),  # Normals (unused, set to 0)
-        ('f_dc_0', 'f4'), ('f_dc_1', 'f4'), ('f_dc_2', 'f4'),  # RGB colors
-        ('opacity', 'f4'),
-        ('scale_0', 'f4'), ('scale_1', 'f4'), ('scale_2', 'f4'),
-        ('rot_0', 'f4'), ('rot_1', 'f4'), ('rot_2', 'f4'), ('rot_3', 'f4'),  # Quaternion
-    ]
-    
-    elements = np.empty(num_points, dtype=dtype)
-    
-    # Positions
-    elements['x'] = positions[:, 0]
-    elements['y'] = positions[:, 1]
-    elements['z'] = positions[:, 2]
-    
-    # Normals (not used in Gaussian Splatting, set to 0)
-    elements['nx'] = 0
-    elements['ny'] = 0
-    elements['nz'] = 0
-    
-    # Colors (convert to spherical harmonics DC component)
-    # For DC component: (color - 0.5) / 0.28209479177387814
-    SH_C0 = 0.28209479177387814
-    elements['f_dc_0'] = (colors[:, 0] - 0.5) / SH_C0
-    elements['f_dc_1'] = (colors[:, 1] - 0.5) / SH_C0
-    elements['f_dc_2'] = (colors[:, 2] - 0.5) / SH_C0
-    
-    # Opacity (convert to logit space for better optimization)
-    # logit(x) = log(x / (1 - x))
-    opacities_clamped = np.clip(opacities.flatten(), 0.001, 0.999)
-    elements['opacity'] = np.log(opacities_clamped / (1 - opacities_clamped))
-    
-    # Scales (convert to log space)
-    scales_clamped = np.clip(scales, 1e-6, None)
-    elements['scale_0'] = np.log(scales_clamped[:, 0])
-    elements['scale_1'] = np.log(scales_clamped[:, 1])
-    elements['scale_2'] = np.log(scales_clamped[:, 2])
-    
-    # Rotations (quaternion: w, x, y, z)
-    elements['rot_0'] = rotations[:, 0]  # w
-    elements['rot_1'] = rotations[:, 1]  # x
-    elements['rot_2'] = rotations[:, 2]  # y
-    elements['rot_3'] = rotations[:, 3]  # z
-    
-    # Create PLY element and save
-    vertex_element = PlyElement.describe(elements, 'vertex')
-    ply_data = PlyData([vertex_element])
-    ply_data.write(output_path)
+    plotter = pv.Plotter(off_screen=True, window_size=(1800, 1200))
+    plotter.set_background("lightgray")
 
+    if color_mode == 'id':
+        # Color by ID using nipy_spectral colormap
+        MPM_n_objects = 3
+        for n in range(min(3, MPM_n_objects)):
+            pos = torch.argwhere(T == n)[:, 0]
+            if len(pos) > 0:
+                pts = to_numpy(X[pos])[:, [0, 2, 1]]
+                ids = to_numpy(ID[pos].squeeze())
+                cloud = pv.PolyData(pts)
+                cloud["ID"] = ids
+                plotter.add_points(
+                    cloud,
+                    scalars="ID",
+                    cmap="nipy_spectral",
+                    point_size=5,
+                    render_points_as_spheres=True,
+                    opacity=0.9,
+                    show_scalar_bar=False
+                )
+    
+    elif color_mode == 'material':
+        # Color by material type
+        unique_materials = torch.unique(T).cpu().numpy()
+        material_colors = ['blue', 'red', 'green', 'yellow', 'purple', 'orange', 'cyan', 'magenta']
+        material_names = ['Liquid', 'Jelly', 'Snow', 'Material_3', 'Material_4', 'Material_5',
+                          'Material_6', 'Material_7']
 
+        for i, mat in enumerate(unique_materials):
+            pos = torch.argwhere(T.squeeze() == mat)[:, 0]
+            if len(pos) > 0:
+                pts = to_numpy(X[pos])[:, [0, 2, 1]]
+                cloud = pv.PolyData(pts)
+                color = material_colors[i % len(material_colors)]
+                mat_name = material_names[i % len(material_names)]
 
+                plotter.add_points(
+                    cloud,
+                    color=color,
+                    point_size=15,
+                    render_points_as_spheres=True,
+                    opacity=0.05,
+                    label=f'{mat_name} (Type {mat})'
+                )
+    
+    elif color_mode == 'F':
+        # Color by deformation gradient magnitude
+        if F is None:
+            raise ValueError("color_mode='F' requires F parameter to be provided")
+        
+        pts = to_numpy(X)[:, [0, 2, 1]]
+        F_np = to_numpy(F)
+        F_norm = np.linalg.norm(F_np.reshape(-1, 9), axis=1)
+        
+        # Debug print
+        if debug:
+            print(f"F_norm stats:")
+            print(f"  Min: {F_norm.min():.6f}")
+            print(f"  Max: {F_norm.max():.6f}")
+            print(f"  Mean: {F_norm.mean():.6f}")
+            print(f"  Median: {np.median(F_norm):.6f}")
+        
+        cloud = pv.PolyData(pts)
+        cloud["F_norm"] = F_norm
+        plotter.add_points(
+            cloud,
+            scalars="F_norm",
+            cmap="coolwarm",
+            clim=[1.6, 1.85],  # Adjusted for 3D: centered around sqrt(3)≈1.732
+            point_size=5,
+            render_points_as_spheres=True,
+            opacity=0.9,
+            show_scalar_bar=False
+        )
+
+    else:
+        raise ValueError(f"Invalid color_mode: {color_mode}. Must be 'id', 'material', or 'F'")
+
+    # Add bounding box (wireframe cube)
+    cube = pv.Cube(center=(0.5, 0.5, 0.5), x_length=1.0, y_length=1.0, z_length=1.0)
+    frame = cube.extract_all_edges()
+    plotter.add_mesh(frame, color='white', line_width=1.0, opacity=0.5)
+
+    plotter.view_vector((0.7, 1.3, 0.05))
+    plotter.enable_eye_dome_lighting()
+    plotter.camera.zoom(1.3)
+
+    # Construct output path
+    output_path = f"{output_dir}/{dataset_name}/Fig/Fig_{run}_{frame_idx:06}.png"
+    plotter.screenshot(output_path)
+    plotter.close()
+    
+    return output_path
 
 
 def export_for_gaussian_splatting(X, ID, T, frame_idx, output_dir, dataset_name, 
-                                 particle_volumes=None, color_mode='id', F=None):
+                                 particle_volumes=None, color_mode='id', F=None, 
+                                 output_format='ply', splat_scale=0.02, opacity=0.8, debug=False):
     """
-    Export MPM particle data in Gaussian Splatting PLY format.
+    Export MPM particle data in Gaussian Splatting format.
     
     Parameters:
         X: particle positions (N, 3) - torch tensor or numpy array
@@ -1472,6 +1525,13 @@ def export_for_gaussian_splatting(X, ID, T, frame_idx, output_dir, dataset_name,
             - 'uniform': Use uniform gray color for all particles
             - 'F': Use deformation gradient magnitude for colors
         F: deformation gradient tensor (N, 3, 3) - required if color_mode='F'
+        output_format: str, one of:
+            - 'ply': Save as PLY format (default)
+            - 'splat': Save as .splat binary format
+            - 'both': Save both formats
+        splat_scale: float, scale factor for Gaussian splats (default 0.02)
+        opacity: float, opacity/transparency value [0-1] (default 0.8)
+        debug: bool, print debug information
     """
     import numpy as np
     import os
@@ -1479,6 +1539,13 @@ def export_for_gaussian_splatting(X, ID, T, frame_idx, output_dir, dataset_name,
     
     # Prepare position data (swap y and z to match visualization)
     pos_np = to_numpy(X)[:, [0, 2, 1]]
+    
+    if debug:
+        print(f"Position stats:")
+        print(f"  Shape: {pos_np.shape}")
+        print(f"  Min: {pos_np.min(axis=0)}")
+        print(f"  Max: {pos_np.max(axis=0)}")
+        print(f"  Mean: {pos_np.mean(axis=0)}")
     
     # Prepare color data based on color_mode
     if color_mode == 'id':
@@ -1540,28 +1607,273 @@ def export_for_gaussian_splatting(X, ID, T, frame_idx, output_dir, dataset_name,
     
     num_particles = pos_np.shape[0]
     
-    # Create dataset-specific directory for PLY files
-    splat_dir = os.path.join(output_dir, dataset_name, "Ply")
-    os.makedirs(splat_dir, exist_ok=True)
+    if debug:
+        print(f"Color stats:")
+        print(f"  Shape: {colors_np.shape}")
+        print(f"  Min: {colors_np.min(axis=0)}")
+        print(f"  Max: {colors_np.max(axis=0)}")
     
-    # Scale: use particle volumes if provided, otherwise uniform
+    # Create dataset-specific directory for files
+    if output_format == 'ply' or output_format == 'both':
+        ply_dir = os.path.join(output_dir, dataset_name, "Ply")
+        os.makedirs(ply_dir, exist_ok=True)
+    
+    if output_format == 'splat' or output_format == 'both':
+        splat_dir = os.path.join(output_dir, dataset_name, "Splat")
+        os.makedirs(splat_dir, exist_ok=True)
+    
+    # Scale: use particle volumes if provided, otherwise uniform with splat_scale
     if particle_volumes is not None:
         # Scale based on volume: scale ~ volume^(1/3)
         base_scale = np.cbrt(particle_volumes)
-        scales = np.stack([base_scale, base_scale, base_scale], axis=1) * 0.5
+        scales = np.stack([base_scale, base_scale, base_scale], axis=1) * splat_scale
     else:
-        # Default uniform scale
-        scales = np.ones((num_particles, 3)) * 0.01
+        # Default uniform scale using splat_scale parameter
+        scales = np.ones((num_particles, 3)) * splat_scale
+    
+    if debug:
+        print(f"Scale stats:")
+        print(f"  Shape: {scales.shape}")
+        print(f"  Min: {scales.min()}")
+        print(f"  Max: {scales.max()}")
+        print(f"  Mean: {scales.mean()}")
     
     # Rotations: identity quaternion (w=1, x=0, y=0, z=0)
     rotations = np.zeros((num_particles, 4))
     rotations[:, 0] = 1.0  # w component
     
-    # Opacities: semi-transparent
-    opacities = np.ones((num_particles, 1)) * 0.8
+    # Opacities: use the opacity parameter
+    opacities = np.ones((num_particles, 1)) * np.clip(opacity, 0.0, 1.0)
     
-    # Save as PLY file
-    output_path = os.path.join(splat_dir, f"splat_{frame_idx:06d}.ply")
-    save_gaussian_splat_ply(output_path, pos_np, colors_np, scales, rotations, opacities)
+    if debug:
+        print(f"Opacity: {opacity}")
     
-    return output_path
+    output_paths = []
+    
+    # Save as PLY file if requested
+    if output_format == 'ply' or output_format == 'both':
+        ply_path = os.path.join(ply_dir, f"splat_{frame_idx:06d}.ply")
+        save_gaussian_splat_ply(ply_path, pos_np, colors_np, scales, rotations, opacities)
+        output_paths.append(ply_path)
+        if debug:
+            print(f"Saved PLY: {ply_path}")
+    
+    # Save as .splat file if requested
+    if output_format == 'splat' or output_format == 'both':
+        splat_path = os.path.join(splat_dir, f"splat_{frame_idx:06d}.splat")
+        save_gaussian_splat_binary(splat_path, pos_np, colors_np, scales, rotations, opacities)
+        output_paths.append(splat_path)
+        if debug:
+            print(f"Saved SPLAT: {splat_path}")
+    
+    return output_paths[0] if len(output_paths) == 1 else output_paths
+
+
+def save_gaussian_splat_ply(output_path, positions, colors, scales, rotations, opacities):
+    """
+    Save Gaussian Splatting data in PLY format compatible with SuperSplat.
+    This follows the exact format from the original 3D Gaussian Splatting paper.
+    """
+    import numpy as np
+    
+    num_points = positions.shape[0]
+    
+    # Prepare data in the exact format expected
+    # Positions
+    x = positions[:, 0].astype(np.float32)
+    y = positions[:, 1].astype(np.float32)
+    z = positions[:, 2].astype(np.float32)
+    
+    # Normals (unused, set to zero)
+    nx = np.zeros(num_points, dtype=np.float32)
+    ny = np.zeros(num_points, dtype=np.float32)
+    nz = np.zeros(num_points, dtype=np.float32)
+    
+    # Spherical Harmonics DC component
+    SH_C0 = 0.28209479177387814
+    colors_safe = np.clip(colors, 0.0, 1.0)
+    f_dc_0 = ((colors_safe[:, 0] - 0.5) / SH_C0).astype(np.float32)
+    f_dc_1 = ((colors_safe[:, 1] - 0.5) / SH_C0).astype(np.float32)
+    f_dc_2 = ((colors_safe[:, 2] - 0.5) / SH_C0).astype(np.float32)
+    
+    # Opacity in logit space
+    opacities_safe = np.clip(opacities.flatten(), 0.005, 0.995)
+    opacity_logit = np.log(opacities_safe / (1.0 - opacities_safe)).astype(np.float32)
+    
+    # Scales in log space
+    scales_safe = np.clip(scales, 1e-8, 100.0)
+    scale_0 = np.log(scales_safe[:, 0]).astype(np.float32)
+    scale_1 = np.log(scales_safe[:, 1]).astype(np.float32)
+    scale_2 = np.log(scales_safe[:, 2]).astype(np.float32)
+    
+    # Normalized quaternion rotation
+    rot_norms = np.linalg.norm(rotations, axis=1, keepdims=True)
+    rot_normalized = rotations / np.maximum(rot_norms, 1e-8)
+    rot_0 = rot_normalized[:, 0].astype(np.float32)  # w
+    rot_1 = rot_normalized[:, 1].astype(np.float32)  # x
+    rot_2 = rot_normalized[:, 2].astype(np.float32)  # y
+    rot_3 = rot_normalized[:, 3].astype(np.float32)  # z
+    
+    # Write PLY file manually for maximum compatibility
+    with open(output_path, 'wb') as f:
+        # Write header
+        header = f"""ply
+format binary_little_endian 1.0
+element vertex {num_points}
+property float x
+property float y
+property float z
+property float nx
+property float ny
+property float nz
+property float f_dc_0
+property float f_dc_1
+property float f_dc_2
+property float opacity
+property float scale_0
+property float scale_1
+property float scale_2
+property float rot_0
+property float rot_1
+property float rot_2
+property float rot_3
+end_header
+"""
+        f.write(header.encode('ascii'))
+        
+        # Write binary data
+        import struct
+        for i in range(num_points):
+            # Pack all 17 floats for this vertex
+            vertex_data = struct.pack('fffffffff ffffffff',
+                x[i], y[i], z[i],
+                nx[i], ny[i], nz[i],
+                f_dc_0[i], f_dc_1[i], f_dc_2[i],
+                opacity_logit[i],
+                scale_0[i], scale_1[i], scale_2[i],
+                rot_0[i], rot_1[i], rot_2[i], rot_3[i]
+            )
+            f.write(vertex_data)
+    """
+    Save Gaussian Splatting data in PLY format with proper SH coefficients.
+    """
+    import numpy as np
+    from plyfile import PlyData, PlyElement
+    
+    num_points = positions.shape[0]
+    
+    # Standard 3D Gaussian Splatting PLY format with only DC component (degree 0)
+    dtype = [
+        ('x', 'f4'), ('y', 'f4'), ('z', 'f4'),
+        ('nx', 'f4'), ('ny', 'f4'), ('nz', 'f4'),
+        ('f_dc_0', 'f4'), ('f_dc_1', 'f4'), ('f_dc_2', 'f4'),
+        ('opacity', 'f4'),
+        ('scale_0', 'f4'), ('scale_1', 'f4'), ('scale_2', 'f4'),
+        ('rot_0', 'f4'), ('rot_1', 'f4'), ('rot_2', 'f4'), ('rot_3', 'f4'),
+    ]
+    
+    elements = np.empty(num_points, dtype=dtype)
+    
+    # Positions (in meters, typically)
+    elements['x'] = positions[:, 0].astype(np.float32)
+    elements['y'] = positions[:, 1].astype(np.float32)
+    elements['z'] = positions[:, 2].astype(np.float32)
+    
+    # Normals (unused)
+    elements['nx'] = 0.0
+    elements['ny'] = 0.0
+    elements['nz'] = 0.0
+    
+    # Spherical Harmonics DC component (0th degree)
+    SH_C0 = 0.28209479177387814
+    colors_safe = np.clip(colors, 0.0, 1.0)
+    elements['f_dc_0'] = ((colors_safe[:, 0] - 0.5) / SH_C0).astype(np.float32)
+    elements['f_dc_1'] = ((colors_safe[:, 1] - 0.5) / SH_C0).astype(np.float32)
+    elements['f_dc_2'] = ((colors_safe[:, 2] - 0.5) / SH_C0).astype(np.float32)
+    
+    # Opacity in logit space
+    opacities_safe = np.clip(opacities.flatten(), 0.01, 0.99)
+    elements['opacity'] = np.log(opacities_safe / (1.0 - opacities_safe)).astype(np.float32)
+    
+    # Scales in log space
+    scales_safe = np.clip(scales, 1e-8, 1e3)
+    elements['scale_0'] = np.log(scales_safe[:, 0]).astype(np.float32)
+    elements['scale_1'] = np.log(scales_safe[:, 1]).astype(np.float32)
+    elements['scale_2'] = np.log(scales_safe[:, 2]).astype(np.float32)
+    
+    # Normalized quaternion rotation (w, x, y, z)
+    # Ensure they're normalized
+    rot_norms = np.linalg.norm(rotations, axis=1, keepdims=True)
+    rot_normalized = rotations / np.maximum(rot_norms, 1e-8)
+    elements['rot_0'] = rot_normalized[:, 0].astype(np.float32)
+    elements['rot_1'] = rot_normalized[:, 1].astype(np.float32)
+    elements['rot_2'] = rot_normalized[:, 2].astype(np.float32)
+    elements['rot_3'] = rot_normalized[:, 3].astype(np.float32)
+    
+    # Write PLY file
+    vertex_element = PlyElement.describe(elements, 'vertex')
+    ply_data = PlyData([vertex_element])
+    ply_data.write(output_path)
+
+
+def save_gaussian_splat_binary(output_path, positions, colors, scales, rotations, opacities):
+    """
+    Save Gaussian Splatting data in .splat binary format for SuperSplat.
+    Format: position(3 float) + scale(3 float) + color(4 ubyte RGBA) + rotation(4 ubyte compressed quaternion)
+    Total: 32 bytes per splat
+    """
+    import struct
+    import numpy as np
+    
+    num_points = positions.shape[0]
+    
+    # Don't convert from log space - scales should already be in regular space
+    # If they're in log space, convert them
+    if np.any(scales < 0):  # Likely in log space
+        scales_linear = np.exp(np.clip(scales, -10, 10))
+    else:
+        scales_linear = scales
+    
+    # Opacity - convert from logit if needed
+    if np.any(opacities < 0) or np.any(opacities > 1):  # Likely in logit space
+        opacities_clamped = np.clip(opacities.flatten(), -10, 10)
+        opacities_linear = 1.0 / (1.0 + np.exp(-opacities_clamped))
+    else:
+        opacities_linear = opacities.flatten()
+    
+    colors_safe = np.clip(colors, 0.0, 1.0)
+    
+    # Normalize rotations
+    rot_norms = np.linalg.norm(rotations, axis=1, keepdims=True)
+    rot_normalized = rotations / np.maximum(rot_norms, 1e-8)
+    
+    with open(output_path, 'wb') as f:
+        for i in range(num_points):
+            # Position (12 bytes: 3 floats)
+            f.write(struct.pack('<fff', 
+                positions[i, 0], 
+                positions[i, 1], 
+                positions[i, 2]
+            ))
+            
+            # Scale (12 bytes: 3 floats)
+            f.write(struct.pack('<fff',
+                scales_linear[i, 0],
+                scales_linear[i, 1],
+                scales_linear[i, 2]
+            ))
+            
+            # Color RGBA (4 bytes: 4 unsigned bytes)
+            r = int(colors_safe[i, 0] * 255)
+            g = int(colors_safe[i, 1] * 255)
+            b = int(colors_safe[i, 2] * 255)
+            a = int(opacities_linear[i] * 255)
+            f.write(struct.pack('<BBBB', r, g, b, a))
+            
+            # Rotation as compressed quaternion (4 bytes)
+            # Map from [-1, 1] to [0, 255]
+            qw = int((rot_normalized[i, 0] * 0.5 + 0.5) * 255)
+            qx = int((rot_normalized[i, 1] * 0.5 + 0.5) * 255)
+            qy = int((rot_normalized[i, 2] * 0.5 + 0.5) * 255)
+            qz = int((rot_normalized[i, 3] * 0.5 + 0.5) * 255)
+            f.write(struct.pack('<BBBB', qw, qx, qy, qz))

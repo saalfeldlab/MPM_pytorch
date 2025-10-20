@@ -293,290 +293,6 @@ def taichi_MPM():
         gui.show()
 
 
-def data_generate_MPM_3D(
-        config,
-        visualize=True,
-        run_vizualized=0,
-        style='color',
-        erase=False,
-        step=5,
-        alpha=0.2,
-        ratio=1,
-        scenario='none',
-        best_model=[],
-        device=None,
-        bSave=True
-):
-    """
-    3D MPM data generation function
-    """
-
-    simulation_config = config.simulation
-    training_config = config.training
-    model_config = config.graph_model
-
-    print(f'generating 3D data ... {model_config.particle_model_name} {model_config.mesh_model_name}')
-
-    dimension = 3  # Force 3D
-    max_radius = simulation_config.max_radius
-    min_radius = simulation_config.min_radius
-    n_particle_types = simulation_config.n_particle_types
-    n_particles = simulation_config.n_particles
-    n_grid = simulation_config.n_grid
-    group_size = n_particles // n_particle_types
-    MPM_n_objects = simulation_config.MPM_n_objects
-    MPM_object_type = simulation_config.MPM_object_type
-    gravity = simulation_config.MPM_gravity
-    friction = simulation_config.MPM_friction
-
-    delta_t = simulation_config.delta_t
-    n_frames = simulation_config.n_frames
-    dx, inv_dx = 1 / n_grid, float(n_grid)
-
-    # 3D volume instead of 2D area
-    p_vol = (dx * 0.5) ** 3
-    rho_list = simulation_config.MPM_rho_list
-    young_coeff = simulation_config.MPM_young_coeff
-
-    E, nu = 0.1e4 / young_coeff, 0.2  # Young's modulus and Poisson's ratio
-    mu_0, lambda_0 = E / (2 * (1 + nu)), E * nu / ((1 + nu) * (1 - 2 * nu))  # Lame parameters
-
-    # 3D offsets for 27 neighbors (3x3x3)
-    offsets = torch.tensor([[i, j, k] for i in range(3) for j in range(3) for k in range(3)],
-                           device=device, dtype=torch.float32)  # [27, 3]
-    particle_offsets = offsets.unsqueeze(0).expand(n_particles, -1, -1)
-    expansion_factor = simulation_config.MPM_expansion_factor
-
-    # Initialize 3D MPM model
-    model_MPM = MPM_3D_P2G(aggr_type='add', device=device)
-
-    n_frames = simulation_config.n_frames
-    cmap = CustomColorMap(config=config)
-    dataset_name = config.dataset
-
-    folder = f'./graphs_data/{dataset_name}/'
-    if erase:
-        files = glob.glob(f"{folder}/*")
-        for f in files:
-            if (f[-3:] != 'Fig') & (f[-14:] != 'generated_data') & (f != 'p.pt') & (f != 'cycle_length.pt') & (
-                    f != 'model_config.json') & (f != 'generation_code.py'):
-                os.remove(f)
-    os.makedirs(folder, exist_ok=True)
-    os.makedirs(f'./graphs_data/{dataset_name}/Fig/', exist_ok=True)
-    files = glob.glob(f'./graphs_data/{dataset_name}/Fig/*')
-    for f in files:
-        os.remove(f)
-    os.makedirs(f'./graphs_data/{dataset_name}/Grid/', exist_ok=True)
-    files = glob.glob(f'./graphs_data/{dataset_name}/Grid/*')
-    for f in files:
-        os.remove(f)
-
-    for run in range(config.training.n_runs):
-        x_list = []
-
-        # Initialize 3D MPM shapes
-        N, X, V, C, F, T, Jp, M, S, ID = init_MPM_3D_shapes(
-            geometry=MPM_object_type,
-            n_shapes=MPM_n_objects,
-            seed=simulation_config.seed,
-            n_particles=n_particles,
-            n_particle_types=n_particle_types,
-            n_grid=n_grid,
-            dx=dx,
-            rho_list=rho_list,
-            device=device
-        )
-
-        # # Initialize 3D MPM shapes
-        # N, X, V, C, F, T, Jp, M, S, ID = init_MPM_3D_cells(
-        #     n_shapes=MPM_n_objects,
-        #     seed=simulation_config.seed,
-        #     n_particles=n_particles,
-        #     n_grid=n_grid,
-        #     dx=dx,
-        #     rho_list=rho_list,
-        #     nucleus_ratio=0.6,
-        #     device=device
-        # )
-
-        # Main simulation loop
-        for it in trange(simulation_config.start_frame, n_frames, ncols=150):
-            # Concatenate state tensors - 3D matrices flattened to 9 components
-            x = torch.cat((N.clone().detach(), X.clone().detach(), V.clone().detach(),
-                           C.reshape(n_particles, 9).clone().detach(),  # 3x3 matrix flattened
-                           F.reshape(n_particles, 9).clone().detach(),  # 3x3 matrix flattened
-                           T.clone().detach(), Jp.clone().detach(), M.clone().detach(),
-                           S.reshape(n_particles, 9).clone().detach(),  # 3x3 matrix flattened
-                           ID.clone().detach()), 1)
-
-            if (it >= 0):
-                x_list.append(x.clone().detach())
-
-            # 3D MPM step
-            X, V, C, F, T, Jp, M, S, GM, GV = MPM_3D_step(
-                model_MPM, X, V, C, F, T, Jp, M, n_particles, n_grid,
-                delta_t, dx, inv_dx, mu_0, lambda_0, p_vol, offsets, particle_offsets,
-                expansion_factor, gravity, friction, it, device
-            )
-
-            # 3D visualization (if enabled)
-            if visualize & (run == run_vizualized) & (it % step == 0) & (it >= 0):
-
-                if 'black' in style:
-                    plt.style.use('dark_background')
-
-                if 'latex' in style:
-                    plt.rcParams['text.usetex'] = True
-                    rc('font', **{'family': 'serif', 'serif': ['Palatino']})
-
-
-                # 1. 3D Angled View
-                from mpl_toolkits.mplot3d import Axes3D
-
-                import pyvista as pv
-
-                def plot_3d_pointcloud(X, ID, T, output_path, color_mode='id', F=None):
-                    """
-                    Plot 3D point cloud with various coloring options.
-                    
-                    Parameters:
-                        X: particle positions (N, 3)
-                        ID: particle IDs (N,) or (N, 1)
-                        T: particle material types (N,) or (N, 1)
-                        output_path: path to save the image
-                        color_mode: str, one of:
-                            - 'id': color by particle ID with nipy_spectral colormap
-                            - 'material': color by material type with distinct colors
-                            - 'F': color by deformation gradient magnitude
-                        F: deformation gradient tensor (N, 3, 3) - required if color_mode='F'
-                    """
-                    plotter = pv.Plotter(off_screen=True, window_size=(1800, 1200))
-                    plotter.set_background("lightgray")
-
-                    if color_mode == 'id':
-                        # Color by ID using nipy_spectral colormap
-                        MPM_n_objects = 3
-                        for n in range(min(3, MPM_n_objects)):
-                            pos = torch.argwhere(T == n)[:, 0]
-                            if len(pos) > 0:
-                                pts = to_numpy(X[pos])[:, [0, 2, 1]]
-                                ids = to_numpy(ID[pos].squeeze())
-                                cloud = pv.PolyData(pts)
-                                cloud["ID"] = ids
-                                plotter.add_points(
-                                    cloud,
-                                    scalars="ID",
-                                    cmap="nipy_spectral",
-                                    point_size=5,
-                                    render_points_as_spheres=True,
-                                    opacity=0.9,
-                                    show_scalar_bar=False
-                                )
-                    
-                    elif color_mode == 'material':
-                        # Color by material type
-                        unique_materials = torch.unique(T).cpu().numpy()
-                        material_colors = ['blue', 'red', 'green', 'yellow', 'purple', 'orange', 'cyan', 'magenta']
-                        material_names = ['Liquid', 'Jelly', 'Snow', 'Material_3', 'Material_4', 'Material_5',
-                                          'Material_6', 'Material_7']
-
-                        for i, mat in enumerate(unique_materials):
-                            pos = torch.argwhere(T.squeeze() == mat)[:, 0]
-                            if len(pos) > 0:
-                                pts = to_numpy(X[pos])[:, [0, 2, 1]]
-                                cloud = pv.PolyData(pts)
-                                color = material_colors[i % len(material_colors)]
-                                mat_name = material_names[i % len(material_names)]
-
-                                plotter.add_points(
-                                    cloud,
-                                    color=color,
-                                    point_size=15,
-                                    render_points_as_spheres=True,
-                                    opacity=0.05,
-                                    label=f'{mat_name} (Type {mat})'
-                                )
-                    
-                    elif color_mode == 'F':
-                        # Color by deformation gradient magnitude
-                        if F is None:
-                            raise ValueError("color_mode='F' requires F parameter to be provided")
-                        
-                        pts = to_numpy(X)[:, [0, 2, 1]]
-                        F_np = to_numpy(F)
-                        F_norm = np.linalg.norm(F_np.reshape(-1, 9), axis=1)
-                        
-                        cloud = pv.PolyData(pts)
-                        cloud["F_norm"] = F_norm
-                        plotter.add_points(
-                            cloud,
-                            scalars="F_norm",
-                            cmap="jet",
-                            point_size=5,
-                            render_points_as_spheres=True,
-                            opacity=0.9,
-                            show_scalar_bar=True
-                        )
-                    
-                    else:
-                        raise ValueError(f"Invalid color_mode: {color_mode}. Must be 'id', 'material', or 'F'")
-
-                    # Add bounding box (wireframe cube)
-                    cube = pv.Cube(center=(0.5, 0.5, 0.5), x_length=1.0, y_length=1.0, z_length=1.0)
-                    frame = cube.extract_all_edges()
-                    plotter.add_mesh(frame, color='white', line_width=1.0, opacity=0.5)
-
-                    plotter.view_vector((0.7, 1.3, 0.05))
-                    plotter.enable_eye_dome_lighting()
-                    plotter.camera.zoom(1.3)
-
-                    plotter.screenshot(output_path)
-                    plotter.close()
-
-                output_path_3d = f"graphs_data/{dataset_name}/Fig/Fig_{run}_{it:06}_3D.png"
-
-                if 'F' in style:
-                    color_mode = 'F'
-                    F_param = F
-                elif 'M' in style:
-                    color_mode = 'material'
-                    F_param = None
-                else:
-                    color_mode = 'id'
-                    F_param = None
-
-                plot_3d_pointcloud(X, ID, T, output_path_3d, color_mode=color_mode, F=F_param)
-
-                export_for_gaussian_splatting(
-                    X=X,
-                    ID=ID,
-                    T=T,
-                    frame_idx=it,
-                    output_dir="./graphs_data",
-                    dataset_name=dataset_name,
-                    particle_volumes=None,
-                    color_mode=color_mode,
-                    F=F_param
-                )
-
-
-                # Export Gaussian Splatting data
-
-
-
-
-        if bSave:
-            torch.save(x_list, f'graphs_data/{dataset_name}/generated_data_{run}.pt')
-            print(f'data saved at: graphs_data/{dataset_name}/generated_data_{run}.pt')
-
-
-
-
-    # Save configuration
-    with open(f"graphs_data/{dataset_name}/model_config.json", "w") as json_file:
-        json.dump(config, json_file, default=lambda o: dict(o) if hasattr(o, '__dict__') else str(o))
-
-    print(f'3D MPM data generation completed for {config.training.n_runs} runs')
 
 
 def data_generate_MPM_2D(
@@ -681,6 +397,7 @@ def data_generate_MPM_2D(
             )
 
         # Main simulation loop
+        idx = 0
         for it in trange(simulation_config.start_frame, n_frames, ncols=150):
             x = torch.cat((N.clone().detach(), X.clone().detach(), V.clone().detach(),
                            C.reshape(n_particles, 4).clone().detach(),
@@ -688,7 +405,7 @@ def data_generate_MPM_2D(
                            Jp.clone().detach(), T.clone().detach(), M.clone().detach(),
                            S.reshape(n_particles, 4).clone().detach(),ID.clone().detach()), 1)
             if (it >= 0):
-                x_list.append(x.clone().detach())
+                x_list.append(to_numpy(x))
 
             X, V, C, F, Jp, T, M, S, GM, GV = MPM_step(model_MPM, X, V, C, F, Jp, T, M, n_particles, n_grid,
                                                        delta_t, dx, inv_dx, mu_0, lambda_0, p_vol, offsets, particle_offsets,
@@ -713,7 +430,7 @@ def data_generate_MPM_2D(
                 plt.xticks([])
                 plt.yticks([])
                 plt.tight_layout()
-                num = f"{it:06}"
+                num = f"{idx:06}"
                 plt.savefig(f"graphs_data/{dataset_name}/Fig/Fig_{run}_{num}.png", dpi=80)
                 plt.close()
 
@@ -809,18 +526,20 @@ def data_generate_MPM_2D(
                     plt.gca().set_aspect('equal')
 
                     plt.tight_layout()
-                    num = f"{it:06}"
+                    num = f"{idx:06}"
                     plt.savefig(f"graphs_data/{dataset_name}/Grid/Fig_{run}_{num}.png", dpi=100)
                     plt.close()
+
+                idx += 1
 
         # Save results
         if bSave:
             dataset_name = config.dataset
-            x_list = np.array(to_numpy(torch.stack(x_list)))
-            np.save(f"graphs_data/{dataset_name}/x_list_{run}.npy", x_list)
+            x_array = np.array(x_list)
+            np.save(f'graphs_data/{dataset_name}/generated_data_{run}.npy', x_array)
+            print(f'data saved at: graphs_data/{dataset_name}/generated_data_{run}.npy')
 
         if visualize & (run == run_vizualized):
-            print('generating lossless video ...')
             config_indices = dataset_name.split('fly_N9_')[1] if 'fly_N9_' in dataset_name else 'no_id'
             src = f"./graphs_data/{dataset_name}/Fig/Fig_0_000000.png"
             dst = f"./graphs_data/{dataset_name}/input_{config_indices}.png"
@@ -831,3 +550,219 @@ def data_generate_MPM_2D(
             files = glob.glob(f'./graphs_data/{dataset_name}/Fig/*')
             for f in files:
                 os.remove(f)
+
+
+def data_generate_MPM_3D(
+        config,
+        visualize=True,
+        run_vizualized=0,
+        style='color',
+        erase=False,
+        step=5,
+        alpha=0.2,
+        ratio=1,
+        scenario='none',
+        best_model=[],
+        device=None,
+        bSave=True
+):
+    """
+    3D MPM data generation function
+    """
+
+    simulation_config = config.simulation
+    training_config = config.training
+    model_config = config.graph_model
+
+    print(f'generating 3D data ... {model_config.particle_model_name} {model_config.mesh_model_name}')
+
+    dimension = 3  # Force 3D
+    max_radius = simulation_config.max_radius
+    min_radius = simulation_config.min_radius
+    n_particle_types = simulation_config.n_particle_types
+    n_particles = simulation_config.n_particles
+    n_grid = simulation_config.n_grid
+    group_size = n_particles // n_particle_types
+    MPM_n_objects = simulation_config.MPM_n_objects
+    MPM_object_type = simulation_config.MPM_object_type
+    gravity = simulation_config.MPM_gravity
+    friction = simulation_config.MPM_friction
+
+    delta_t = simulation_config.delta_t
+    n_frames = simulation_config.n_frames
+    dx, inv_dx = 1 / n_grid, float(n_grid)
+
+    # 3D volume instead of 2D area
+    p_vol = (dx * 0.5) ** 3
+    rho_list = simulation_config.MPM_rho_list
+    young_coeff = simulation_config.MPM_young_coeff
+
+    E, nu = 0.1e4 / young_coeff, 0.2  # Young's modulus and Poisson's ratio
+    mu_0, lambda_0 = E / (2 * (1 + nu)), E * nu / ((1 + nu) * (1 - 2 * nu))  # Lame parameters
+
+    # 3D offsets for 27 neighbors (3x3x3)
+    offsets = torch.tensor([[i, j, k] for i in range(3) for j in range(3) for k in range(3)],
+                           device=device, dtype=torch.float32)  # [27, 3]
+    particle_offsets = offsets.unsqueeze(0).expand(n_particles, -1, -1)
+    expansion_factor = simulation_config.MPM_expansion_factor
+
+    # Initialize 3D MPM model
+    model_MPM = MPM_3D_P2G(aggr_type='add', device=device)
+
+    n_frames = simulation_config.n_frames
+    cmap = CustomColorMap(config=config)
+    dataset_name = config.dataset
+
+    folder = f'./graphs_data/{dataset_name}/'
+    if erase:
+        files = glob.glob(f"{folder}/*")
+        for f in files:
+            if (f[-3:] != 'Fig') & (f[-14:] != 'generated_data') & (f != 'p.pt') & (f != 'cycle_length.pt') & (
+                    f != 'model_config.json') & (f != 'generation_code.py'):
+                os.remove(f)
+    os.makedirs(folder, exist_ok=True)
+    os.makedirs(f'./graphs_data/{dataset_name}/Fig/', exist_ok=True)
+    files = glob.glob(f'./graphs_data/{dataset_name}/Fig/*')
+    for f in files:
+        os.remove(f)
+    os.makedirs(f'./graphs_data/{dataset_name}/Grid/', exist_ok=True)
+    files = glob.glob(f'./graphs_data/{dataset_name}/Grid/*')
+    for f in files:
+        os.remove(f)
+    os.makedirs(f'./graphs_data/{dataset_name}/Splat/', exist_ok=True)
+    files = glob.glob(f'./graphs_data/{dataset_name}/Splat/*')
+    for f in files:
+        os.remove(f)
+
+    for run in range(config.training.n_runs):
+        x_list = []
+
+        # Initialize 3D MPM shapes
+        N, X, V, C, F, T, Jp, M, S, ID = init_MPM_3D_shapes(
+            geometry=MPM_object_type,
+            n_shapes=MPM_n_objects,
+            seed=simulation_config.seed,
+            n_particles=n_particles,
+            n_particle_types=n_particle_types,
+            n_grid=n_grid,
+            dx=dx,
+            rho_list=rho_list,
+            device=device
+        )
+
+        # # Initialize 3D MPM shapes
+        # N, X, V, C, F, T, Jp, M, S, ID = init_MPM_3D_cells(
+        #     n_shapes=MPM_n_objects,
+        #     seed=simulation_config.seed,
+        #     n_particles=n_particles,
+        #     n_grid=n_grid,
+        #     dx=dx,
+        #     rho_list=rho_list,
+        #     nucleus_ratio=0.6,
+        #     device=device
+        # )
+
+        # Main simulation loop
+        idx = 0
+        for it in trange(simulation_config.start_frame, n_frames, ncols=150):
+            # Concatenate state tensors - 3D matrices flattened to 9 components
+            x = torch.cat((N.clone().detach(), X.clone().detach(), V.clone().detach(),
+                           C.reshape(n_particles, 9).clone().detach(),  # 3x3 matrix flattened
+                           F.reshape(n_particles, 9).clone().detach(),  # 3x3 matrix flattened
+                           T.clone().detach(), Jp.clone().detach(), M.clone().detach(),
+                           S.reshape(n_particles, 9).clone().detach(),  # 3x3 matrix flattened
+                           ID.clone().detach()), 1)
+
+            if (it >= 0):
+                x_list.append(to_numpy(x))
+
+            # 3D MPM step
+            X, V, C, F, T, Jp, M, S, GM, GV = MPM_3D_step(
+                model_MPM, X, V, C, F, T, Jp, M, n_particles, n_grid,
+                delta_t, dx, inv_dx, mu_0, lambda_0, p_vol, offsets, particle_offsets,
+                expansion_factor, gravity, friction, it, device
+            )
+
+            # 3D visualization (if enabled)
+            if visualize & (run == run_vizualized) & (it % step == 0) & (it >= 0):
+
+                if 'black' in style:
+                    plt.style.use('dark_background')
+
+                if 'latex' in style:
+                    plt.rcParams['text.usetex'] = True
+                    rc('font', **{'family': 'serif', 'serif': ['Palatino']})
+
+                # determine color mode based on style
+                if 'F' in style:
+                    color_mode = 'F'
+                    F_param = F
+                elif 'M' in style:
+                    color_mode = 'material'
+                    F_param = None
+                else:
+                    color_mode = 'id'
+                    F_param = None
+
+                plot_3d_pointcloud(
+                    X=X,
+                    ID=ID,
+                    T=T,
+                    frame_idx=idx,
+                    output_dir="./graphs_data",
+                    dataset_name=dataset_name,
+                    run=run,
+                    color_mode=color_mode,
+                    F=F_param
+                )
+
+                export_for_gaussian_splatting(
+                    X=X,
+                    ID=ID,
+                    T=T,
+                    frame_idx=idx,
+                    output_dir="./graphs_data",
+                    dataset_name=dataset_name,
+                    particle_volumes=None,
+                    color_mode=color_mode,
+                    F=F_param,
+                    output_format='ply',  # Options: 'ply', 'splat', or 'both',
+                    splat_scale=0.005,
+                    opacity=0.1,
+                    debug=False
+                )
+
+                idx += 1
+
+
+
+
+
+        if bSave:
+
+            x_array = np.array(x_list)
+            np.save(f'graphs_data/{dataset_name}/generated_data_{run}.npy', x_array)
+            print(f'data saved at: graphs_data/{dataset_name}/generated_data_{run}.npy')
+
+
+        if visualize & (run == run_vizualized):
+            config_indices = dataset_name.split('fly_N9_')[1] if 'fly_N9_' in dataset_name else 'no_id'
+            src = f"./graphs_data/{dataset_name}/Fig/Fig_0_000000.png"
+            dst = f"./graphs_data/{dataset_name}/input_{config_indices}.png"
+            with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
+                fdst.write(fsrc.read())
+            generate_compressed_video_mp4(output_dir=f"./graphs_data/{dataset_name}", run=run,
+                                        config_indices=config_indices, framerate=20)
+            files = glob.glob(f'./graphs_data/{dataset_name}/Fig/*')
+            for f in files:
+                os.remove(f)
+
+
+
+
+    # Save configuration
+    with open(f"graphs_data/{dataset_name}/model_config.json", "w") as json_file:
+        json.dump(config, json_file, default=lambda o: dict(o) if hasattr(o, '__dict__') else str(o))
+
+    print(f'3D MPM data generation completed for {config.training.n_runs} runs')
+
