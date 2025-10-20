@@ -546,7 +546,7 @@ def data_generate_MPM_2D(
             with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
                 fdst.write(fsrc.read())
             generate_compressed_video_mp4(output_dir=f"./graphs_data/{dataset_name}", run=run,
-                                        config_indices=config_indices, framerate=20)
+                                        config_indices=config_indices, framerate=50)
             files = glob.glob(f'./graphs_data/{dataset_name}/Fig/*')
             for f in files:
                 os.remove(f)
@@ -752,7 +752,7 @@ def data_generate_MPM_3D(
             with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
                 fdst.write(fsrc.read())
             generate_compressed_video_mp4(output_dir=f"./graphs_data/{dataset_name}", run=run,
-                                        config_indices=config_indices, framerate=20)
+                                        config_indices=config_indices, framerate=50)
             files = glob.glob(f'./graphs_data/{dataset_name}/Fig/*')
             for f in files:
                 os.remove(f)
