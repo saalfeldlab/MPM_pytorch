@@ -60,7 +60,7 @@ if __name__ == "__main__":
     else:
         task = 'generate'  # 'generate', 'train', 'test'
         best_model = ''
-        config_list = ['multimaterial_1_3D', 'multimaterial_1_discs_3types', 'multimaterial_1_cells', 'multimaterial_2_cells','multimaterial_1_3D']
+        config_list = ['multimaterial_1_discs_3types', 'multimaterial_1_cells', 'multimaterial_2_cells','multimaterial_1_3D'] 
 
         # viz in MPM/graphs_data/multimaterial/multimaterial_4_0_3D/Fig
         # other config files to be found in ./config/*.yaml
@@ -79,24 +79,24 @@ if __name__ == "__main__":
         print(f"\033[92mdevice  {device}\033[0m")
         print(f"data folder  {config.dataset}")
 
-    if "generate" in task:
-        data_generate(
-            config,
-            device=device,
-            visualize=True,
-            run_vizualized=0,
-            style="black F",  # Style options: "black", "latex", "F", "M"
-                            # - "black": dark background
-                            # - "latex": use LaTeX rendering
-                            # - "F": color by deformation gradient magnitude
-                            # - "M": color by material type
-                            # - default (no "F" or "M"): color by particle ID
-                            # Can combine: e.g., "black F" or "black latex M"
-            alpha=1,
-            erase=False,
-            bSave=True,
-            step=10,
-        ) # config.simulation.n_frames // 100)
+        if "generate" in task:
+            data_generate(
+                config,
+                device=device,
+                visualize=True,
+                run_vizualized=0,
+                style="black F",  # Style options: "black", "latex", "F", "M"
+                                # - "black": dark background
+                                # - "latex": use LaTeX rendering
+                                # - "F": color by deformation gradient magnitude
+                                # - "M": color by material type
+                                # - default (no "F" or "M"): color by particle ID
+                                # Can combine: e.g., "black F" or "black latex M"
+                alpha=1,
+                erase=False,
+                bSave=True,
+                step=10,
+            ) # config.simulation.n_frames // 100)
 
 
 
