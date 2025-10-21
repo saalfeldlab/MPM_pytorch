@@ -103,7 +103,6 @@ def MPM_step(
     Jp = Jp * plastic_ratio
     sig = new_sig
     J = torch.prod(sig, dim=1)
-    J = torch.clamp(J, min=1e-4)
 
     if frame > 1000:
         expansion_factor = 1.0  # 1% expansion per timestep
@@ -168,10 +167,9 @@ def MPM_step(
     # Create mask for valid grid points (non-zero mass)
     valid_mass_mask = grid_m > 0
     # Convert momentum to velocity (vectorized)
-    eps = 1e-10
     grid_v = torch.where(valid_mass_mask.unsqueeze(-1),
-                        grid_v / (grid_m.unsqueeze(-1) + eps),
-                        grid_v)
+                         grid_v / grid_m.unsqueeze(-1),
+                         grid_v)
 
     # Apply gravity (vectorized)
     gravity_force = torch.tensor([0.0, dt * (gravity)], device=device)

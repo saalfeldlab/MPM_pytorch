@@ -185,7 +185,7 @@ def data_train_material(config, erase, best_model, device):
         else:
             Niter = n_frames * data_augmentation_loop // batch_size
         if epoch == 0:
-            plot_frequency = int(Niter // 5)
+            plot_frequency = int(Niter // 20)
             print(f'{Niter} iterations per epoch, plot every {plot_frequency} iterations')
             logger.info(f'{Niter} iterations per epoch, plot every {plot_frequency} iterations')
 
@@ -204,7 +204,8 @@ def data_train_material(config, erase, best_model, device):
                 x_next = torch.tensor(x_list[run][k+1], dtype=torch.float32, device=device).clone().detach()
 
                 if 'F' in trainer:
-                    y = x_next[:, 5 + dimension * 2: 9 + dimension * 2].clone().detach()
+                    # y = x_next[:, 5 + dimension * 2: 9 + dimension * 2].clone().detach()
+                    y = x_next[:, 1:1 + dimension ].clone().detach()  # F
 
                 dataset = data.Data(x=x, edge_index=None, num_nodes=x.shape[0])
                 dataset_batch.append(dataset)
@@ -224,22 +225,26 @@ def data_train_material(config, erase, best_model, device):
             optimizer.zero_grad()
 
             for batch in batch_loader:
-                pred_C, pred_F, pred_Jp, pred_S = model(batch.x, data_id=data_id, k=k_batch, trainer=trainer, batch_size=batch_size)
+                pred_x, pred_C, pred_F, pred_Jp, pred_S = model(batch.x, data_id=data_id, k=k_batch, trainer=trainer, batch_size=batch_size)
 
             if 'F' in trainer:
-                loss = (pred_F.reshape(-1, 4) - y_batch).norm(2)
+                # loss = (pred_F.reshape(-1, 4) - y_batch).norm(2)
+                loss = 1.0E6 * (pred_x - y_batch).norm(2)
 
-            if coeff_Jp_norm > 0 :
-                loss = loss + coeff_Jp_norm * F.mse_loss(pred_Jp, torch.ones_like(pred_Jp).detach())
-            if coeff_F_norm > 0 :
-                F_norm = torch.norm(pred_F.view(-1, 4), dim=1)
-                loss = loss + coeff_F_norm * F.mse_loss(F_norm, torch.ones_like(F_norm).detach() * 1.4141)
-            if coeff_det_F > 0:
-                det_F = torch.det(pred_F.view(-1, 2, 2))
-                loss = loss + coeff_det_F * F.relu(-det_F + 0.1).mean()
+            # if coeff_Jp_norm > 0 :
+            #     loss = loss + coeff_Jp_norm * F.mse_loss(pred_Jp, torch.ones_like(pred_Jp).detach())
+            # if coeff_F_norm > 0 :
+            #     F_norm = torch.norm(pred_F.view(-1, 4), dim=1)
+            #     loss = loss + coeff_F_norm * F.mse_loss(F_norm, torch.ones_like(F_norm).detach() * 1.4141)
+            # if coeff_det_F > 0:
+            #     det_F = torch.det(pred_F.view(-1, 2, 2))
+            #     loss = loss + coeff_det_F * F.relu(-det_F + 0.1).mean()
 
-            loss.backward()
-            optimizer.step()
+            if torch.isnan(loss):
+                print('NaN loss detected!')
+            else:
+                loss.backward()
+                optimizer.step()
 
             total_loss += loss.item()
 

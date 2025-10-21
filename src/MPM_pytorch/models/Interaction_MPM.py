@@ -69,7 +69,7 @@ class Interaction_MPM(nn.Module):
 
         siren_params = model_config.multi_siren_params
 
-        self.identity = torch.eye(2, device=self.device).unsqueeze(0).expand(self.n_particles, -1, -1)
+        self.identity = torch.eye(2, device=self.device).unsqueeze(0)
         # self.identity = self.identity.repeat(train_config.batch_size, 1, 1)
 
         # Extract parameters for each Siren
@@ -211,9 +211,9 @@ class Interaction_MPM(nn.Module):
                                 M, self.n_particles, self.n_grid,
                                 self.delta_t, self.dx, self.inv_dx, self.mu_0, self.lambda_0,
                                 self.p_vol, self.offsets, self.particle_offsets, 
-                                self.expansion_factor, self.gravity, self.friction, 0, self.identity, self.device)
+                                self.expansion_factor, self.gravity, self.friction, 0, self.device)
 
-        return C, F, Jp, S
+        return X, C, F, Jp, S
 
     def MPM_engine(self, model_MPM_P2G, X, V, C, F, T, Jp, M, n_particles,
                    n_grid, dt, dx, inv_dx, embedding,
