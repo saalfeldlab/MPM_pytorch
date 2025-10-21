@@ -9,6 +9,7 @@ import torch_geometric.data as data
 import torch_geometric.data as data
 
 from MPM_pytorch.models.Affine_Particle import Affine_Particle
+from MPM_pytorch.generators.MPM_step import MPM_step
 
 
 class Interaction_MPM(nn.Module):
@@ -62,10 +63,13 @@ class Interaction_MPM(nn.Module):
         self.particle_offsets = self.offsets.unsqueeze(0).expand(self.n_particles, -1, -1)
         self.expansion_factor = simulation_config.MPM_expansion_factor
         self.gravity = simulation_config.MPM_gravity
+        self.friction = simulation_config.MPM_friction
 
         self.model_MPM_P2G = MPM_P2G(aggr_type='add', device=device)
 
         siren_params = model_config.multi_siren_params
+
+        self.identity = torch.eye(2, device=self.device).unsqueeze(0).expand(self.n_particles, -1, -1)
 
         # Extract parameters for each Siren
         F_siren_params = siren_params[0]  # [in_features, out_features, hidden_features, hidden_layers, first_omega_0, hidden_omega_0, outermost_linear]
@@ -168,11 +172,11 @@ class Interaction_MPM(nn.Module):
 
         self.GNN_C = Affine_Particle(aggr_type='mean', config=config, device=device, bc_dpos=bc_dpos,
                                      dimension=dimension)
+        
+        self.MPM_P2G = MPM_P2G(aggr_type='add', device=device)
 
-    def forward(self, data=[], data_id=[], k=[], trainer=[], training=True):
+    def forward(self, x=[], data_id=[], k=[], trainer=[], batch_size=1):
 
-        x, edge_index = data.x, data.edge_index
-        self.data_id = data_id.long()
 
         N = x[:, 0:1]
         pos = x[:, 1:3]  # pos is the absolute position
@@ -185,27 +189,28 @@ class Interaction_MPM(nn.Module):
         S = x[:, 16:20].reshape(-1, 2, 2)
         frame = k / self.n_frames
 
-        embedding = self.a[self.data_id.detach(), N.long(), :].squeeze()
+        embedding = self.a[data_id.detach().long(), N.long(), :].squeeze()
 
-        if 'next' in trainer:
-            C, F, Jp, S = self.MPM_engine(self.model_MPM_P2G, pos, d_pos, C, F,
-                                          T, Jp, M, self.n_particles, self.n_grid,
-                                          self.delta_t, self.dx, self.inv_dx, embedding,
-                                          self.offsets, self.particle_offsets, self.grid_coords,
-                                          self.expansion_factor, self.gravity, self.device)
-        else:
-            if 'C' in trainer:
-                if self.model == 'PDE_MPM_A':
-                    features = torch.cat((pos, d_pos, embedding, frame), dim=1).detach()
-                else:
-                    features = torch.cat((pos, d_pos, frame), dim=1).detach()
-                C = self.siren_C(features)
+        if 'C' in trainer:
+            if self.model == 'PDE_MPM_A':
+                features = torch.cat((pos, d_pos, embedding, frame), dim=1).detach()
+            else:
+                features = torch.cat((pos, d_pos, frame), dim=1).detach()
+            C = self.siren_C(features)
+        if 'F' in trainer:
+            features = torch.cat((pos, frame), dim=1).detach()
             if 'F' in trainer:
                 features = torch.cat((pos, frame), dim=1).detach()
-                F = self.siren_F(features)
-            if 'Jp' in trainer:
-                features = torch.cat((pos, frame), dim=1).detach()
-                Jp = self.siren_Jp(features)
+                F = self.identity.repeat(batch_size, 1, 1) + torch.tanh(self.siren_F(features).reshape(-1, 2, 2))
+        if 'Jp' in trainer:
+            features = torch.cat((pos, frame), dim=1).detach()
+            Jp = self.siren_Jp(features)
+
+        X, V, C, F, Jp, _, _, _, _, _ = MPM_step(self.MPM_P2G, pos, d_pos, C, F, Jp, T,
+                                M, self.n_particles, self.n_grid,
+                                self.delta_t, self.dx, self.inv_dx, self.mu_0, self.lambda_0,
+                                self.p_vol, self.offsets, self.particle_offsets, 
+                                self.expansion_factor, self.gravity, self.friction, 0, self.identity, self.device)
 
         return C, F, Jp, S
 
@@ -238,9 +243,8 @@ class Interaction_MPM(nn.Module):
 
         sig = self.MLP_sig(torch.cat((embedding, sig), dim=1)) ** 2
 
-        # sig_plastic_ratio = self.MLP_sig_plastic_ratio(
-        #     torch.cat((embedding, sig, det_U[:,None], det_Vh[:,None], mu, lambda_), dim=1))
-        #
+        # sig_plastic_ratio = self.MLP_sig_plastic_ratio(torch.cat((embedding, sig, det_U[:,None], det_Vh[:,None], mu, lambda_), dim=1))
+        
         # sig, plastic_ratio = sig_plastic_ratio[:, 0:2]**2, sig_plastic_ratio[:, 2:3]**2
 
         plastic_ratio = torch.prod(original_sig / sig, dim=1, keepdim=True)

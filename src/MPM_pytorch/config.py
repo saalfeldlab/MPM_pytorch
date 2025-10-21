@@ -118,10 +118,10 @@ class GraphModelConfig(BaseModel):
     # Format: [in_features, out_features, hidden_features, hidden_layers, first_omega_0, hidden_omega_0, outermost_linear]
     # Order: [F, Jp, C_normal, C_PDE_MPM_A]
     multi_siren_params: Optional[List[List[Union[int, float, bool]]]] = [
-        [3, 4, 128, 5, 80.0, 80.0, True],    # siren_F [0]
-        [3, 1, 128, 5, 80.0, 80.0, True],    # siren_Jp [1]
-        [5, 4, 128, 5, 80.0, 80.0, True],    # siren_C normal [2]
-        [7, 4, 128, 5, 80.0, 80.0, True]     # siren_C PDE_MPM_A [3]
+        [3, 4, 4096, 3, 4096.0, 4096.0, True],    # siren_F [0]
+        [3, 1, 4096, 3, 4096.0, 4096.0, True],    # siren_Jp [1]
+        [5, 4, 4096, 3, 4096.0, 4096.0, True],    # siren_C normal [2]
+        [7, 4, 4096, 3, 4096.0, 4096.0, True]     # siren_C PDE_MPM_A [3]
     ]
 
     lin_edge_positive: bool = False

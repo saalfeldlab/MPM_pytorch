@@ -50,7 +50,6 @@ def data_generate(
 
     dataset_name = config.dataset
 
-    print("")
     print(f"\033[92mdataset_name: {dataset_name}\033[0m")
 
     if (os.path.isfile(f"./graphs_data/{dataset_name}/x_list_0.npy")) | (
@@ -343,6 +342,9 @@ def data_generate_MPM_2D(
     particle_offsets = offsets.unsqueeze(0).expand(n_particles, -1, -1)
     expansion_factor = simulation_config.MPM_expansion_factor
 
+    identity = torch.eye(2, device=device).unsqueeze(0).expand(n_particles, -1, -1)
+
+
     model_MPM = MPM_P2G(aggr_type='add', device=device)
 
     n_frames = simulation_config.n_frames
@@ -409,7 +411,7 @@ def data_generate_MPM_2D(
 
             X, V, C, F, Jp, T, M, S, GM, GV = MPM_step(model_MPM, X, V, C, F, Jp, T, M, n_particles, n_grid,
                                                        delta_t, dx, inv_dx, mu_0, lambda_0, p_vol, offsets, particle_offsets,
-                                                       expansion_factor, gravity, friction, it, device)
+                                                       expansion_factor, gravity, friction, it, identity, device)
 
             # output plots
             if visualize & (run == run_vizualized) & (it % step == 0) & (it >= 0):
@@ -419,20 +421,6 @@ def data_generate_MPM_2D(
                 if 'latex' in style:
                     plt.rcParams['text.usetex'] = True
                     rc('font', **{'family': 'serif', 'serif': ['Palatino']})
-
-                fig, ax = fig_init(formatx="%.1f", formaty="%.1f")
-                for n in range(3):
-                    pos = torch.argwhere(T == n)[:,0]
-                    if len(pos) > 0:
-                        plt.scatter(to_numpy(x[pos, 1]), to_numpy(x[pos, 2]), s=10, color=cmap.color(n))
-                plt.xlim([0, 1])
-                plt.ylim([0, 1])
-                plt.xticks([])
-                plt.yticks([])
-                plt.tight_layout()
-                num = f"{idx:06}"
-                plt.savefig(f"graphs_data/{dataset_name}/Fig/Fig_{run}_{num}.png", dpi=80)
-                plt.close()
 
                 if 'grid' in style:
                     plt.figure(figsize=(15, 10))
@@ -527,20 +515,46 @@ def data_generate_MPM_2D(
 
                     plt.tight_layout()
                     num = f"{idx:06}"
-                    plt.savefig(f"graphs_data/{dataset_name}/Grid/Fig_{run}_{num}.png", dpi=100)
+                    plt.savefig(f"graphs_data/{dataset_name}/Fig/Fig_{run}_{num}.png", dpi=100)
                     plt.close()
-
+                else:
+                    fig, ax = fig_init(formatx="%.1f", formaty="%.1f")
+                    if 'F' in style:
+                        f_norm = torch.norm(F.view(n_particles, -1), dim=1).cpu().numpy()
+                        plt.scatter(to_numpy(x[:, 1]), to_numpy(x[:, 2]), c=f_norm, s=10, cmap='coolwarm', vmin=1.44-0.1, vmax=1.44+0.1)
+                    elif 'C' in style:
+                        c_norm = torch.norm(C.view(n_particles, -1), dim=1).cpu().numpy()
+                        plt.scatter(to_numpy(x[:, 1]), to_numpy(x[:, 2]), c=c_norm, s=10, cmap='viridis', vmin=0, vmax=80)
+                    elif 'Jp' in style:
+                        plt.scatter(to_numpy(x[:, 1]), to_numpy(x[:, 2]), c=to_numpy(Jp), s=10, cmap='viridis', vmin=0.75, vmax=1.25)
+                    elif 'S' in style:
+                        stress_norm = torch.norm(S.view(n_particles, -1), dim=1)
+                        stress_norm = stress_norm[:,None]
+                        plt.scatter(to_numpy(x[:, 1]), to_numpy(x[:, 2]), c=to_numpy(stress_norm[:,0]), s=10, cmap='hot', vmin=0, vmax=6E-3)
+                    else:
+                        for n in range(3):
+                            pos = torch.argwhere(T == n)[:,0]
+                            if len(pos) > 0:
+                                plt.scatter(to_numpy(x[pos, 1]), to_numpy(x[pos, 2]), s=10, color=cmap.color(n))
+                    plt.xlim([0, 1])
+                    plt.ylim([0, 1])
+                    plt.xticks([])
+                    plt.yticks([])
+                    plt.tight_layout()
+                    num = f"{idx:06}"
+                    plt.savefig(f"graphs_data/{dataset_name}/Fig/Fig_{run}_{num}.png", dpi=80)
+                    plt.close()
                 idx += 1
 
         # Save results
         if bSave:
             dataset_name = config.dataset
             x_array = np.array(x_list)
-            np.save(f'graphs_data/{dataset_name}/generated_data_{run}.npy', x_array)
-            print(f'data saved at: graphs_data/{dataset_name}/generated_data_{run}.npy')
+            np.save(f'graphs_data/{dataset_name}/x_list_{run}.npy', x_array)
+            print(f'data saved at: graphs_data/{dataset_name}/x_list_{run}.npy')
 
         if visualize & (run == run_vizualized):
-            config_indices = dataset_name.split('fly_N9_')[1] if 'fly_N9_' in dataset_name else 'no_id'
+            config_indices = dataset_name.split('/')[-1]
             src = f"./graphs_data/{dataset_name}/Fig/Fig_0_000000.png"
             dst = f"./graphs_data/{dataset_name}/input_{config_indices}.png"
             with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
@@ -746,7 +760,7 @@ def data_generate_MPM_3D(
 
 
         if visualize & (run == run_vizualized):
-            config_indices = dataset_name.split('fly_N9_')[1] if 'fly_N9_' in dataset_name else 'no_id'
+            config_indices = dataset_name.split('/')[-1]
             src = f"./graphs_data/{dataset_name}/Fig/Fig_0_000000.png"
             dst = f"./graphs_data/{dataset_name}/input_{config_indices}.png"
             with open(src, "rb") as fsrc, open(dst, "wb") as fdst:

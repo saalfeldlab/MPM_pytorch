@@ -26,6 +26,7 @@ def MPM_step(
         gravity,
         friction,
         frame,
+        identity,
         device,
 ):
     """
@@ -39,9 +40,6 @@ def MPM_step(
 
     # Initialize mass
     p_mass = M.squeeze(-1)
-
-    # Create identity matrices for all particles
-    identity = torch.eye(2, device=device).unsqueeze(0).expand(n_particles, -1, -1)
 
     # Calculate F ############################################################################################
 
@@ -260,15 +258,15 @@ def MPM_step(
     new_C += 4 * inv_dx * weighted_outer_products.sum(dim=1)  # Sum over the 9 neighbors
 
     # Update particle state
-    V.copy_(new_V)
-    C.copy_(new_C)
+    # V.copy_(new_V)
+    # C.copy_(new_C)
 
     # Particle advection
-    X = X + dt * V
+    X = X + dt * new_V
 
     # margin = 2 * dx  # Keep particles away from boundaries
     # X = torch.clamp(X, margin, 1.0 - margin)
 
 
 
-    return X, V, C, F, Jp, T, M, stress, grid_m, grid_v
+    return X, new_V, new_C, F, Jp, T, M, stress, grid_m, grid_v

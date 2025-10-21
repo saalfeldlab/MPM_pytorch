@@ -60,7 +60,7 @@ if __name__ == "__main__":
     else:
         task = 'generate'  # 'generate', 'train', 'test'
         best_model = ''
-        config_list = ['multimaterial_1_discs_3types', 'multimaterial_1_cells', 'multimaterial_2_cells','multimaterial_1_3D'] 
+        config_list = ['multimaterial_1_train_F'] 
 
         # viz in MPM/graphs_data/multimaterial/multimaterial_4_0_3D/Fig
         # other config files to be found in ./config/*.yaml
@@ -77,7 +77,6 @@ if __name__ == "__main__":
 
         print(f"config_file  {config.config_file}")
         print(f"\033[92mdevice  {device}\033[0m")
-        print(f"data folder  {config.dataset}")
 
         if "generate" in task:
             data_generate(
@@ -98,6 +97,8 @@ if __name__ == "__main__":
                 step=10,
             ) # config.simulation.n_frames // 100)
 
+        if "train" in task:
+            data_train(config=config, erase=False, best_model=best_model, device=device)
 
 
 # bsub -n 4 -gpu "num=1" -q gpu_h100 -Is "python GNN_particles_Ntype.py"

@@ -58,7 +58,6 @@ def data_train_material(config, erase, best_model, device):
     train_config = config.training
     model_config = config.graph_model
     plot_config = config.plotting
-
     trainer = train_config.MPM_trainer
 
     print(f'training data ... {model_config.particle_model_name} {model_config.mesh_model_name} loss on {trainer}')
@@ -83,8 +82,6 @@ def data_train_material(config, erase, best_model, device):
     data_augmentation_loop = train_config.data_augmentation_loop
     recursive_loop = train_config.recursive_loop
     target_batch_size = train_config.batch_size
-    replace_with_cluster = 'replace' in train_config.sparsity
-    sparsity_freq = train_config.sparsity_freq
     if train_config.small_init_batch_size:
         get_batch_size = increasing_batch_size(target_batch_size)
     else:
@@ -92,7 +89,6 @@ def data_train_material(config, erase, best_model, device):
     batch_ratio = train_config.batch_ratio
     batch_size = get_batch_size(0)
     cmap = CustomColorMap(config=config)  # create colormap for given model_config
-    embedding_cluster = EmbeddingCluster(config)
     n_runs = train_config.n_runs
 
     coeff_Jp_norm = train_config.coeff_Jp_norm
@@ -118,18 +114,15 @@ def data_train_material(config, erase, best_model, device):
     time.sleep(0.5)
     n_particles_max = 0
 
-    for run in trange(n_runs):
+    for run in trange(n_runs, ncols=50):
         x = np.load(f'graphs_data/{dataset_name}/x_list_{run}.npy')
-        # y = np.load(f'graphs_data/{dataset_name}/y_list_{run}.npy')
         if np.isnan(x).any():
             print('Pb isnan')
         if x[0].shape[0] > n_particles_max:
             n_particles_max = x[0].shape[0]
         x_list.append(x)
-        # y_list.append(y)
         run_lengths.append(len(x))
     x = torch.tensor(x_list[0][0], dtype=torch.float32, device=device)
-    # y = torch.tensor(y_list[0][0], dtype=torch.float32, device=device)
 
     vnorm = torch.tensor(1, device=device)
     ynorm = torch.tensor(1, device=device)
@@ -172,7 +165,7 @@ def data_train_material(config, erase, best_model, device):
     logger.info(f'N epochs: {n_epochs}')
     logger.info(f'initial batch_size: {batch_size}')
 
-    print("start training particles ...")
+    print("start training MPM ...")
     check_and_clear_memory(device=device, iteration_number=0, every_n_iterations=1, memory_percentage_threshold=0.6)
 
     list_loss = []
@@ -181,15 +174,8 @@ def data_train_material(config, erase, best_model, device):
     torch.autograd.set_detect_anomaly(True)
     for epoch in range(start_epoch, n_epochs + 1):
 
-        logger.info(f"Total allocated memory: {torch.cuda.memory_allocated(device) / 1024 ** 3:.2f} GB")
-        logger.info(f"Total reserved memory:  {torch.cuda.memory_reserved(device) / 1024 ** 3:.2f} GB")
-
         batch_size = int(get_batch_size(epoch))
         logger.info(f'batch_size: {batch_size}')
-
-        # if (epoch == 1):
-        #     lr_embedding = 1E-4
-        #     optimizer, n_total_params = set_trainable_parameters(model, lr_embedding, lr)
 
         if batch_ratio < 1:
             Niter = int(n_frames * data_augmentation_loop // batch_size / batch_ratio)
@@ -197,17 +183,13 @@ def data_train_material(config, erase, best_model, device):
             Niter = n_frames * data_augmentation_loop // batch_size
         if epoch == 0:
             plot_frequency = int(Niter // 20)
-            print(f'{Niter} iterations per epoch')
-            logger.info(f'{Niter} iterations per epoch')
-            print(f'plot every {plot_frequency} iterations')
+            print(f'{Niter} iterations per epoch, plot every {plot_frequency} iterations')
+            logger.info(f'{Niter} iterations per epoch, plot every {plot_frequency} iterations')
 
         time.sleep(1)
         total_loss = 0
 
-        for N in trange(Niter):
-
-            # check_and_clear_memory(device=device, iteration_number=N, every_n_iterations=Niter // 500,
-            #                        memory_percentage_threshold=0.6)
+        for N in trange(Niter, ncols=150):
 
             dataset_batch = []
             loss = 0
@@ -218,87 +200,35 @@ def data_train_material(config, erase, best_model, device):
                 x = torch.tensor(x_list[run][k], dtype=torch.float32, device=device).clone().detach()
                 x_next = torch.tensor(x_list[run][k+1], dtype=torch.float32, device=device).clone().detach()
 
-                if 'next_S' in trainer:
-                    y = x_next[:, 12 + dimension * 2: 16 + dimension * 2].clone().detach()
-                elif 'next_C_F_Jp' in trainer:
-                    y = x_next[:, 1 + dimension * 2: 10 + dimension * 2].clone().detach()  # C
-                elif 'C_F_Jp' in trainer:
-                    # For k-nearest, we need positions and velocities for neighbor loss
-                    pos = x[:, 1:3].clone().detach()  # positions
-                    vel = x[:, 3:5].clone().detach()  # velocities
-                    y = None  # No direct target needed
+                if 'F' in trainer:
+                    y = x_next[:, 5 + dimension * 2: 9 + dimension * 2].clone().detach()
 
-                if 'GNN' in trainer:
-                    distance = torch.sum(bc_dpos(x[:, None, 1:dimension + 1] - x[None, :, 1:dimension + 1]) ** 2, dim=2)
-                    adj_t = ((distance < max_radius ** 2) & (distance >= min_radius ** 2)).float() * 1
-                    edges = adj_t.nonzero().t().contiguous()
-                else:
-                    edges = []
-
-                dataset = data.Data(x=x, edge_index=edges, num_nodes=x.shape[0])
+                dataset = data.Data(x=x, edge_index=None, num_nodes=x.shape[0])
                 dataset_batch.append(dataset)
 
                 if batch == 0:
                     data_id = torch.ones((n_particles, 1), dtype=torch.float32, device=device) * run
                     x_batch = x
-                    if trainer == 'C_F_Jp':
-                        pos_batch = pos
-                        vel_batch = vel
-                    else:
-                        y_batch = y
-
+                    y_batch = y
                     k_batch = torch.ones((x.shape[0], 1), dtype=torch.int, device=device) * k
                 else:
-                    data_id = torch.cat(
-                        (data_id, torch.ones((n_particles, 1), dtype=torch.float32, device=device) * run), dim=0)
+                    data_id = torch.cat((data_id, torch.ones((n_particles, 1), dtype=torch.float32, device=device) * run), dim=0)
                     x_batch = torch.cat((x_batch, x), dim=0)
-                    if trainer == 'C_F_Jp':
-                        pos_batch = torch.cat((pos_batch, pos), dim=0)
-                        vel_batch = torch.cat((vel_batch, vel), dim=0)
-                    else:
-                        y_batch = torch.cat((y_batch, y), dim=0)
-
-                    k_batch = torch.cat((k_batch, torch.ones((x.shape[0], 1), dtype=torch.int, device=device) * k),
-                                        dim=0)
+                    y_batch = torch.cat((y_batch, y), dim=0)
+                    k_batch = torch.cat((k_batch, torch.ones((x.shape[0], 1), dtype=torch.int, device=device) * k), dim=0)
 
             batch_loader = DataLoader(dataset_batch, batch_size=batch_size, shuffle=False)
             optimizer.zero_grad()
 
-            for batch_loader_data in batch_loader:
+            for batch in batch_loader:
+                pred_C, pred_F, pred_Jp, pred_S = model(batch.x, data_id=data_id, k=k_batch, trainer=trainer, batch_size=batch_size)
 
-                pred_C, pred_F, pred_Jp, pred_S = model(batch_loader_data, data_id=data_id, k=k_batch, trainer=trainer)
+            if 'F' in trainer:
+                loss = (pred_F.reshape(-1, 4) - y_batch).norm(2)
 
-            if 'next_S' in trainer:
-                loss = F.mse_loss(pred_S.reshape(-1, 4), y_batch)
-            elif 'next_C_F_Jp' in trainer:
-                loss = F.mse_loss(torch.cat((pred_C.reshape(-1,4), pred_F.reshape(-1,4), pred_Jp), dim=1), y_batch)
-            elif 'C_F_Jp' in trainer:
-                k_neighbors = 5
-                pred_C = pred_C.reshape(-1, 2, 2)
-                for k in range(batch_size):
-                    batch_indices = np.arange(k * n_particles, (k + 1) * n_particles)
-                    positions = to_numpy(dataset_batch[k].x[:, 1:3])  # shape: [N, 2]
-                    velocities = to_numpy(dataset_batch[k].x[:, 3:5])  # shape: [N, 2]
-
-                    tree = cKDTree(positions)
-                    dists, indices = tree.query(positions, k=k_neighbors + 1)  # +1 to skip self
-                    neighbor_indices = indices[:, 1:]  # shape: [N, k]
-
-                    # position and velocity diffs
-                    pos_diff_np = positions[neighbor_indices] - positions[:, None, :]  # [N, k, 2]
-                    vel_diff_np = velocities[neighbor_indices] - velocities[:, None, :]  # [N, k, 2]
-
-                    pos_diff = torch.tensor(pos_diff_np, dtype=torch.float32, device=device)  # [N, k, 2]
-                    vel_diff = torch.tensor(vel_diff_np, dtype=torch.float32, device=device)  # [N, k, 2]
-
-                    C = pred_C[batch_indices]  # [N, 2, 2]
-                    pred_vel_diff = torch.bmm(pos_diff, C.transpose(1, 2))  # [N, k, 2]
-                    loss = loss + F.mse_loss(pred_vel_diff, vel_diff)
-
-            # if (epoch < 1) & (N < Niter // 25) & (trainer != 'C_F_Jp'):
-            if coeff_Jp_norm >0 :
+            if coeff_Jp_norm > 0 :
                 loss = loss + coeff_Jp_norm * F.mse_loss(pred_Jp, torch.ones_like(pred_Jp).detach())
-            if coeff_F_norm >0 :
+            if coeff_F_norm > 0 :
                 F_norm = torch.norm(pred_F.view(-1, 4), dim=1)
                 loss = loss + coeff_F_norm * F.mse_loss(F_norm, torch.ones_like(F_norm).detach() * 1.4141)
             if coeff_det_F > 0:
@@ -321,8 +251,7 @@ def data_train_material(config, erase, best_model, device):
                 torch.save({'model_state_dict': model.state_dict(), 'optimizer_state_dict': optimizer.state_dict()},
                            os.path.join(log_dir, 'models', f'best_model_with_{n_runs - 1}_graphs_{epoch}_{N}.pt'))
 
-                check_and_clear_memory(device=device, iteration_number=N, every_n_iterations=Niter // 50,
-                                       memory_percentage_threshold=0.6)
+                # check_and_clear_memory(device=device, iteration_number=N, every_n_iterations=Niter // 50, memory_percentage_threshold=0.6)
 
         torch.save({'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict()},
