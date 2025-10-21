@@ -58,7 +58,7 @@ training:
   n_runs: 1
   n_epochs: 6
   
-  batch_size: 16
+  batch_size: 1
   small_init_batch_size: False
 
   noise_model_level: 0

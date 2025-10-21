@@ -70,6 +70,7 @@ class Interaction_MPM(nn.Module):
         siren_params = model_config.multi_siren_params
 
         self.identity = torch.eye(2, device=self.device).unsqueeze(0).expand(self.n_particles, -1, -1)
+        # self.identity = self.identity.repeat(train_config.batch_size, 1, 1)
 
         # Extract parameters for each Siren
         F_siren_params = siren_params[0]  # [in_features, out_features, hidden_features, hidden_layers, first_omega_0, hidden_omega_0, outermost_linear]
@@ -201,7 +202,7 @@ class Interaction_MPM(nn.Module):
             features = torch.cat((pos, frame), dim=1).detach()
             if 'F' in trainer:
                 features = torch.cat((pos, frame), dim=1).detach()
-                F = self.identity.repeat(batch_size, 1, 1) + torch.tanh(self.siren_F(features).reshape(-1, 2, 2))
+                F = self.identity + torch.tanh(self.siren_F(features).reshape(-1, 2, 2))
         if 'Jp' in trainer:
             features = torch.cat((pos, frame), dim=1).detach()
             Jp = self.siren_Jp(features)
