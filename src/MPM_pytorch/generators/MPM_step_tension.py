@@ -1,9 +1,145 @@
 import torch
-from MPM_pytorch.utils import *
+try:
+    from MPM_pytorch.utils import *
+except:
+    pass  # Handle import error gracefully
 import torch_geometric.data as data
 
 
-def MPM_step(
+def compute_surface_tension_stress(X, T, surface_tension_coeff, dx, device, debug=False):
+    """
+    Simplified surface tension computation that creates a stress tensor
+    pulling particles toward their local center of mass.
+    """
+    n_particles = X.shape[0]
+    surface_stress = torch.zeros((n_particles, 2, 2), device=device)
+    
+    # Only apply to liquid particles
+    liquid_mask = (T.squeeze() == 0)
+    if not liquid_mask.any() or surface_tension_coeff <= 0:
+        if debug:
+            print(f"No liquid particles or zero coefficient")
+        return surface_stress
+    
+    liquid_positions = X[liquid_mask]
+    liquid_indices = torch.where(liquid_mask)[0]
+    n_liquid = liquid_positions.shape[0]
+    
+    if debug:
+        print(f"Processing {n_liquid} liquid particles")
+    
+    # Simple approach: each liquid particle experiences attraction to nearby particles
+    # This mimics surface tension by creating cohesive forces
+    neighbor_radius = 3.0 * dx
+    
+    # Compute all pairwise distances at once for efficiency
+    if n_liquid < 5000:  # For reasonable sized systems
+        # Compute distance matrix
+        dist_matrix = torch.cdist(liquid_positions, liquid_positions, p=2)
+        
+        # Count neighbors for each particle (excluding self)
+        neighbor_counts = (dist_matrix < neighbor_radius).sum(dim=1) - 1
+        
+        # Statistics for determining surface particles
+        if debug:
+            print(f"Neighbor counts: min={neighbor_counts.min()}, max={neighbor_counts.max()}, mean={neighbor_counts.float().mean():.1f}")
+        
+        # Dynamic threshold: particles with fewer neighbors than average are on surface
+        mean_neighbors = neighbor_counts.float().mean()
+        std_neighbors = neighbor_counts.float().std()
+        
+        # Surface particles have significantly fewer neighbors (e.g., < mean - 0.5*std)
+        surface_threshold = mean_neighbors - 0.5 * std_neighbors
+        surface_threshold = max(surface_threshold, mean_neighbors * 0.7)  # At least 70% of mean
+        
+        if debug:
+            print(f"Surface threshold: {surface_threshold:.1f}")
+        
+        # Identify surface particles
+        is_surface = neighbor_counts < surface_threshold
+        
+        # Also mark boundary particles as surface
+        x_min, x_max = liquid_positions[:, 0].min(), liquid_positions[:, 0].max()
+        y_min, y_max = liquid_positions[:, 1].min(), liquid_positions[:, 1].max()
+        boundary_tolerance = neighbor_radius * 0.3
+        
+        is_boundary = ((liquid_positions[:, 0] < x_min + boundary_tolerance) |
+                      (liquid_positions[:, 0] > x_max - boundary_tolerance) |
+                      (liquid_positions[:, 1] < y_min + boundary_tolerance) |
+                      (liquid_positions[:, 1] > y_max - boundary_tolerance))
+        
+        is_surface = is_surface | is_boundary
+        
+        n_surface = is_surface.sum()
+        if debug:
+            print(f"Found {n_surface} surface particles ({100*n_surface/n_liquid:.1f}%)")
+        
+        # Apply surface tension stress to surface particles
+        for i in range(n_liquid):
+            if is_surface[i]:
+                idx = liquid_indices[i]
+                particle_pos = liquid_positions[i]
+                
+                # Find neighbors
+                neighbor_mask = (dist_matrix[i] < neighbor_radius) & (dist_matrix[i] > 1e-8)
+                
+                if neighbor_mask.sum() > 0:
+                    # Compute direction to local center of mass
+                    neighbors = liquid_positions[neighbor_mask]
+                    center_of_mass = neighbors.mean(dim=0)
+                    direction = center_of_mass - particle_pos
+                    
+                    # Normalize direction
+                    dist_to_center = torch.norm(direction)
+                    if dist_to_center > 1e-8:
+                        direction = direction / dist_to_center
+                        
+                        # Create stress that pulls toward center
+                        # The magnitude is proportional to how much of a surface particle it is
+                        surface_strength = 1.0 - neighbor_counts[i] / mean_neighbors
+                        surface_strength = torch.clamp(surface_strength, 0.0, 1.0)
+                        
+                        magnitude = surface_tension_coeff * surface_strength
+                        
+                        # Stress tensor: creates contraction in the direction toward center
+                        surface_stress[idx] = -magnitude * (direction.unsqueeze(-1) @ direction.unsqueeze(0))
+    
+    else:  # Fallback for large systems
+        # Process particles one by one
+        for i, idx in enumerate(liquid_indices):
+            particle_pos = X[idx]
+            
+            # Find neighbors
+            distances = torch.norm(liquid_positions - particle_pos.unsqueeze(0), dim=1)
+            neighbor_mask = (distances < neighbor_radius) & (distances > 1e-8)
+            n_neighbors = neighbor_mask.sum()
+            
+            # Simple threshold
+            if n_neighbors < 20:  # Hardcoded threshold for large systems
+                if neighbor_mask.sum() > 0:
+                    neighbors = liquid_positions[neighbor_mask]
+                    center_of_mass = neighbors.mean(dim=0)
+                    direction = center_of_mass - particle_pos
+                    
+                    dist_to_center = torch.norm(direction)
+                    if dist_to_center > 1e-8:
+                        direction = direction / dist_to_center
+                        magnitude = surface_tension_coeff * (1.0 - n_neighbors / 30.0)
+                        surface_stress[idx] = -magnitude * (direction.unsqueeze(-1) @ direction.unsqueeze(0))
+    
+    if debug:
+        stress_norms = torch.norm(surface_stress.reshape(n_particles, -1), dim=1)
+        nonzero = stress_norms > 1e-10
+        if nonzero.any():
+            print(f"Surface stress applied to {nonzero.sum().item()} particles")
+            print(f"Stress magnitudes: min={stress_norms[nonzero].min():.6f}, max={stress_norms[nonzero].max():.6f}")
+        else:
+            print(f"WARNING: No surface stress applied!")
+    
+    return surface_stress
+
+
+def MPM_step_tension(
         model_MPM,
         X,
         V,
@@ -26,10 +162,13 @@ def MPM_step(
         gravity,
         friction,
         frame,
-        device,
+        surface_tension_coeff,  # N/m (water at room temperature)
+        enable_surface_tension,
+        debug_surface,
+        device
 ):
     """
-    MPM substep implementation
+    MPM substep implementation with surface tension via stress tensor in affine matrix
     """
 
     # Material masks
@@ -105,7 +244,7 @@ def MPM_step(
     J = torch.prod(sig, dim=1)
 
     if frame > 1000:
-        expansion_factor = 1.0  # 1% expansion per timestep
+        expansion_factor = 1.0
 
     J = J / expansion_factor
     sig_diag = torch.diag_embed(sig) / expansion_factor
@@ -123,6 +262,37 @@ def MPM_step(
     stress = (2 * mu.unsqueeze(-1).unsqueeze(-1) * F_minus_R @ F.transpose(-2, -1) +
               identity * (la * J * (J - 1)).unsqueeze(-1).unsqueeze(-1))
     stress = (-dt * p_vol * 4 * inv_dx * inv_dx) * stress
+    
+    # Add surface tension stress for liquids
+    if enable_surface_tension and liquid_mask.any():
+        debug_this_frame = debug_surface and (frame % 100 == 0 or frame == 0)
+        
+        if debug_this_frame:
+            print(f"\n=== Frame {frame} - Surface Tension Debug ===")
+            print(f"Applying surface tension with coeff={surface_tension_coeff}")
+        
+        # Compute surface tension stress
+        surface_stress = compute_surface_tension_stress(X, T, surface_tension_coeff, dx, device, debug_this_frame)
+        
+        # Scale surface stress appropriately
+        # Try different scaling factors to find the right balance
+        scaling_factor = 0.1  # Start with 0.1, can increase to 1.0 or more
+        surface_stress_scaled = surface_stress * (-dt * p_vol * 4 * inv_dx * inv_dx) * scaling_factor
+        
+        # Only add surface stress to liquid particles
+        stress = torch.where(liquid_mask.unsqueeze(-1).unsqueeze(-1),
+                           stress + 500 * surface_stress_scaled,
+                           stress)
+        
+        if debug_this_frame:
+            # Check the relative magnitude of surface stress vs regular stress
+            regular_stress_norm = torch.norm(stress[liquid_mask].reshape(-1, 4), dim=1).mean()
+            surface_stress_norm = torch.norm(surface_stress_scaled[liquid_mask].reshape(-1, 4), dim=1).mean()
+            print(f"Regular stress magnitude: {regular_stress_norm:.6f}")
+            print(f"Surface stress magnitude: {surface_stress_norm:.6f}")
+            print(f"Ratio surface/regular: {surface_stress_norm/regular_stress_norm:.3f}")
+    
+    # Combine stress with affine velocity gradient
     affine = stress + p_mass.unsqueeze(-1).unsqueeze(-1) * C
 
     # P2G loop ###################################################################################################
@@ -155,7 +325,7 @@ def MPM_step(
                         affine_per_edge=affine_per_edge, dpos_per_edge=dpos_per_edge)
     grid_output = model_MPM(dataset)[0:n_grid ** 2]  # [n_grid**2, 3]
     grid_m = grid_output[:, 0].view(n_grid, n_grid)  # Mass component
-    grid_v = grid_output[:, 1:3].view(n_grid, n_grid, 2)  # Velocity components # Reshape to [n_grid, n_grid]
+    grid_v = grid_output[:, 1:3].view(n_grid, n_grid, 2)  # Velocity components
 
     # Quadratic B-spline kernel weights
     w_0 = 0.5 * (1.5 - fx) ** 2
@@ -172,7 +342,7 @@ def MPM_step(
                          grid_v)
 
     # Apply gravity (vectorized)
-    gravity_force = torch.tensor([0.0, dt * (gravity)], device=device)
+    gravity_force = torch.tensor([0.0, dt * gravity], device=device)
     grid_v = torch.where(valid_mass_mask.unsqueeze(-1),
                          grid_v + gravity_force,
                          grid_v)
@@ -180,13 +350,13 @@ def MPM_step(
     # Create coordinate grids
     i_coords = torch.arange(n_grid, device=device).unsqueeze(1).expand(n_grid, n_grid)
     j_coords = torch.arange(n_grid, device=device).unsqueeze(0).expand(n_grid, n_grid)
-    valid_mass_mask = torch.ones_like(grid_v[:, :, 0], dtype=torch.bool)
+    valid_mass_mask_boundary = torch.ones_like(grid_v[:, :, 0], dtype=torch.bool)
 
     # Boundary masks
-    left_mask = (i_coords < 3) & valid_mass_mask
-    right_mask = (i_coords > n_grid - 3) & valid_mass_mask
-    bottom_mask = (j_coords < 3) & valid_mass_mask
-    top_mask = (j_coords > n_grid - 3) & valid_mass_mask
+    left_mask = (i_coords < 3) & valid_mass_mask_boundary
+    right_mask = (i_coords > n_grid - 3) & valid_mass_mask_boundary
+    bottom_mask = (j_coords < 3) & valid_mass_mask_boundary
+    top_mask = (j_coords > n_grid - 3) & valid_mass_mask_boundary
 
     # Apply normal boundary conditions (prevent penetration)
     grid_v[:, :, 0] = torch.where(left_mask & (grid_v[:, :, 0] < 0), 0.0, grid_v[:, :, 0])
@@ -265,9 +435,6 @@ def MPM_step(
     # Particle advection
     X = X + dt * new_V
 
-    # margin = 2 * dx  # Keep particles away from boundaries
-    # X = torch.clamp(X, margin, 1.0 - margin)
-
-
-
+    # Return values matching the expected signature in graph_data_generator
+    # X, V, C, F, Jp, T, M, S, GM, GV
     return X, V, C, F, Jp, T, M, stress, grid_m, grid_v

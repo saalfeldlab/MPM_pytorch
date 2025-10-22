@@ -58,9 +58,9 @@ if __name__ == "__main__":
         else:
             best_model = None
     else:
-        task = 'train'  # 'generate', 'train', 'test'
+        task = 'generate'  # 'generate', 'train', 'test'
         best_model = ''
-        config_list = ['multimaterial_1_train_F'] 
+        config_list = ['multimaterial_2_cubes_tension', 'multimaterial_2_cubes_tension_1'] 
 
         # viz in MPM/graphs_data/multimaterial/multimaterial_4_0_3D/Fig
         # other config files to be found in ./config/*.yaml
@@ -84,7 +84,7 @@ if __name__ == "__main__":
                 device=device,
                 visualize=True,
                 run_vizualized=0,
-                style="black F",  # Style options: "black", "latex", "F", "M"
+                style="black",  # Style options: "black", "latex", "F", "M"
                                 # - "black": dark background
                                 # - "latex": use LaTeX rendering
                                 # - "F": color by deformation gradient magnitude
@@ -94,7 +94,7 @@ if __name__ == "__main__":
                 alpha=1,
                 erase=False,
                 bSave=True,
-                step=10,
+                step=20,
             ) # config.simulation.n_frames // 100)
 
         if "train" in task:

@@ -202,7 +202,7 @@ class Interaction_MPM(nn.Module):
             features = torch.cat((pos, frame), dim=1).detach()
             if 'F' in trainer:
                 features = torch.cat((pos, frame), dim=1).detach()
-                F = self.identity + torch.tanh(self.siren_F(features).reshape(-1, 2, 2))
+                F = self.identity + 1.5 * torch.tanh(self.siren_F(features).reshape(-1, 2, 2))
         if 'Jp' in trainer:
             features = torch.cat((pos, frame), dim=1).detach()
             Jp = self.siren_Jp(features)

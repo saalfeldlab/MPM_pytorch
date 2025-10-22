@@ -49,6 +49,7 @@ class SimulationConfig(BaseModel):
     MPM_rho_list: list[float] = [1.0, 1.0, 1.0]
     MPM_friction: float = 0.0
     MPM_young_coeff : float = 1.0
+    MPM_surface_tension: float = 0.072
 
     diffusion_coefficients: list[list[float]] = None
 

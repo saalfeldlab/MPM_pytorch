@@ -326,6 +326,7 @@ def data_generate_MPM_2D(
     MPM_object_type = simulation_config.MPM_object_type
     gravity = simulation_config.MPM_gravity
     friction = simulation_config.MPM_friction
+    surface_tension = simulation_config.MPM_surface_tension
 
     delta_t = simulation_config.delta_t
     n_frames = simulation_config.n_frames
@@ -409,9 +410,17 @@ def data_generate_MPM_2D(
             if (it >= 0):
                 x_list.append(to_numpy(x))
 
-            X, V, C, F, Jp, T, M, S, GM, GV = MPM_step(model_MPM, X, V, C, F, Jp, T, M, n_particles, n_grid,
-                                                       delta_t, dx, inv_dx, mu_0, lambda_0, p_vol, offsets, particle_offsets,
-                                                       expansion_factor, gravity, friction, it, device)
+            enable_surface_tension = 'TENSION' in model_config.particle_model_name
+                # Get surface tension coefficient from config or use default
+                # surface_tension_coeff = getattr(simulation_config, 'surface_tension_coeff', 0.072)
+                # enable_surface_tension = getattr(simulation_config, 'enable_surface_tension', True)
+
+            X, V, C, F, Jp, T, M, S, GM, GV = MPM_step(
+                model_MPM, X, V, C, F, Jp, T, M, n_particles, n_grid,
+                delta_t, dx, inv_dx, mu_0, lambda_0, p_vol, offsets, particle_offsets,
+                expansion_factor, gravity, friction, it,
+                surface_tension, enable_surface_tension, False, device
+            )
 
             # output plots
             if visualize & (run == run_vizualized) & (it % step == 0) & (it >= 0):
