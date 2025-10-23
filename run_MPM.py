@@ -60,7 +60,7 @@ if __name__ == "__main__":
     else:
         task = 'generate'  # 'generate', 'train', 'test'
         best_model = ''
-        config_list = ['multimaterial_2_cubes_tension', 'multimaterial_2_cubes_tension_1'] 
+        config_list = ['multimaterial_2_cubes_tension_2'] 
 
         # viz in MPM/graphs_data/multimaterial/multimaterial_4_0_3D/Fig
         # other config files to be found in ./config/*.yaml

@@ -50,6 +50,7 @@ class SimulationConfig(BaseModel):
     MPM_friction: float = 0.0
     MPM_young_coeff : float = 1.0
     MPM_surface_tension: float = 0.072
+    MPM_tension_scaling: float = 1.0
 
     diffusion_coefficients: list[list[float]] = None
 

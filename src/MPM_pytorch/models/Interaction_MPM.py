@@ -64,6 +64,8 @@ class Interaction_MPM(nn.Module):
         self.expansion_factor = simulation_config.MPM_expansion_factor
         self.gravity = simulation_config.MPM_gravity
         self.friction = simulation_config.MPM_friction
+        self.surface_tension = simulation_config.MPM_surface_tension
+        self.tension_scaling = simulation_config.MPM_tension_scaling
 
         self.model_MPM_P2G = MPM_P2G(aggr_type='add', device=device)
 
@@ -211,7 +213,9 @@ class Interaction_MPM(nn.Module):
                                 M, self.n_particles, self.n_grid,
                                 self.delta_t, self.dx, self.inv_dx, self.mu_0, self.lambda_0,
                                 self.p_vol, self.offsets, self.particle_offsets, 
-                                self.expansion_factor, self.gravity, self.friction, 0, self.device)
+                                self.expansion_factor, self.gravity, self.friction, 0, 
+                                self.surface_tension, self.tension_scaling, False, False,
+                                self.device)
 
         return X, C, F, Jp, S
 

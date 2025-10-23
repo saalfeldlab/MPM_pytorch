@@ -1,11 +1,11 @@
 description: '9 discs of different materials falling down in a box  size 512'
-dataset: 'multimaterial_2_1'
+dataset: 'multimaterial_2_2'
 
 simulation:
   params: [[0, 0.2, 0.4, 0.6, 0.8], [0.2, 0.2, 0.2, 0.2, 0.2]]
   min_radius: 0
   max_radius: 0.0125
-  n_particles: 9000
+  n_particles: 18000
   n_grid: 128
   n_particle_types: 3
   n_frames: 10000
@@ -22,7 +22,7 @@ simulation:
   MPM_friction: 0.0
   MPM_young_coeff: 1.0
   MPM_surface_tension: 0.072
-  MPM_tension_scaling: 20
+  MPM_tension_scaling: 80.0
 
 graph_model:
   particle_model_name: 'PDE_MPM_TENSION'

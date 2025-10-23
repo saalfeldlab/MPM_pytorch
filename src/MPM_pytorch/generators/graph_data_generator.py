@@ -342,6 +342,7 @@ def data_generate_MPM_2D(
                            device=device, dtype=torch.float32)  # [9, 2]
     particle_offsets = offsets.unsqueeze(0).expand(n_particles, -1, -1)
     expansion_factor = simulation_config.MPM_expansion_factor
+    tension_scaling = simulation_config.MPM_tension_scaling
 
     identity = torch.eye(2, device=device).unsqueeze(0).expand(n_particles, -1, -1)
 
@@ -419,7 +420,7 @@ def data_generate_MPM_2D(
                 model_MPM, X, V, C, F, Jp, T, M, n_particles, n_grid,
                 delta_t, dx, inv_dx, mu_0, lambda_0, p_vol, offsets, particle_offsets,
                 expansion_factor, gravity, friction, it,
-                surface_tension, enable_surface_tension, False, device
+                surface_tension, tension_scaling, enable_surface_tension, False, device
             )
 
             # output plots

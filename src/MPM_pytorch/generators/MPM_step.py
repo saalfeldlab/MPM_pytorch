@@ -27,6 +27,7 @@ def MPM_step(
         friction,
         frame,
         surface_tension_coeff,  # N/m (water at room temperature)
+        tension_scaling,
         enable_surface_tension,
         debug_surface,
         device
@@ -143,8 +144,8 @@ def MPM_step(
         
         # Scale surface stress appropriately
         # Try different scaling factors to find the right balance
-        scaling_factor = 0.1  # Start with 0.1, can increase to 1.0 or more
-        surface_stress_scaled = surface_stress * (-dt * p_vol * 4 * inv_dx * inv_dx) * scaling_factor
+
+        surface_stress_scaled = surface_stress * (-dt * p_vol * 4 * inv_dx * inv_dx) * tension_scaling
 
         liquid_stress_scaled = surface_stress_scaled[liquid_mask]
 
@@ -158,7 +159,7 @@ def MPM_step(
 
         # Only add surface stress to liquid particles
         stress = torch.where(liquid_mask.unsqueeze(-1).unsqueeze(-1),
-                           stress + 400 * surface_stress_scaled,
+                           stress +  surface_stress_scaled,
                            stress)
         
         if debug_this_frame:
