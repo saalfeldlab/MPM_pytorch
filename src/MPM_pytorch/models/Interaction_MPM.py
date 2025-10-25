@@ -105,26 +105,25 @@ class Interaction_MPM(nn.Module):
             outermost_linear=Jp_siren_params[6]
         ).to(device)
 
-        if self.model == 'PDE_MPM_A':
-            self.siren_C = Siren(
-                in_features=C_PDE_MPM_A_siren_params[0],
-                out_features=C_PDE_MPM_A_siren_params[1],
-                hidden_features=C_PDE_MPM_A_siren_params[2],
-                hidden_layers=C_PDE_MPM_A_siren_params[3],
-                first_omega_0=C_PDE_MPM_A_siren_params[4],
-                hidden_omega_0=C_PDE_MPM_A_siren_params[5],
-                outermost_linear=C_PDE_MPM_A_siren_params[6]
-            ).to(device)
-        else:
-            self.siren_C = Siren(
-                in_features=C_normal_siren_params[0],
-                out_features=C_normal_siren_params[1],
-                hidden_features=C_normal_siren_params[2],
-                hidden_layers=C_normal_siren_params[3],
-                first_omega_0=C_normal_siren_params[4],
-                hidden_omega_0=C_normal_siren_params[5],
-                outermost_linear=C_normal_siren_params[6]
-            ).to(device)
+        self.siren_S = Siren(
+            in_features=S_siren_params[0],
+            out_features=S_siren_params[1],
+            hidden_features=S_siren_params[2],
+            hidden_layers=S_siren_params[3],
+            first_omega_0=S_siren_params[4],
+            hidden_omega_0=S_siren_params[5],
+            outermost_linear=S_siren_params[6]
+        ).to(device)
+
+        self.siren_C = Siren(
+            in_features=C_normal_siren_params[0],
+            out_features=C_normal_siren_params[1],
+            hidden_features=C_normal_siren_params[2],
+            hidden_layers=C_normal_siren_params[3],
+            first_omega_0=C_normal_siren_params[4],
+            hidden_omega_0=C_normal_siren_params[5],
+            outermost_linear=C_normal_siren_params[6]
+        ).to(device)
 
 
         mlp_params = model_config.multi_mlp_params
