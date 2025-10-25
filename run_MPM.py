@@ -58,9 +58,9 @@ if __name__ == "__main__":
         else:
             best_model = None
     else:
-        task = 'generate'  # 'generate', 'train', 'test'
+        task = 'train'  # 'generate', 'train', 'test'
         best_model = ''
-        config_list = ['multimaterial_1_discs_3types'] # ['cells_tissue_1']
+        config_list = ['multimaterial_1_train_F_8']  #['multimaterial_1_discs_3types'] # ['cells_tissue_1']
 
         # viz in MPM/graphs_data/multimaterial/multimaterial_4_0_3D/Fig
         # other config files to be found in ./config/*.yaml

@@ -67,10 +67,10 @@ def MPM_step(
     neg_det_Vh = det_Vh < 0  
 
     # sign of U and Vh corrections
-    neg_det_U_mask = neg_det_U.unsqueeze(-1).unsqueeze(-1)  
-    neg_det_sig_U_mask = neg_det_U.unsqueeze(-1)  
-    neg_det_Vh_mask = neg_det_Vh.unsqueeze(-1).unsqueeze(-1)  
-    neg_det_sig_Vh_mask = neg_det_Vh.unsqueeze(-1)  
+    neg_det_U_mask = neg_det_U.unsqueeze(-1).unsqueeze(-1).detach()  
+    neg_det_sig_U_mask = neg_det_U.unsqueeze(-1).detach()  
+    neg_det_Vh_mask = neg_det_Vh.unsqueeze(-1).unsqueeze(-1).detach()  
+    neg_det_sig_Vh_mask = neg_det_Vh.unsqueeze(-1).detach()  
     U = torch.where(neg_det_U_mask.expand_as(U),torch.cat([U[:, :, :-1], -U[:, :, -1:].clone()], dim=2), U) # flip last column to ensure det(U)=+1
     sig = torch.where(neg_det_sig_U_mask.expand_as(sig), torch.cat([sig[:, :-1], -sig[:, -1:].clone()], dim=1), sig) # flip last singular value to compensate
     Vh = torch.where(neg_det_Vh_mask.expand_as(Vh), torch.cat([Vh[:, :-1, :], -Vh[:, -1:, :].clone()], dim=1), Vh)  # flip last row to ensure det(Vh)=+1
@@ -166,18 +166,17 @@ def MPM_step(
     w = torch.stack([w_0, w_1, w_2], dim=1)  # [n_particles, 3, 2]
 
     # prepare weights per edge for GNN
-    i_indices = offsets[:, 0].long()  # [9]
-    j_indices = offsets[:, 1].long()  # [9]
+    i_indices = offsets[:, 0].long().detach()  # [9]
+    j_indices = offsets[:, 1].long().detach()  # [9]
     weights_all = w[:, i_indices, 0] * w[:, j_indices, 1]  # [n_particles, 9]
     weights_per_edge = weights_all.flatten()  # [n_particles*9]
 
-    grid_positions = base.unsqueeze(1) + offsets.unsqueeze(0)  # [n_particles, 9, 2]
+    grid_positions = base.unsqueeze(1) + offsets.unsqueeze(0).detach()  # [n_particles, 9, 2]
     particle_indices = torch.arange(n_particles, device=device).unsqueeze(1).expand(-1, 9).flatten()
     grid_indices = grid_positions.flatten().reshape(-1, 2)  # Flatten to [n_particles*9, 2]
     grid_indices_1d = grid_indices[:, 0] * n_grid + grid_indices[:, 1]
     edge_index = torch.stack([particle_indices, grid_indices_1d], dim=0).long()
     edge_index[0, :] += n_grid ** 2  # offset particle indices
-
 
 
     # Compute dpos for each edge (needed for affine contribution)
@@ -193,16 +192,13 @@ def MPM_step(
     particle_features = torch.cat([p_mass[:, None], V], dim=1)  # [n_particles, 3]
     x_ = torch.cat([grid_features, particle_features], dim=0)  # [n_grid**2 + n_particles, 3]
 
-
-
-
     # GNN inference
     dataset = data.Data(x=x_, edge_index=edge_index, weights_per_edge=weights_per_edge,
                         affine_per_edge=affine_per_edge, dpos_per_edge=dpos_per_edge)
     
     grid_output = model_MPM(dataset)[0:n_grid ** 2]  # [n_grid**2, 3]
-    grid_m = grid_output[:, 0].view(n_grid, n_grid)  # Mass component
-    grid_v = grid_output[:, 1:3].view(n_grid, n_grid, 2)  # Velocity components # Reshape to [n_grid, n_grid]
+    grid_m = grid_output[:, 0].view(n_grid, n_grid)  # mass component
+    grid_v = grid_output[:, 1:3].view(n_grid, n_grid, 2)  # velocity components # Reshape to [n_grid, n_grid]
 
 
 
