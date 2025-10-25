@@ -139,52 +139,14 @@ def data_train_material(config, erase, best_model, device):
     x = []
     y = []
 
-
-    if False:
-        print("\n=== Analyzing Ground Truth F ===")
-        
-        all_F_gt = []
-        for k in range(0, n_frames, 100):  # Sample every 100 frames for analysis
-            x = torch.tensor(x_list[run][k], dtype=torch.float32, device=device)
-            F_gt = x[:, 9:13].reshape(-1, 2, 2)  # [n_particles, 2, 2]
-            all_F_gt.append(F_gt)
-        
-        all_F_gt = torch.stack(all_F_gt)  # [n_sampled_frames, n_particles, 2, 2]
-        
-        # Overall statistics
-        print(f"\nOverall F statistics:")
-        print(f"  Min: {all_F_gt.min():.6f}")
-        print(f"  Max: {all_F_gt.max():.6f}")
-        print(f"  Mean: {all_F_gt.mean():.6f}")
-        print(f"  Std: {all_F_gt.std():.6f}")
-        
-        # Print each component (F[0,0], F[0,1], F[1,0], F[1,1])
-        print(f"\nPer-component statistics:")
-        component_names = ["F[0,0]", "F[0,1]", "F[1,0]", "F[1,1]"]
-        for i in range(2):
-            for j in range(2):
-                component = all_F_gt[:, :, i, j]
-                idx = i * 2 + j
-                print(f"  {component_names[idx]}: min={component.min():.6f}, max={component.max():.6f}, mean={component.mean():.6f}, std={component.std():.6f}")
-        
-        # Analyze determinants
-        print(f"\nDeterminant statistics:")
-        all_det = torch.det(all_F_gt.view(-1, 2, 2))
-        print(f"  Min det(F): {all_det.min():.6f}")
-        print(f"  Max det(F): {all_det.max():.6f}")
-        print(f"  Mean det(F): {all_det.mean():.6f}")
-        print(f"  # det(F) < 0.1: {(all_det < 0.1).sum().item()}/{all_det.numel()}")
-        print(f"  # det(F) < 0.01: {(all_det < 0.01).sum().item()}/{all_det.numel()}")
-        
-        # Analyze norms
-        print(f"\nFrobenius norm statistics:")
-        all_norms = torch.norm(all_F_gt.view(-1, 4), dim=1)
-        print(f"  Min ||F||: {all_norms.min():.6f}")
-        print(f"  Max ||F||: {all_norms.max():.6f}")
-        print(f"  Mean ||F||: {all_norms.mean():.6f}")
-        print(f"  Expected ||F|| for identity: {np.sqrt(2):.6f}")
-
-
+    results = recommend_amplitude_values(
+            x_list=x_list,
+            run=0,
+            n_frames=1000,
+            device='cuda',
+            sample_every=100,
+            verbose=True
+        )
 
 
     print('create models ...')
@@ -297,115 +259,119 @@ def data_train_material(config, erase, best_model, device):
 
 
 
-            if ((N % plot_frequency == 0)) & (N > 0):
+            if ((N % plot_frequency == 0)) & (N > -1):
                 
                 # Save model checkpoint
                 torch.save({'model_state_dict': model.state_dict(), 'optimizer_state_dict': optimizer.state_dict()},
                         os.path.join(log_dir, 'models', f'best_model_with_{n_runs - 1}_graphs_{epoch}_{N}.pt'))
                 
+
+                # plots all fields present in trainer (F, S, C, and/or Jp)
+                plot_fields(trainer, model, x_list, 0, 500, n_particles, n_frames, device, log_dir, epoch, N, dataset_name)
+
                 # Create SIREN F field movie
-                if 'F' in trainer:
-                    with torch.no_grad():
-                        plt.style.use('dark_background')
+                # if 'F' in trainer:
+                #     with torch.no_grad():
+                #         plt.style.use('dark_background')
                         
-                        # MP4 writer setup
-                        fps = 30
-                        metadata = dict(title='SIREN F Field Evolution', artist='Matplotlib', comment='F field over time')
-                        writer = FFMpegWriter(fps=fps, metadata=metadata)
+                #         # MP4 writer setup
+                #         fps = 30
+                #         metadata = dict(title='SIREN F Field Evolution', artist='Matplotlib', comment='F field over time')
+                #         writer = FFMpegWriter(fps=fps, metadata=metadata)
                         
-                        fig = plt.figure(figsize=(15, 5))
+                #         fig = plt.figure(figsize=(15, 5))
                         
-                        # Output path
-                        out_dir = f"./{log_dir}/tmp_training/siren_F"
-                        os.makedirs(out_dir, exist_ok=True)
-                        out_path = f"{out_dir}/F_field_movie_{epoch}_{N}.mp4"
-                        if os.path.exists(out_path):
-                            os.remove(out_path)
+                #         # Output path
+                #         out_dir = f"./{log_dir}/tmp_training/siren_F"
+                #         os.makedirs(out_dir, exist_ok=True)
+                #         out_path = f"{out_dir}/F_field_movie_{epoch}_{N}.mp4"
+                #         if os.path.exists(out_path):
+                #             os.remove(out_path)
                         
-                        # Video parameters
-                        step_video = 10  # Sample every 10 frames
-                        n_frames_to_plot = min(200, n_frames)  # Limit to 200 frames for speed
+                #         # Video parameters
+                #         step_video = 10  # Sample every 10 frames
+                #         n_frames_to_plot = min(200, n_frames)  # Limit to 200 frames for speed
                         
-                        with writer.saving(fig, out_path, dpi=300):
+                #         with writer.saving(fig, out_path, dpi=300):
                             
-                            for k in range(n_frames-1000, n_frames, step_video):
+                #             for k in range(n_frames-1000, n_frames, step_video):
                                 
-                                # Clear the figure
-                                fig.clear()
+                #                 # Clear the figure
+                #                 fig.clear()
                                 
-                                # Load particle data for frame k
-                                x = torch.tensor(x_list[run][k], dtype=torch.float32, device=device)
-                                pos = x[:, 1:3]  # Particle positions
-                                frame_normalized = torch.tensor(k / n_frames, dtype=torch.float32, device=device)
+                #                 # Load particle data for frame k
+                #                 x = torch.tensor(x_list[run][k], dtype=torch.float32, device=device)
+                #                 pos = x[:, 1:3]  # Particle positions
+                #                 frame_normalized = torch.tensor(k / n_frames, dtype=torch.float32, device=device)
                                 
-                                # Get SIREN prediction for F
-                                features = torch.cat([
-                                    pos,
-                                    frame_normalized.expand(n_particles, 1)
-                                ], dim=1)
+                #                 # Get SIREN prediction for F
+                #                 features = torch.cat([
+                #                     pos,
+                #                     frame_normalized.expand(n_particles, 1)
+                #                 ], dim=1)
                                 
-                                # Apply your identity + tanh formulation
-                                identity = torch.eye(2, device=device).unsqueeze(0).expand(n_particles, -1, -1)
-                                F_pred = identity + torch.tanh(model.siren_F(features).reshape(-1, 2, 2))
+                #                 # Apply your identity + tanh formulation
+                #                 identity = torch.eye(2, device=device).unsqueeze(0).expand(n_particles, -1, -1)
+                #                 F_pred = identity + torch.tanh(model.siren_F(features).reshape(-1, 2, 2))
                                 
-                                # Calculate F norm for visualization
-                                f_norm_pred = torch.norm(F_pred.view(n_particles, -1), dim=1).cpu().numpy()
+                #                 # Calculate F norm for visualization
+                #                 f_norm_pred = torch.norm(F_pred.view(n_particles, -1), dim=1).cpu().numpy()
                                 
-                                # Get ground truth F if available
-                                F_gt = x[:, 9:13].reshape(-1, 2, 2)
-                                f_norm_gt = torch.norm(F_gt.view(n_particles, -1), dim=1).cpu().numpy()
+                #                 # Get ground truth F if available
+                #                 F_gt = x[:, 9:13].reshape(-1, 2, 2)
+                #                 f_norm_gt = torch.norm(F_gt.view(n_particles, -1), dim=1).cpu().numpy()
                                 
-                                # Create subplots
-                                ax1 = fig.add_subplot(1, 3, 1)
-                                ax2 = fig.add_subplot(1, 3, 2)
-                                ax3 = fig.add_subplot(1, 3, 3)
+                #                 # Create subplots
+                #                 ax1 = fig.add_subplot(1, 3, 1)
+                #                 ax2 = fig.add_subplot(1, 3, 2)
+                #                 ax3 = fig.add_subplot(1, 3, 3)
                                 
-                                # Plot ground truth F
-                                scatter1 = ax1.scatter(to_numpy(pos[:, 0]), to_numpy(pos[:, 1]), 
-                                                    c=f_norm_gt, s=1, cmap='coolwarm', 
-                                                    vmin=np.sqrt(2)-0.1, vmax=np.sqrt(2)+0.1)
-                                ax1.set_title(f'ground truth F (Frame {k})', fontsize=10)
-                                ax1.set_xlabel('X')
-                                ax1.set_ylabel('Y')
-                                ax1.set_aspect('equal')
-                                plt.colorbar(scatter1, ax=ax1, label='||F||')
-                                ax1.set_xlim([0, 1])
-                                ax1.set_ylim([0, 1])
+                #                 # Plot ground truth F
+                #                 scatter1 = ax1.scatter(to_numpy(pos[:, 0]), to_numpy(pos[:, 1]), 
+                #                                     c=f_norm_gt, s=1, cmap='coolwarm', 
+                #                                     vmin=np.sqrt(2)-0.1, vmax=np.sqrt(2)+0.1)
+                #                 ax1.set_title(f'ground truth F (Frame {k})', fontsize=10)
+                #                 ax1.set_xlabel('X')
+                #                 ax1.set_ylabel('Y')
+                #                 ax1.set_aspect('equal')
+                #                 plt.colorbar(scatter1, ax=ax1, label='||F||')
+                #                 ax1.set_xlim([0, 1])
+                #                 ax1.set_ylim([0, 1])
                                 
-                                # Plot SIREN predicted F
-                                scatter2 = ax2.scatter(to_numpy(pos[:, 0]), to_numpy(pos[:, 1]), 
-                                                    c=f_norm_pred, s=1, cmap='coolwarm',
-                                                    vmin=np.sqrt(2)-0.1, vmax=np.sqrt(2)+0.1)
-                                ax2.set_title(f'SIREN predicted F (Frame {k})', fontsize=10)
-                                ax2.set_xlabel('X')
-                                ax2.set_ylabel('Y')
-                                ax2.set_aspect('equal')
-                                plt.colorbar(scatter2, ax=ax2, label='||F||')
-                                ax2.set_xlim([0, 1])
-                                ax2.set_ylim([0, 1])
+                #                 # Plot SIREN predicted F
+                #                 scatter2 = ax2.scatter(to_numpy(pos[:, 0]), to_numpy(pos[:, 1]), 
+                #                                     c=f_norm_pred, s=1, cmap='coolwarm',
+                #                                     vmin=np.sqrt(2)-0.1, vmax=np.sqrt(2)+0.1)
+                #                 ax2.set_title(f'SIREN predicted F (Frame {k})', fontsize=10)
+                #                 ax2.set_xlabel('X')
+                #                 ax2.set_ylabel('Y')
+                #                 ax2.set_aspect('equal')
+                #                 plt.colorbar(scatter2, ax=ax2, label='||F||')
+                #                 ax2.set_xlim([0, 1])
+                #                 ax2.set_ylim([0, 1])
                                 
-                                # Plot error
-                                f_error = np.abs(f_norm_pred - f_norm_gt)
-                                scatter3 = ax3.scatter(to_numpy(pos[:, 0]), to_numpy(pos[:, 1]), 
-                                                    c=f_error, s=1, cmap='viridis',
-                                                    vmin=-0.01, vmax=0.01)
-                                ax3.set_title(f'absolute error (Frame {k})', fontsize=10)
-                                ax3.set_xlabel('X')
-                                ax3.set_ylabel('Y')
-                                ax3.set_aspect('equal')
-                                plt.colorbar(scatter3, ax=ax3, label='|error|')
-                                ax3.set_xlim([0, 1])
-                                ax3.set_ylim([0, 1])
+                #                 # Plot error
+                #                 f_error = np.abs(f_norm_pred - f_norm_gt)
+                #                 scatter3 = ax3.scatter(to_numpy(pos[:, 0]), to_numpy(pos[:, 1]), 
+                #                                     c=f_error, s=1, cmap='viridis',
+                #                                     vmin=-0.01, vmax=0.01)
+                #                 ax3.set_title(f'absolute error (Frame {k})', fontsize=10)
+                #                 ax3.set_xlabel('X')
+                #                 ax3.set_ylabel('Y')
+                #                 ax3.set_aspect('equal')
+                #                 plt.colorbar(scatter3, ax=ax3, label='|error|')
+                #                 ax3.set_xlim([0, 1])
+                #                 ax3.set_ylim([0, 1])
                                 
-                                # Add training info
-                                fig.suptitle(f'epoch {epoch}, iter {N} - training SIREN F Field', fontsize=12)
+                #                 # Add training info
+                #                 fig.suptitle(f'epoch {epoch}, iter {N} - training SIREN F Field', fontsize=12)
                                 
-                                plt.tight_layout()
+                #                 plt.tight_layout()
                                 
-                                # Write frame to video
-                                writer.grab_frame()
+                #                 # Write frame to video
+                #                 writer.grab_frame()
                         
-                        plt.close(fig)
+                #         plt.close(fig)
 
 
                 # check_and_clear_memory(device=device, iteration_number=N, every_n_iterations=Niter // 50, memory_percentage_threshold=0.6)

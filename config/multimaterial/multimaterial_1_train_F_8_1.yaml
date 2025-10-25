@@ -1,4 +1,4 @@
-description: '9 discs of different materials falling down in a box  size 256 LR 1E-8 batch 16'
+description: '9 discs of different materials falling down in a box  size 256 LR 1E-8 batch 16  trainer F'
 dataset: 'multimaterial_1'
 
 simulation:

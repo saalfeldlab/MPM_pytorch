@@ -24,6 +24,9 @@ from scipy import stats
 
 import warnings
 from collections import defaultdict
+import matplotlib.patches as patches
+from matplotlib.colors import LinearSegmentedColormap
+
 
 warnings.filterwarnings('ignore')
 
@@ -784,10 +787,7 @@ def get_neuron_index(neuron_name, activity_neuron_list):
         return activity_neuron_list.index(neuron_name)
     except ValueError:
         raise ValueError(f"Neuron '{neuron_name}' not found in activity_neuron_list.")
-# Example usage
-# matrix = np.random.rand(100, 100)
-# rank = get_matrix_rank(matrix)
-# print(f"The rank of the matrix is: {rank}")
+
 
 def compute_spectral_density(matrix, bins=100):
     # Compute eigenvalues
@@ -1501,468 +1501,6 @@ def statistical_testing(granger_results, filtered_time_series, n_surrogates=500)
     return significant_pairs
 
 
-def build_causality_network(significant_pairs, track_positions):
-    """Build directed network from significant causality pairs"""
-    G = nx.DiGraph()
-
-    # Add nodes with positions
-    for track_id, pos in track_positions.items():
-        G.add_node(track_id, pos=pos)
-
-    # Add edges with causality info
-    for (track1, track2), result in significant_pairs.items():
-        if result['direction'] == 1:
-            G.add_edge(track1, track2, weight=result['granger_diff'], p_value=result['p_value'])
-        else:
-            G.add_edge(track2, track1, weight=result['granger_diff'], p_value=result['p_value'])
-
-    return G
-
-
-def compute_network_scores(G):
-    """Calculate leader/follower and hub/authority scores"""
-    # Leader/follower scores (out-degree vs in-degree)
-    leader_scores = dict(G.out_degree())
-    follower_scores = dict(G.in_degree())
-
-    # Normalize
-    max_leader = max(leader_scores.values()) if leader_scores.values() else 1
-    max_follower = max(follower_scores.values()) if follower_scores.values() else 1
-
-    leader_scores = {k: v / max_leader for k, v in leader_scores.items()}
-    follower_scores = {k: v / max_follower for k, v in follower_scores.items()}
-
-    # Hub/authority scores
-    try:
-        hub_scores, authority_scores = nx.hits(G, max_iter=1000)
-    except:
-        # Fallback if HITS fails
-        hub_scores = {node: 0 for node in G.nodes()}
-        authority_scores = {node: 0 for node in G.nodes()}
-
-    return {
-        'leader': leader_scores,
-        'follower': follower_scores,
-        'hub': hub_scores,
-        'authority': authority_scores
-    }
-
-
-import matplotlib.patches as patches
-from matplotlib.colors import LinearSegmentedColormap
-
-
-def visualize_network_leader_follower(G, network_scores, track_positions, save_path=None,
-                               min_node_size=30, max_node_size=100):
-    """
-    Create improved network visualization with better leader/follower contrast
-
-    Parameters:
-    G: NetworkX directed graph
-    network_scores: Dictionary with leader/follower/hub/authority scores
-    track_positions: Dictionary {track_id: [y, x]}
-    save_path: Path to save plot
-    min_node_size: Minimum node size
-    max_node_size: Maximum node size
-    """
-
-    fig, ax = plt.subplots(1, 1, figsize=(12, 10))
-
-    # Extract positions
-    pos = {node: track_positions[node] for node in G.nodes()}
-
-    # Get scores
-    leader_scores = np.array([network_scores['leader'].get(node, 0) for node in G.nodes()])
-    follower_scores = np.array([network_scores['follower'].get(node, 0) for node in G.nodes()])
-
-    # Calculate node categories and colors
-    def categorize_nodes(leader_scores, follower_scores, threshold=0.3):
-        """Categorize nodes as leader, follower, or mixed"""
-        categories = []
-        colors = []
-
-        for l_score, f_score in zip(leader_scores, follower_scores):
-            if l_score > threshold and f_score < threshold:
-                categories.append('leader')
-                colors.append('#FF4444')  # Bright red
-            elif f_score > threshold and l_score < threshold:
-                categories.append('follower')
-                colors.append('#4444FF')  # Bright blue
-            elif l_score > threshold and f_score > threshold:
-                categories.append('mixed')
-                colors.append('#AA44AA')  # Purple
-            else:
-                categories.append('neutral')
-                colors.append('#CCCCCC')  # Light gray
-
-        return categories, colors
-
-    # Leader/Follower visualization
-    categories, node_colors = categorize_nodes(leader_scores, follower_scores)
-
-    # Calculate node sizes based on total connectivity
-    total_degree = np.array([G.degree(node) for node in G.nodes()])
-    if len(total_degree) > 0 and np.max(total_degree) > 0:
-        node_sizes = min_node_size + (max_node_size - min_node_size) * (total_degree / np.max(total_degree))
-    else:
-        node_sizes = np.full(len(G.nodes()), min_node_size)
-
-    # Draw edges first (behind nodes)
-    for edge in G.edges():
-        x_coords = [pos[edge[0]][1], pos[edge[1]][1]]
-        y_coords = [pos[edge[0]][0], pos[edge[1]][0]]
-
-        # Get edge weight for thickness
-        weight = G[edge[0]][edge[1]].get('weight', 1)
-        edge_width = 0.3 + min(2.0, weight * 0.5)  # Scale edge thickness
-
-        ax.plot(x_coords, y_coords, 'w-', alpha=0.4, linewidth = edge_width * 2)
-
-        # Add arrowhead
-        dx = x_coords[1] - x_coords[0]
-        dy = y_coords[1] - y_coords[0]
-        length = np.sqrt(dx ** 2 + dy ** 2)
-        if length > 0:
-            dx_norm, dy_norm = dx / length, dy / length
-            arrow_length = 8
-            arrow_x = x_coords[1] - dx_norm * arrow_length
-            arrow_y = y_coords[1] - dy_norm * arrow_length
-            ax.annotate('', xy=(x_coords[1], y_coords[1]),
-                        xytext=(arrow_x, arrow_y),
-                        arrowprops=dict(arrowstyle='->', color='w', alpha=0.4, lw=1))
-
-    # Draw nodes with categories
-    node_positions = np.array([[pos[node][1], pos[node][0]] for node in G.nodes()])
-    scatter = ax.scatter(node_positions[:, 0], node_positions[:, 1],
-                         c=node_colors, s=node_sizes,
-                         alpha=0.8, edgecolors='None')
-
-    ax.set_title('Leader/Follower Causality Network\n(Red=Leader, Blue=Follower, Purple=Mixed, Gray=Neutral)',
-                 fontsize=16, fontweight='bold')
-    ax.set_xlabel('X Position', fontsize=12)
-    ax.set_ylabel('Y Position', fontsize=12)
-    ax.set_aspect('equal')
-
-    # Add legend for categories
-    legend_elements = [
-        patches.Patch(color='#FF4444', label=f'Leaders ({np.sum(np.array(categories) == "leader")})'),
-        patches.Patch(color='#4444FF', label=f'Followers ({np.sum(np.array(categories) == "follower")})'),
-        patches.Patch(color='#AA44AA', label=f'Mixed ({np.sum(np.array(categories) == "mixed")})'),
-        patches.Patch(color='#CCCCCC', label=f'Neutral ({np.sum(np.array(categories) == "neutral")})')
-    ]
-    # ax.legend(handles=legend_elements, loc='upper right', fontsize=10)
-
-    # Add network statistics
-    total_possible_pairs = len(neighbor_pairs) if 'neighbor_pairs' in locals() else G.number_of_nodes() * (
-                G.number_of_nodes() - 1) // 2
-    causal_percentage = (G.number_of_edges() / total_possible_pairs) * 100 if total_possible_pairs > 0 else 0
-
-#     stats_text = f"""network statistics:
-# nodes: {G.number_of_nodes()}
-# causal edges: {G.number_of_edges()}
-# """
-#
-#     fig.text(0.02, 0.02, stats_text, fontsize=11, fontfamily='monospace',
-#              bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.8))
-
-    plt.tight_layout()
-
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
-        print(f"improved network visualization saved to {save_path}")
-
-    plt.show()
-
-
-# Usage:
-# visualize_network_improved(G, network_scores, track_positions,
-#                           save_path=f'graphs_data/{dataset_name}/network_improved_{run}.png')
-
-# Full pipeline paper https://www.pnas.org/doi/epub/10.1073/pnas.2202204119
-
-def run_granger_network_analysis(neighbor_pairs, filtered_time_series, track_positions):
-    """Complete Granger causality network analysis"""
-
-    # Step 1: Compute Granger causality
-    granger_results = analyze_neighbor_pairs(neighbor_pairs, filtered_time_series)
-
-    # Step 2: Statistical testing with IAAFT
-    significant_pairs = statistical_testing(granger_results, filtered_time_series)
-
-    # Step 3: Build network
-    G = build_causality_network(significant_pairs, track_positions)
-
-    # Step 4: Compute scores
-    network_scores = compute_network_scores(G)
-
-    # Step 5: Visualize
-    visualize_network(G, network_scores, track_positions)
-
-    return G, network_scores, significant_pairs
-
-
-def plot_combined_causality_analysis(leader_track_id, follower_track_id, filtered_time_series,
-                                     track_positions, significant_pairs, max_lag=20, save_path=None):
-    """
-    Plot combined causality analysis: time traces, spatial position, and lag analysis
-
-    Parameters:
-    leader_track_id: TrackMate track ID of the leader cell
-    follower_track_id: TrackMate track ID of the follower cell
-    filtered_time_series: Dictionary of time series data
-    track_positions: Dictionary of track positions
-    significant_pairs: Dictionary of significant pairs with results
-    max_lag: Maximum lag for cross-correlation
-    save_path: Path to save the plot
-    """
-
-    # Check if pair exists in significant_pairs
-    pair_key = None
-    pair_result = None
-
-    # Try both directions
-    if (leader_track_id, follower_track_id) in significant_pairs:
-        pair_key = (leader_track_id, follower_track_id)
-        pair_result = significant_pairs[pair_key]
-    elif (follower_track_id, leader_track_id) in significant_pairs:
-        pair_key = (follower_track_id, leader_track_id)
-        pair_result = significant_pairs[pair_key]
-    else:
-        print(f"Error: Pair ({leader_track_id}, {follower_track_id}) not found in significant_pairs")
-        return
-
-    # Get time series data
-    ts_leader = filtered_time_series[leader_track_id]
-    ts_follower = filtered_time_series[follower_track_id]
-
-    frames_leader = ts_leader[:, 0]
-    fluo_leader = ts_leader[:, 1]
-    frames_follower = ts_follower[:, 0]
-    fluo_follower = ts_follower[:, 1]
-
-    # Find overlapping time range
-    min_frame = max(frames_leader.min(), frames_follower.min())
-    max_frame = min(frames_leader.max(), frames_follower.max())
-
-    # Filter to overlapping range
-    mask_leader = (frames_leader >= min_frame) & (frames_leader <= max_frame)
-    mask_follower = (frames_follower >= min_frame) & (frames_follower <= max_frame)
-
-    overlap_frames_leader = frames_leader[mask_leader]
-    overlap_fluo_leader = fluo_leader[mask_leader]
-    overlap_frames_follower = frames_follower[mask_follower]
-    overlap_fluo_follower = fluo_follower[mask_follower]
-
-    # Normalize fluorescence for visualization
-    norm_fluo_leader = (overlap_fluo_leader - overlap_fluo_leader.mean()) / overlap_fluo_leader.std()
-    norm_fluo_follower = (overlap_fluo_follower - overlap_fluo_follower.mean()) / overlap_fluo_follower.std()
-
-    # Create figure with 2x2 panels
-    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
-
-    # Panel 1: Time series traces
-    ax1.plot(overlap_frames_leader, norm_fluo_leader, 'r-', linewidth=2, alpha=0.8,
-             label=f'leader ({leader_track_id})')
-    ax1.plot(overlap_frames_follower, norm_fluo_follower + 3, 'b-', linewidth=2, alpha=0.8,
-             label=f'follower ({follower_track_id})')
-
-    # Add visual separation line
-    ax1.axhline(y=1.5, color='gray', linestyle='--', alpha=0.5)
-
-    # Add statistics to title
-    gc_12 = pair_result.get('gc_12', 0)
-    gc_21 = pair_result.get('gc_21', 0)
-    granger_diff = pair_result.get('granger_diff', 0)
-    p_value = pair_result.get('p_value', 1)
-
-    title1 = f'fluorescence traces\n'
-    title1 += f'gc: {gc_12:.3f}→{gc_21:.3f}, diff: {granger_diff:.3f}, p: {p_value:.4f}'
-    ax1.set_title(title1, fontsize=12, fontweight='bold')
-    ax1.set_xlabel('frame')
-    ax1.set_ylabel('normalized fluorescence')
-    ax1.legend(fontsize=10)
-    ax1.grid(True, alpha=0.3)
-
-    # Panel 2: Spatial position
-    pos_leader = track_positions[leader_track_id]
-    pos_follower = track_positions[follower_track_id]
-
-    # Plot all tracks as background
-    all_positions = np.array(list(track_positions.values()))
-    ax2.scatter(all_positions[:, 1], all_positions[:, 0],
-                s=15, c='lightgray', alpha=0.4, label='other tracks')
-
-    # Plot the specific pair
-    ax2.scatter(pos_leader[1], pos_leader[0], s=20, c='red',
-                alpha=0.9, edgecolors='black', linewidths=2,
-                label=f'leader ({leader_track_id})', zorder=5)
-    ax2.scatter(pos_follower[1], pos_follower[0], s=20, c='blue',
-                alpha=0.9, edgecolors='black', linewidths=2,
-                label=f'follower ({follower_track_id})', zorder=5)
-
-    # Draw arrow from leader to follower
-    dx = pos_follower[1] - pos_leader[1]
-    dy = pos_follower[0] - pos_leader[0]
-    ax2.annotate('', xy=(pos_follower[1], pos_follower[0]),
-                 xytext=(pos_leader[1], pos_leader[0]),
-                 arrowprops=dict(arrowstyle='->', color='black', lw=3, alpha=0.8))
-
-    # Calculate distance
-    distance = np.sqrt(dx ** 2 + dy ** 2)
-
-    ax2.set_title(f'spatial positions\ndistance: {distance:.1f} pixels',
-                  fontsize=12, fontweight='bold')
-    ax2.set_xlabel('x position')
-    ax2.set_ylabel('y position')
-    ax2.set_aspect('equal')
-    ax2.grid(True, alpha=0.3)
-
-    # Panel 3: Cross-correlation analysis (bottom left)
-    # Get time series for correlation (same length)
-    ts1 = overlap_fluo_leader
-    ts2 = overlap_fluo_follower
-
-    # Ensure exactly same length by interpolation if needed
-    if len(ts1) != len(ts2):
-        min_len = min(len(ts1), len(ts2))
-        ts1 = ts1[:min_len]
-        ts2 = ts2[:min_len]
-
-    # Normalize for correlation
-    ts1_norm = (ts1 - ts1.mean()) / ts1.std()
-    ts2_norm = (ts2 - ts2.mean()) / ts2.std()
-
-    # Calculate cross-correlation
-    cross_corr = np.correlate(ts1_norm, ts2_norm, mode='full')
-    cross_corr = cross_corr / (len(ts1_norm) * ts1_norm.std() * ts2_norm.std())
-
-    # Get lag range
-    mid = len(cross_corr) // 2
-    lags = np.arange(-max_lag, max_lag + 1)
-    cross_corr_subset = cross_corr[mid - max_lag:mid + max_lag + 1]
-
-    # Plot cross-correlation
-    ax3.plot(lags, cross_corr_subset, 'g-', linewidth=3, alpha=0.8)
-    ax3.axvline(x=0, color='red', linestyle='--', alpha=0.7, linewidth=2)
-    ax3.axhline(y=0, color='gray', linestyle='-', alpha=0.4)
-
-    # Find and mark peak lag
-    peak_idx = np.argmax(np.abs(cross_corr_subset))
-    peak_lag = lags[peak_idx]
-    peak_corr = cross_corr_subset[peak_idx]
-
-    ax3.scatter([peak_lag], [peak_corr], color='red', s=100, zorder=5,
-                edgecolors='black', linewidths=1)
-
-    # Interpret lag direction
-    if abs(peak_corr) < 0.3:
-        lag_interpretation = "weak temporal relationship"
-    elif peak_lag > 0:
-        if peak_corr > 0:
-            lag_interpretation = f"leader leads by {peak_lag} frames"
-        else:
-            lag_interpretation = f"leader leads by {peak_lag} frames (anti-corr)"
-    elif peak_lag < 0:
-        if peak_corr > 0:
-            lag_interpretation = f"follower leads by {-peak_lag} frames"
-        else:
-            lag_interpretation = f"follower leads by {-peak_lag} frames (anti-corr)"
-    else:  # peak_lag == 0
-        if peak_corr > 0.7:
-            lag_interpretation = "synchronous (strong positive)"
-        elif peak_corr > 0.3:
-            lag_interpretation = "synchronous (moderate positive)"
-        elif peak_corr < -0.7:
-            lag_interpretation = "synchronous anti-correlated (strong)"
-        elif peak_corr < -0.3:
-            lag_interpretation = "synchronous anti-correlated (moderate)"
-        else:
-            lag_interpretation = "synchronous (weak correlation)"
-
-    title3 = f'cross-correlation\n'
-    title3 += f'peak lag: {peak_lag}, corr: {peak_corr:.3f}\n'
-    title3 += f'{lag_interpretation}'
-    ax3.set_title(title3, fontsize=12, fontweight='bold')
-    ax3.set_xlabel('lag (frames)')
-    ax3.set_ylabel('cross-correlation')
-    ax3.grid(True, alpha=0.3)
-
-    # Panel 4: Text results (bottom right)
-    ax4.axis('off')  # Hide axes for text panel
-
-    # Create comprehensive text summary
-    results_text = f"""causality analysis results
-track pair: {leader_track_id} → {follower_track_id}
-
-granger causality:
-  gc({leader_track_id}→{follower_track_id}): {gc_12:.4f}
-  gc({follower_track_id}→{leader_track_id}): {gc_21:.4f}
-  granger difference: {granger_diff:.4f}
-  p-value: {p_value:.4f}
-  stronger direction: {pair_result.get('stronger_direction', 'unknown')}
-
-spatial relationship:
-  leader position: ({pos_leader[0]:.1f}, {pos_leader[1]:.1f})
-  follower position: ({pos_follower[0]:.1f}, {pos_follower[1]:.1f})
-  distance: {distance:.1f} pixels
-
-temporal analysis:
-  peak cross-correlation: {peak_corr:.4f}
-  peak lag: {peak_lag} frames
-  interpretation: {lag_interpretation}
-
-data quality:
-  leader time series: {len(ts_leader)} points
-  follower time series: {len(ts_follower)} points
-  overlapping frames: {len(overlap_frames_leader)} points
-  frame range: {int(min_frame)} - {int(max_frame)}
-
-conclusion:"""
-
-    # Statistical significance interpretation
-    if p_value < 0.001:
-        significance = "extremely significant (p < 0.001)"
-    elif p_value < 0.01:
-        significance = "highly significant (p < 0.01)"
-    elif p_value < 0.05:
-        significance = "significant (p < 0.05)"
-    else:
-        significance = "not significant (p ≥ 0.05)"
-
-    # Overall assessment
-    if granger_diff > 0.1 and p_value < 0.01:
-        assessment = "strong causal relationship"
-    elif granger_diff > 0.05:
-        assessment = "moderate causal relationship"
-    else:
-        assessment = "weak causal relationship"
-
-    results_text += f"""
-  causality strength: {significance}
-  spatial proximity: {distance:.1f} pixels
-  temporal consistency: {'✓' if (peak_lag >= 0 and gc_12 > gc_21) or (peak_lag <= 0 and gc_21 > gc_12) else '✗'}
-  overall assessment: {assessment}"""
-
-    ax4.text(0.05, 0.95, results_text, transform=ax4.transAxes, fontsize=10,
-             horizontalalignment='left', verticalalignment='top', fontfamily='monospace')
-
-    plt.tight_layout()
-
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"combined causality analysis saved to {save_path}")
-
-    plt.close()
-
-    # Also print to console (simplified version)
-    print(f"\ncausality analysis: {leader_track_id} → {follower_track_id}")
-    print(f"granger difference: {granger_diff:.4f} (p={p_value:.4f})")
-    print(f"spatial distance: {distance:.1f} pixels")
-    print(f"temporal relationship: {lag_interpretation}")
-    print(f"overall assessment: {assessment}")
-
-
-
 def plot_interesting_causality_pairs(significant_pairs, filtered_time_series, track_positions,
                                      network_scores, dataset_name, n_pairs=20):
     """
@@ -2135,3 +1673,391 @@ def plot_interesting_causality_pairs(significant_pairs, filtered_time_series, tr
     print(f"all plots saved to graphs_data/{dataset_name}/causality_pair_*.png")
 
     return selected_pairs
+
+
+def recommend_amplitude_values(
+    x_list, 
+    run, 
+    n_frames, 
+    device='cuda',
+    sample_every=100,
+    verbose=True
+):
+    """
+    Analyze ground truth data and recommend amplitude values for perturbation mode.
+    
+    For positive amplitude mode:
+        F = identity + amplitude * tanh(network_output)
+        C = amplitude * tanh(network_output)
+        Jp = 1.0 + amplitude * tanh(network_output)
+    
+    Returns recommended amplitude values based on typical deviations from reference.
+    """
+    
+    results = {}
+    
+    # ============================================================================
+    # ANALYZE F
+    # ============================================================================
+    if verbose:
+        print("\n" + "="*80)
+        print("=== Analyzing F (Deformation Gradient) ===")
+        print("="*80)
+    
+    all_F_gt = []
+    for k in range(0, n_frames, sample_every):
+        x = torch.tensor(x_list[run][k], dtype=torch.float32, device=device)
+        F_gt = x[:, 9:13].reshape(-1, 2, 2)
+        all_F_gt.append(F_gt)
+    
+    all_F_gt = torch.stack(all_F_gt)
+    
+    # Deviation from identity
+    identity = torch.eye(2, device=device)
+    F_deviation = all_F_gt - identity.unsqueeze(0).unsqueeze(0)
+    F_dev_abs_max = F_deviation.abs().max().item()
+    F_dev_norm_mean = torch.norm(F_deviation.reshape(-1, 4), dim=1).mean().item()
+    F_dev_norm_max = torch.norm(F_deviation.reshape(-1, 4), dim=1).max().item()
+    
+    # Singular value deviation from 1.0
+    U, sig, Vh = torch.linalg.svd(all_F_gt.reshape(-1, 2, 2))
+    sig_dev = (sig - 1.0).abs()
+    sig_dev_max = sig_dev.max().item()
+    sig_dev_mean = sig_dev.mean().item()
+    
+    if verbose:
+        print(f"\nF deviation from identity:")
+        print(f"  Max |F - I|: {F_dev_abs_max:.6f}")
+        print(f"  Mean ||F - I||: {F_dev_norm_mean:.6f}")
+        print(f"  Max ||F - I||: {F_dev_norm_max:.6f}")
+        print(f"\nSingular value deviation from 1.0:")
+        print(f"  Max |sig - 1|: {sig_dev_max:.6f}")
+        print(f"  Mean |sig - 1|: {sig_dev_mean:.6f}")
+    
+    # Recommend F amplitude
+    # tanh outputs [-1, 1], so amplitude should cover max deviation
+    # Add safety margin
+    recommended_F_amplitude = F_dev_abs_max * 1.5  # 50% margin
+    
+    if verbose:
+        print(f"\n  Recommended MPM_F_amplitude: {recommended_F_amplitude:.6f}")
+        print(f"  (This allows F ∈ [I - {recommended_F_amplitude:.3f}, I + {recommended_F_amplitude:.3f}])")
+    
+    results['F'] = {
+        'dev_abs_max': F_dev_abs_max,
+        'dev_norm_mean': F_dev_norm_mean,
+        'dev_norm_max': F_dev_norm_max,
+        'sig_dev_max': sig_dev_max,
+        'recommended_amplitude': recommended_F_amplitude
+    }
+    
+    # ============================================================================
+    # ANALYZE C
+    # ============================================================================
+    if verbose:
+        print("\n" + "="*80)
+        print("=== Analyzing C (Affine Velocity Gradient) ===")
+        print("="*80)
+    
+    all_C_gt = []
+    for k in range(0, n_frames, sample_every):
+        x = torch.tensor(x_list[run][k], dtype=torch.float32, device=device)
+        C_gt = x[:, 5:9].reshape(-1, 2, 2)
+        all_C_gt.append(C_gt)
+    
+    all_C_gt = torch.stack(all_C_gt)
+    
+    # C is naturally around zero (velocity gradients)
+    C_abs_max = all_C_gt.abs().max().item()
+    C_norm_mean = torch.norm(all_C_gt.reshape(-1, 4), dim=1).mean().item()
+    C_norm_max = torch.norm(all_C_gt.reshape(-1, 4), dim=1).max().item()
+    C_std = all_C_gt.std().item()
+    
+    if verbose:
+        print(f"\nC statistics:")
+        print(f"  Max |C|: {C_abs_max:.6f}")
+        print(f"  Mean ||C||: {C_norm_mean:.6f}")
+        print(f"  Max ||C||: {C_norm_max:.6f}")
+        print(f"  Std(C): {C_std:.6f}")
+    
+    # Recommend C amplitude
+    # Use 3*std or max, whichever is larger, with margin
+    recommended_C_amplitude = max(3 * C_std, C_abs_max) * 1.5
+    
+    if verbose:
+        print(f"\n  Recommended MPM_C_amplitude: {recommended_C_amplitude:.6f}")
+        print(f"  (This allows C ∈ [-{recommended_C_amplitude:.3f}, {recommended_C_amplitude:.3f}])")
+    
+    results['C'] = {
+        'abs_max': C_abs_max,
+        'norm_mean': C_norm_mean,
+        'norm_max': C_norm_max,
+        'std': C_std,
+        'recommended_amplitude': recommended_C_amplitude
+    }
+    
+    # ============================================================================
+    # ANALYZE Jp
+    # ============================================================================
+    if verbose:
+        print("\n" + "="*80)
+        print("=== Analyzing Jp (Plastic Deformation) ===")
+        print("="*80)
+    
+    all_Jp_gt = []
+    for k in range(0, n_frames, sample_every):
+        x = torch.tensor(x_list[run][k], dtype=torch.float32, device=device)
+        Jp_gt = x[:, 13:14]
+        all_Jp_gt.append(Jp_gt)
+    
+    all_Jp_gt = torch.stack(all_Jp_gt)
+    
+    # Deviation from 1.0 (no plastic deformation)
+    Jp_deviation = (all_Jp_gt - 1.0).abs()
+    Jp_dev_max = Jp_deviation.max().item()
+    Jp_dev_mean = Jp_deviation.mean().item()
+    Jp_std = all_Jp_gt.std().item()
+    Jp_min = all_Jp_gt.min().item()
+    Jp_max = all_Jp_gt.max().item()
+    
+    if verbose:
+        print(f"\nJp deviation from 1.0:")
+        print(f"  Max |Jp - 1|: {Jp_dev_max:.6f}")
+        print(f"  Mean |Jp - 1|: {Jp_dev_mean:.6f}")
+        print(f"  Std(Jp): {Jp_std:.6f}")
+        print(f"  Range: [{Jp_min:.6f}, {Jp_max:.6f}]")
+    
+    # Recommend Jp amplitude
+    # Use max deviation with margin
+    recommended_Jp_amplitude = Jp_dev_max * 1.5
+    
+    if verbose:
+        print(f"\n  Recommended MPM_Jp_amplitude: {recommended_Jp_amplitude:.6f}")
+        print(f"  (This allows Jp ∈ [1 - {recommended_Jp_amplitude:.3f}, 1 + {recommended_Jp_amplitude:.3f}])")
+        print(f"  = [{1 - recommended_Jp_amplitude:.3f}, {1 + recommended_Jp_amplitude:.3f}]")
+    
+    results['Jp'] = {
+        'dev_max': Jp_dev_max,
+        'dev_mean': Jp_dev_mean,
+        'std': Jp_std,
+        'min': Jp_min,
+        'max': Jp_max,
+        'recommended_amplitude': recommended_Jp_amplitude
+    }
+    
+    # ============================================================================
+    # S (Stress) - if available
+    # ============================================================================
+    # Note: Stress is typically computed, not stored. 
+    # We'll provide a generic recommendation based on material properties
+    if verbose:
+        print("\n" + "="*80)
+        print("=== S (Stress Tensor) Recommendation ===")
+        print("="*80)
+        print("\nNote: Stress is typically computed from F, not stored.")
+        print("Generic recommendation based on typical MPM stress ranges:")
+    
+    # Generic stress amplitude (can be refined if you have stress data)
+    recommended_S_amplitude = 100.0  # Typical stress magnitude in Pa
+    
+    if verbose:
+        print(f"  Recommended MPM_S_amplitude: {recommended_S_amplitude:.6f}")
+        print(f"  (Adjust based on your material stiffness: mu, lambda)")
+    
+    results['S'] = {
+        'recommended_amplitude': recommended_S_amplitude
+    }
+    
+    # ============================================================================
+    # SUMMARY
+    # ============================================================================
+    if verbose:
+        print("\n" + "="*80)
+        print("=== RECOMMENDED CONFIG ===")
+        print("="*80)
+        print(f"""
+MPM_F_amplitude: float = {recommended_F_amplitude:.6f}
+MPM_C_amplitude: float = {recommended_C_amplitude:.6f}
+MPM_Jp_amplitude: float = {recommended_Jp_amplitude:.6f}
+MPM_S_amplitude: float = {recommended_S_amplitude:.6f}
+""")
+        
+        print("\nUsage in model:")
+        print(f"""
+# F: perturbation around identity
+if self.F_amplitude > 0:
+    F = self.identity + {recommended_F_amplitude:.6f} * torch.tanh(
+        self.siren_F(features).reshape(-1, 2, 2))
+
+# C: perturbation around zero
+if self.C_amplitude > 0:
+    C = {recommended_C_amplitude:.6f} * torch.tanh(
+        self.siren_C(features).reshape(-1, 2, 2))
+
+# Jp: perturbation around 1.0
+if self.Jp_amplitude > 0:
+    Jp = 1.0 + {recommended_Jp_amplitude:.6f} * torch.tanh(
+        self.siren_Jp(features).reshape(-1, 1))
+
+# S: perturbation around zero
+if self.S_amplitude > 0:
+    S = {recommended_S_amplitude:.6f} * torch.tanh(
+        self.siren_S(features).reshape(-1, 2, 2))
+""")
+    
+    return results
+
+
+def plot_fields(trainer, model, x_list, run, frame_idx, n_particles, n_frames, device, 
+                log_dir, epoch, N, dataset_name):
+    """
+    Plot all fields (F, S, C, Jp) that are present in trainer for a given frame.
+    
+    Args:
+        trainer: dict containing model configuration (checks for 'F', 'S', 'C', 'Jp' keys)
+        model: the neural network model
+        x_list: list of particle data arrays
+        run: current run index
+        frame_idx: frame index to plot
+        n_particles: number of particles
+        n_frames: total number of frames
+        device: torch device
+        log_dir: directory for saving plots
+        epoch: current training epoch
+        N: current training iteration
+        dataset_name: name of the dataset
+    """
+    
+    # Define all possible fields
+    field_configs = {
+        'F': {
+            'indices': (9, 13),
+            'shape': (-1, 2, 2),
+            'vmin': np.sqrt(2) - 0.1,
+            'vmax': np.sqrt(2) + 0.1,
+            'cmap': 'coolwarm',
+            'title': 'F (deformation)',
+            'use_identity': True
+        },
+        'S': {
+            'indices': (13, 17),
+            'shape': (-1, 2, 2),
+            'vmin': 0,
+            'vmax': 6E-3,
+            'cmap': 'hot',
+            'title': 'S (stress)',
+            'use_identity': False
+        },
+        'C': {
+            'indices': (5, 9),
+            'shape': (-1, 2, 2),
+            'vmin': 0,
+            'vmax': 80,
+            'cmap': 'viridis',
+            'title': 'C (Jacobian of velocity)',
+            'use_identity': False
+        },
+        'Jp': {
+            'indices': (17, 18),
+            'shape': (-1,),
+            'vmin': 0.75,
+            'vmax': 1.25,
+            'cmap': 'viridis',
+            'title': 'Jp (volume deformation)',
+            'use_identity': False
+        }
+    }
+    
+    with torch.no_grad():
+        plt.style.use('dark_background')
+        
+        # Load particle data for the frame
+        x = torch.tensor(x_list[run][frame_idx], dtype=torch.float32, device=device)
+        pos = x[:, 1:3]  # Particle positions
+        frame_normalized = torch.tensor(frame_idx / n_frames, dtype=torch.float32, device=device)
+        
+        # Prepare features for SIREN
+        features = torch.cat([
+            pos,
+            frame_normalized.expand(n_particles, 1)
+        ], dim=1)
+        
+        # Plot each field that's in trainer
+        for field_name, config in field_configs.items():
+            if field_name not in trainer:
+                continue
+            
+            # Get SIREN model for this field
+            siren_model = getattr(model, f'siren_{field_name}')
+            
+            # Get prediction
+            if config['use_identity']:
+                identity = torch.eye(2, device=device).unsqueeze(0).expand(n_particles, -1, -1)
+                field_pred = identity + torch.tanh(siren_model(features).reshape(*config['shape']))
+            else:
+                field_pred = siren_model(features).reshape(*config['shape'])
+            
+            # Calculate norms
+            if field_name == 'Jp':
+                field_norm_pred = field_pred.cpu().numpy()
+                field_norm_gt = x[:, config['indices'][0]].cpu().numpy()
+            else:
+                field_norm_pred = torch.norm(field_pred.view(n_particles, -1), dim=1).cpu().numpy()
+                field_gt = x[:, config['indices'][0]:config['indices'][1]].reshape(*config['shape'])
+                field_norm_gt = torch.norm(field_gt.view(n_particles, -1), dim=1).cpu().numpy()
+            
+            # Create figure with 3 subplots
+            fig = plt.figure(figsize=(15, 5))
+            
+            # Plot 1: Ground truth
+            ax1 = fig.add_subplot(1, 3, 1)
+            scatter1 = ax1.scatter(to_numpy(pos[:, 0]), to_numpy(pos[:, 1]), 
+                                  c=field_norm_gt, s=1, cmap=config['cmap'], 
+                                  vmin=config['vmin'], vmax=config['vmax'])
+            ax1.set_title(f'Ground truth {config["title"]} (Frame {frame_idx})', fontsize=10)
+            ax1.set_xlabel('X')
+            ax1.set_ylabel('Y')
+            ax1.set_aspect('equal')
+            plt.colorbar(scatter1, ax=ax1, label=f'||{field_name}||' if field_name != 'Jp' else 'Jp')
+            ax1.set_xlim([0, 1])
+            ax1.set_ylim([0, 1])
+            
+            # Plot 2: SIREN predicted
+            ax2 = fig.add_subplot(1, 3, 2)
+            scatter2 = ax2.scatter(to_numpy(pos[:, 0]), to_numpy(pos[:, 1]), 
+                                  c=field_norm_pred, s=1, cmap=config['cmap'],
+                                  vmin=config['vmin'], vmax=config['vmax'])
+            ax2.set_title(f'SIREN predicted {config["title"]} (Frame {frame_idx})', fontsize=10)
+            ax2.set_xlabel('X')
+            ax2.set_ylabel('Y')
+            ax2.set_aspect('equal')
+            plt.colorbar(scatter2, ax=ax2, label=f'||{field_name}||' if field_name != 'Jp' else 'Jp')
+            ax2.set_xlim([0, 1])
+            ax2.set_ylim([0, 1])
+            
+            # Plot 3: Error
+            ax3 = fig.add_subplot(1, 3, 3)
+            field_error = np.abs(field_norm_pred - field_norm_gt)
+            scatter3 = ax3.scatter(to_numpy(pos[:, 0]), to_numpy(pos[:, 1]), 
+                                  c=field_error, s=1, cmap='viridis',
+                                  vmin=-0.01, vmax=0.01)
+            ax3.set_title(f'Absolute error (Frame {frame_idx})', fontsize=10)
+            ax3.set_xlabel('X')
+            ax3.set_ylabel('Y')
+            ax3.set_aspect('equal')
+            plt.colorbar(scatter3, ax=ax3, label='|error|')
+            ax3.set_xlim([0, 1])
+            ax3.set_ylim([0, 1])
+            
+            # Add training info
+            fig.suptitle(f'Epoch {epoch}, Iter {N} - Training SIREN {field_name} Field', fontsize=12)
+            
+            plt.tight_layout()
+            
+            # Save figure
+            out_dir = f"./{log_dir}/tmp_training/siren_{field_name}"
+            os.makedirs(out_dir, exist_ok=True)
+            num = f"{frame_idx:06}"
+            plt.savefig(f"{out_dir}/Fig_{run}_{num}_epoch{epoch}_iter{N}.png", dpi=100)
+            plt.close(fig)
+            

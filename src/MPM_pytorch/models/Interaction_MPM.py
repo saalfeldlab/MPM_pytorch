@@ -1,3 +1,4 @@
+from turtle import pos
 import torch_geometric as pyg
 import torch_geometric.utils as pyg_utils
 from MPM_pytorch.models.MLP import MLP
@@ -66,7 +67,11 @@ class Interaction_MPM(nn.Module):
         self.friction = simulation_config.MPM_friction
         self.surface_tension = simulation_config.MPM_surface_tension
         self.tension_scaling = simulation_config.MPM_tension_scaling
+
         self.F_amplitude = simulation_config.MPM_F_amplitude
+        self.C_amplitude = simulation_config.MPM_C_amplitude
+        self.Jp_amplitude = simulation_config.MPM_Jp_amplitude
+        self.S_amplitude = simulation_config.MPM_S_amplitude
 
         siren_params = model_config.multi_siren_params
 
@@ -193,20 +198,77 @@ class Interaction_MPM(nn.Module):
 
         embedding = self.a[data_id.detach().long(), N.long(), :].squeeze()
 
-        if 'C' in trainer:
-            if self.model == 'PDE_MPM_A':
-                features = torch.cat((pos, d_pos, embedding, frame), dim=1).detach()
-            else:
-                features = torch.cat((pos, d_pos, frame), dim=1).detach()
-            C = self.siren_C(features)
+        # Deformation Gradient F
         if 'F' in trainer:
             features = torch.cat((pos, frame), dim=1).detach()
-            if 'F' in trainer:
-                features = torch.cat((pos, frame), dim=1).detach()
+            if self.F_amplitude > 0:
+                # Perturbation around identity
                 F = self.identity + self.F_amplitude * torch.tanh(self.siren_F(features).reshape(-1, 2, 2))
+            elif self.F_amplitude == 0:
+                # Direct prediction (no constraints)
+                F = self.siren_F(features).reshape(-1, 2, 2)
+            elif self.F_amplitude == -1:
+                # SVD-constrained prediction (material-agnostic, prevents collapse)
+                F_raw = self.siren_F(features).reshape(-1, 2, 2)
+                U, S_f, Vh = torch.linalg.svd(F_raw)
+                # Universal range covering all material types
+                min_sig = 0.1   # Prevents collapse, allows compression
+                max_sig = 3.0   # Allows jelly expansion, snow stays in [0.975, 1.0045]
+                # Soft clamping for smooth gradients
+                S_clamped = min_sig + (max_sig - min_sig) * torch.sigmoid(S_f)
+                F = torch.bmm(U, torch.bmm(torch.diag_embed(S_clamped), Vh))
+
+        # Affine Velocity Gradient C
+        if 'C' in trainer:
+            features = torch.cat((pos, frame), dim=1).detach()
+            if self.C_amplitude > 0:
+                # Perturbation around zero (small velocity gradients)
+                C = self.C_amplitude * torch.tanh(self.siren_C(features).reshape(-1, 2, 2))
+            elif self.C_amplitude == 0:
+                # Direct prediction (no constraints)
+                C = self.siren_C(features).reshape(-1, 2, 2)
+            elif self.C_amplitude == -1:
+                # Bounded prediction (typical velocity gradients)
+                C_raw = self.siren_C(features).reshape(-1, 2, 2)
+                # Velocity gradients typically in reasonable range
+                max_C = 10.0  # Adjust based on dt and typical velocities
+                C = max_C * torch.tanh(C_raw)  # C ∈ [-10, 10]
+
+        # Stress Tensor S (or sigma)
+        if 'S' in trainer:
+            features = torch.cat((pos, frame), dim=1).detach()
+            if self.S_amplitude > 0:
+                # Perturbation around zero stress
+                S = self.S_amplitude * torch.tanh(self.siren_S(features).reshape(-1, 2, 2))
+            elif self.S_amplitude == 0:
+                # Direct prediction
+                S = self.siren_S(features).reshape(-1, 2, 2)
+            elif self.S_amplitude == -1:
+                # Symmetric stress tensor constraint
+                S_raw = self.siren_S(features).reshape(-1, 2, 2)
+                # Ensure symmetry: sigma = (sigma + sigma^T) / 2
+                S = 0.5 * (S_raw + S_raw.transpose(-2, -1))
+                # Optional: bound stress magnitude
+                max_stress = 100.0  # Adjust based on material properties
+                S = max_stress * torch.tanh(S / max_stress)  # Soft bound
+
+        # Plastic Deformation Jp
         if 'Jp' in trainer:
             features = torch.cat((pos, frame), dim=1).detach()
-            Jp = self.siren_Jp(features)
+            if self.Jp_amplitude > 0:
+                # Perturbation around 1.0 (no plastic deformation)
+                Jp = 1.0 + self.Jp_amplitude * torch.tanh(self.siren_Jp(features).reshape(-1, 1))
+            elif self.Jp_amplitude == 0:
+                # Direct prediction (dangerous - can go negative!)
+                Jp_raw = self.siren_Jp(features).reshape(-1, 1)
+                Jp = torch.clamp(Jp_raw, min=1e-4, max=10.0)  # Safety clamp
+            elif self.Jp_amplitude == -1:
+                # Safe exponential parameterization (always positive)
+                Jp_raw = self.siren_Jp(features).reshape(-1, 1)
+                # Jp should be positive and typically in [0.5, 2.0]
+                # Use exp to ensure positivity, centered around 1.0
+                Jp = torch.exp(torch.clamp(Jp_raw, min=-1.0, max=1.0))
+                # Jp ∈ [exp(-1), exp(1)] = [0.368, 2.718]
 
         X, V, C, F, Jp, _, _, _, _, _ = MPM_step(self.MPM_P2G, pos, d_pos, C, F, Jp, T,
                                 M, self.n_particles, self.n_grid,

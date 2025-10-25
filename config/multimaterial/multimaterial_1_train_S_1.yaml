@@ -1,4 +1,4 @@
-description: '9 discs of different materials falling down in a box  size 256  trainer F LR 1E-8 batch 16'
+description: '9 discs of different materials falling down in a box  size 256 LR 1E-8 batch 16  trainer S'
 dataset: 'multimaterial_1'
 
 simulation:
@@ -21,6 +21,7 @@ simulation:
   MPM_rho_list: [ 1.0, 0.5, 0.25 ]
   MPM_friction: 0.0
   MPM_young_coeff: 1.0
+  MPM_F_amplitude: 1.5
 
 graph_model:
   particle_model_name: 'PDE_MPM'
@@ -61,7 +62,7 @@ training:
 
   device: 'auto'
   n_runs: 1
-  n_epochs: 6
+  n_epochs: 10
 
   batch_size: 16
   
@@ -79,7 +80,7 @@ training:
   coeff_F_norm: 0
   coeff_det_F: 1
 
-  MPM_trainer : 'F'
+  MPM_trainer : 'S'
 
 
 
