@@ -374,7 +374,18 @@ def data_generate_MPM_2D(
         x_list = []
 
 
-        if 'cells' in config.dataset:
+        if 'tissue' in config.dataset:
+            # Initialize 2D MPM shapes as tissue
+            N, X, V, C, F, T, Jp, M, S, ID = init_MPM_tissue(
+                image_path=simulation_config.image_path,
+                n_particles=n_particles,
+                n_grid=n_grid,
+                dx=dx,
+                rho_list=rho_list,
+                seed=simulation_config.seed,
+                device=device
+            )
+        elif 'cells' in config.dataset:
             # Initialize 2D MPM shapes as cells
             N, X, V, C, F, T, Jp, M, S, ID = init_MPM_cells(
                 n_shapes=MPM_n_objects,
@@ -431,6 +442,9 @@ def data_generate_MPM_2D(
                 if 'latex' in style:
                     plt.rcParams['text.usetex'] = True
                     rc('font', **{'family': 'serif', 'serif': ['Palatino']})
+
+                if 'centered' in style:
+                    x = x - torch.mean(x, dim=0, keepdim=True) + 0.5
 
                 if 'grid' in style:
                     plt.figure(figsize=(15, 10))
@@ -525,10 +539,30 @@ def data_generate_MPM_2D(
 
                     plt.tight_layout()
                     num = f"{idx:06}"
-                    plt.savefig(f"graphs_data/{dataset_name}/Fig/Fig_{run}_{num}.png", dpi=100)
+                    plt.savefig(f"graphs_data/{dataset_name}/Grid/Fig_{run}_{num}.png", dpi=100)
                     plt.close()
+                
+                
+                if 'tissue' in config.dataset:
+                    fig, ax = fig_init(formatx="%.1f", formaty="%.1f")
+                    plt.axis('off')
+                    mass = torch.unique(M)
+                    is_red = M==mass[1]
+                    plt.scatter(to_numpy(x[is_red.squeeze(), 1]), to_numpy(x[is_red.squeeze(), 2]), c='red', s=1, alpha = 1, edgecolors='none')
+                    is_green = M==mass[0]
+                    plt.scatter(to_numpy(x[is_green.squeeze(), 1]), to_numpy(x[is_green.squeeze(), 2]), c='green', s=1, alpha = 1, edgecolors='none')
+                    plt.xlim([0, 1])
+                    plt.ylim([0, 1])
+                    plt.xticks([])
+                    plt.yticks([])
+                    plt.tight_layout()
+                    num = f"{idx:06}"
+                    plt.savefig(f"graphs_data/{dataset_name}/Fig/Fig_{run}_{num}.png", dpi=80)
+                    plt.close()
+            
                 else:
                     fig, ax = fig_init(formatx="%.1f", formaty="%.1f")
+                    plt.axis('off')
                     if 'F' in style:
                         f_norm = torch.norm(F.view(n_particles, -1), dim=1).cpu().numpy()
                         plt.scatter(to_numpy(x[:, 1]), to_numpy(x[:, 2]), c=f_norm, s=10, cmap='coolwarm', vmin=1.44-0.1, vmax=1.44+0.1)
@@ -571,9 +605,9 @@ def data_generate_MPM_2D(
                 fdst.write(fsrc.read())
             generate_compressed_video_mp4(output_dir=f"./graphs_data/{dataset_name}", run=run,
                                         config_indices=config_indices, framerate=50)
-            files = glob.glob(f'./graphs_data/{dataset_name}/Fig/*')
-            for f in files:
-                os.remove(f)
+            # files = glob.glob(f'./graphs_data/{dataset_name}/Fig/*')
+            # for f in files:
+            #     os.remove(f)
 
 
 def data_generate_MPM_3D(

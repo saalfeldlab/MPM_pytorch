@@ -16,6 +16,12 @@ import numpy as np
 import os
 from matplotlib import cm
 
+from PIL import Image
+from skimage.filters import threshold_otsu
+from skimage.measure import label
+from skimage.morphology import remove_small_objects, disk
+from skimage.morphology import opening
+import os
 
 def choose_model(config=[], W=[], device=[]):
     particle_model_name = config.graph_model.particle_model_name
@@ -282,7 +288,6 @@ def init_MPM_shapes(
         plt.ylim(0,1)
         plt.savefig('gummy_bear_particles.png', dpi=300)
         plt.close()
-
 
     elif geometry == 'cubes':
         # Generate cube particles relative to center
@@ -1344,6 +1349,239 @@ def init_MPM_cells(
     ID = id_permutation[ID.squeeze()].unsqueeze(1)
 
     return N, x, v, C, F, T, Jp, M, S, ID
+
+
+
+def init_MPM_tissue(
+        image_path=[],
+        n_particles=[],
+        n_grid=[],
+        dx=[],
+        rho_list=[],
+        seed=42,
+        device='cpu'
+):
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+
+    p_vol = (dx * 0.5) ** 2
+
+    N = torch.arange(n_particles, dtype=torch.float32, device=device)[:, None]
+    x = torch.zeros((n_particles, 2), dtype=torch.float32, device=device)
+    v = torch.ones((n_particles, 2), dtype=torch.float32, device=device) * 0.4
+    C = torch.zeros((n_particles, 2, 2), dtype=torch.float32, device=device)
+    F = torch.eye(2, dtype=torch.float32, device=device).unsqueeze(0).expand(n_particles, -1, -1)
+    T = torch.ones((n_particles, 1), dtype=torch.int32, device=device)
+    Jp = torch.ones((n_particles, 1), dtype=torch.float32, device=device)
+    S = torch.zeros((n_particles, 2, 2), dtype=torch.float32, device=device)
+    GM = torch.zeros((n_grid, n_grid), dtype=torch.float32, device=device)
+    GP = torch.zeros((n_grid, n_grid), dtype=torch.float32, device=device)
+
+    # ---- image load ----
+    im = Image.open(image_path).convert("RGB")
+    arr = np.asarray(im).astype(np.float64)
+    H, W, _ = arr.shape
+    R = arr[..., 0]
+    G = arr[..., 1]
+
+    # ============================ nuclei (red) ============================
+    thr_r = threshold_otsu(R)
+    nuclei_mask = R >= thr_r
+    nuclei_mask = opening(nuclei_mask, disk(1))
+    nuclei_mask = remove_small_objects(nuclei_mask, 50)
+    nuclei_labels = label(nuclei_mask, connectivity=1)  # 0=bg, 1..K
+
+    # ============================ fibers (green) ==========================
+    # Otsu on green, then remove nuclei to avoid overlap
+    thr_g = threshold_otsu(G)
+    green_mask = G >= thr_g
+    green_mask = opening(green_mask, disk(1))
+    green_mask = remove_small_objects(green_mask, 30)
+    green_mask = np.logical_and(green_mask, ~nuclei_mask)
+
+    # ============================ helpers ================================
+    def build_downsampled_density(density_full, target=256):
+        # Downsample keeping aspect; ensure strictly positive where mask > 0
+        Hf, Wf = density_full.shape
+        scale = min(target / Hf, target / Wf)
+        ds_W = max(1, int(Wf * scale))
+        ds_H = max(1, int(Hf * scale))
+        if density_full.max() > 0:
+            img = Image.fromarray((density_full / density_full.max() * 255.0).astype(np.uint8))
+        else:
+            img = Image.fromarray(np.zeros_like(density_full, dtype=np.uint8))
+        ds = np.asarray(img.resize((ds_W, ds_H), resample=Image.BILINEAR)).astype(np.float64)
+        ds = np.clip(ds, 0, None)
+        return ds, ds_W, ds_H
+
+    def sample_from_density(ds, ds_W, ds_H, N_samp):
+        # If density is empty, return empty arrays
+        total = ds.sum()
+        if total <= 0 or N_samp <= 0:
+            return np.empty((0,), dtype=np.float64), np.empty((0,), dtype=np.float64)
+        p = ds.ravel() / total
+        counts = np.random.multinomial(N_samp, p)
+        nz = np.nonzero(counts)[0]
+        ys_ds, xs_ds = np.divmod(nz, ds_W)
+        ns = counts[nz]
+        sx = W / ds_W
+        sy = H / ds_H
+        xs_list, ys_list = [], []
+        for x_cell, y_cell, n in zip(xs_ds, ys_ds, ns):
+            xs_list.append((x_cell + np.random.rand(n)) * sx)
+            ys_list.append((y_cell + np.random.rand(n)) * sy)
+        return np.concatenate(xs_list), np.concatenate(ys_list)
+
+    # ======================= balanced sampling ===========================
+    # Half red (inside nuclei), half green (fiber mask)
+    n_red = n_particles // 2
+    n_green = n_particles - n_red
+
+    # Red density: use R where nucleus, else 0
+    red_density = np.where(nuclei_mask, R, 0.0)
+    red_ds, red_ds_W, red_ds_H = build_downsampled_density(red_density)
+    Xr, Yr = sample_from_density(red_ds, red_ds_W, red_ds_H, n_red)
+
+    # Green density: use G where green fibers, else 0
+    green_density = np.where(green_mask, G, 0.0)
+    green_ds, green_ds_W, green_ds_H = build_downsampled_density(green_density)
+    Xg, Yg = sample_from_density(green_ds, green_ds_W, green_ds_H, n_green)
+
+    # If one class had no mass (rare), fallback to (R+G) for remaining quota
+    def fallback_sample(needed):
+        if needed <= 0:
+            return np.empty((0,)), np.empty((0,))
+        dens = np.clip(R + G - (R + G).min(), 0, None)
+        ds, ds_W, ds_H = build_downsampled_density(dens)
+        return sample_from_density(ds, ds_W, ds_H, needed)
+
+    if Xr.size < n_red:
+        Xf, Yf = fallback_sample(n_red - Xr.size)
+        Xr = np.concatenate([Xr, Xf]); Yr = np.concatenate([Yr, Yf])
+    if Xg.size < n_green:
+        Xf, Yf = fallback_sample(n_green - Xg.size)
+        Xg = np.concatenate([Xg, Xf]); Yg = np.concatenate([Yg, Yf])
+
+    # Concatenate and build labels
+    X = np.concatenate([Xr, Xg])
+    Y = np.concatenate([Yr, Yg])
+    is_red = np.concatenate([np.ones(Xr.shape[0], dtype=bool),
+                             np.zeros(Xg.shape[0], dtype=bool)])
+
+    # Shuffle so colors are mixed
+    perm = np.random.permutation(X.shape[0])
+    X = X[perm]; Y = Y[perm]; is_red = is_red[perm]
+
+    # ========================== attributes ===============================
+    xi = np.clip(np.round(X).astype(int), 0, W - 1)
+    yi = np.clip(np.round(Y).astype(int), 0, H - 1)
+    obj_id_np = nuclei_labels[yi, xi]
+    obj_id_np[~is_red] = 0  # green fibers → object_id 0
+
+    # mass: red=1.0, green=0.1 (your convention), then multiply by particle volume
+    mass_np = np.where(is_red, 1.0, 0.1).astype(np.float32)
+
+    M = torch.as_tensor(mass_np, dtype=torch.float32, device=device).unsqueeze(1)
+    M = M * torch.full((n_particles, 1), p_vol, dtype=torch.float32, device=device)
+
+    # positions (keep your normalization/scaling)
+    x[:, 0] = torch.as_tensor(X, dtype=torch.float32, device=device) / W / 2 + 0.2
+    x[:, 1] = torch.as_tensor(Y, dtype=torch.float32, device=device) / H / 2.6 + 0.2
+
+    ID = torch.as_tensor(obj_id_np, dtype=torch.int32, device=device).unsqueeze(1)
+
+    return N, x, v, C, F, T, Jp, M, S, ID
+
+
+
+
+def init_MPM_tissue_(
+        image_path=[],
+        n_particles=[],
+        n_grid=[],
+        dx=[],
+        rho_list=[],
+        seed=42,
+        device='cpu'
+):
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+
+    p_vol = (dx * 0.5) ** 2
+
+    N = torch.arange(n_particles, dtype=torch.float32, device=device)[:, None]
+    x = torch.zeros((n_particles, 2), dtype=torch.float32, device=device)
+    v = torch.ones((n_particles, 2), dtype=torch.float32, device=device) * 0.4
+    C = torch.zeros((n_particles, 2, 2), dtype=torch.float32, device=device)
+    F = torch.eye(2, dtype=torch.float32, device=device).unsqueeze(0).expand(n_particles, -1, -1)
+    T = torch.ones((n_particles, 1), dtype=torch.int32, device=device)
+    Jp = torch.ones((n_particles, 1), dtype=torch.float32, device=device)
+    S = torch.zeros((n_particles, 2, 2), dtype=torch.float32, device=device)
+    GM = torch.zeros((n_grid, n_grid), dtype=torch.float32, device=device)
+    GP = torch.zeros((n_grid, n_grid), dtype=torch.float32, device=device)
+
+    # ---- image load ----
+    im = Image.open(image_path).convert("RGB")
+    arr = np.asarray(im).astype(np.float64)
+    H, W, _ = arr.shape
+    R = arr[..., 0]
+    G = arr[..., 1]
+
+    # ============================ XXXX ============================
+    thr = threshold_otsu(R)
+    nuclei_mask = R >= thr
+    nuclei_mask = opening(nuclei_mask, disk(1))
+    nuclei_mask = remove_small_objects(nuclei_mask, 50)
+    nuclei_labels = label(nuclei_mask, connectivity=1)
+
+    target = 256
+    scale = min(target / H, target / W)
+    ds_W = max(1, int(W * scale))
+    ds_H = max(1, int(H * scale))
+    density = np.clip(R + G - (R + G).min(), 0, None)
+    if np.all(density == 0):
+        density[:] = 1.0
+    dens_img = Image.fromarray((density / density.max() * 255.0).astype(np.uint8))
+    dens_ds = np.asarray(dens_img.resize((ds_W, ds_H), resample=Image.BILINEAR)).astype(np.float64)
+    dens_ds = np.clip(dens_ds, 1e-12, None)
+
+    p = dens_ds.ravel()
+    p /= p.sum()
+    counts = np.random.multinomial(n_particles, p)
+    nonzero = np.nonzero(counts)[0]
+    ys_ds, xs_ds = np.divmod(nonzero, ds_W)
+    ns = counts[nonzero]
+
+    sx = W / ds_W
+    sy = H / ds_H
+    xs_list, ys_list = [], []
+    for x_cell, y_cell, n in zip(xs_ds, ys_ds, ns):
+        xs_list.append((x_cell + np.random.rand(n)) * sx)
+        ys_list.append((y_cell + np.random.rand(n)) * sy)
+    X = np.concatenate(xs_list)
+    Y = np.concatenate(ys_list)
+
+    xi = np.clip(np.round(X).astype(int), 0, W - 1)
+    yi = np.clip(np.round(Y).astype(int), 0, H - 1)
+    obj_id_np = nuclei_labels[yi, xi]
+    is_red = obj_id_np > 0
+
+    mass_np = np.where(is_red, 1.0, 0.1).astype(np.float32)
+    M = torch.as_tensor(mass_np, dtype=torch.float32, device=device).unsqueeze(1)
+    M = M * torch.full((n_particles, 1), p_vol, dtype=torch.float32, device=device)
+
+    x[:, 0] = torch.as_tensor(X, dtype=torch.float32, device=device) / W / 2 + 0.2
+    x[:, 1] = torch.as_tensor(Y, dtype=torch.float32, device=device) / H / 2.6 + 0.2
+
+    ID = torch.as_tensor(obj_id_np, dtype=torch.int32, device=device).unsqueeze(1)
+    # ========================== end XXXX ==========================
+
+    return N, x, v, C, F, T, Jp, M, S, ID
+
+
+
+
+
 
 
 def generate_compressed_video_mp4(output_dir, run=0, framerate=10, output_name=".mp4", config_indices=None, crf=23):

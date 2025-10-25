@@ -26,6 +26,8 @@ class SimulationConfig(BaseModel):
     min_radius: float = 0.0
     max_radius: float = 0.1
 
+    image_path: str = ""
+
     n_particles: int = 1000
     n_neurons: int = 1000
     n_input_neurons: int = 0

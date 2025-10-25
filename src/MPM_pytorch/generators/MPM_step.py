@@ -36,92 +36,72 @@ def MPM_step(
     MPM substep implementation
     """
 
-    # Material masks
-    liquid_mask = (T.squeeze() == 0)
-    jelly_mask = (T.squeeze() == 1)
-    snow_mask = (T.squeeze() == 2)
+    liquid_mask = (T.squeeze() == 0).detach()
+    jelly_mask = (T.squeeze() == 1).detach()
+    snow_mask = (T.squeeze() == 2).detach()
 
-    # Initialize mass
+    # initialize mass
     p_mass = M.squeeze(-1)
 
-    # Calculate F ############################################################################################
+    identity = torch.eye(2, device=device).unsqueeze(0)  # [1, 2, 2] - Identity matrix for all particles
 
-    identity = torch.eye(2, device=device).unsqueeze(0)  # [1, 2, 2]
+    F = (identity + dt * C) @ F  # F^{n+1} = (I + dt*C^n) @ F^n - Update F using velocity gradient C
 
-    # Update deformation gradient: F = (I + dt * C) * F_old
-    F = (identity + dt * C) @ F
-    # Hardening coefficient
-    h = torch.exp(10 * (1.0 - Jp.squeeze()))
-    h = torch.where(jelly_mask, torch.tensor(0.3, device=device), h)
+    h = torch.exp(10 * (1.0 - Jp.squeeze()))  # Jp close to 1, Jp< 1 => h>1 (hardening), Jp>1 => h<1 (softening)
+    h = torch.where(jelly_mask, torch.tensor(0.3, device=device), h)  # jelly uses constant h=0.3 (70% softer)
+
     # Lamé parameters
-    mu = mu_0 * h
-    la = lambda_0 * h
-    mu = torch.where(liquid_mask, torch.tensor(0.0, device=device), mu)
+    mu = mu_0 * h  # shear modulus (shape resistance) 
+    la = lambda_0 * h  # first Lamé parameter (volume resistance) 
+    mu = torch.where(liquid_mask, torch.tensor(0.0, device=device), mu)  # liquids cannot resist shear deformation, no shape memory
+
     # SVD decomposition
-    F_reg = F + 1e-6 * identity  # Small regularization
-    U, sig, Vh = torch.linalg.svd(F, driver='gesvdj')
-    # SVD sign correction without in-place ops
-    det_U = torch.det(U)
-    det_Vh = torch.det(Vh)
-    neg_det_U = det_U < 0  # [n_particles] bool tensor
-    neg_det_Vh = det_Vh < 0
-    # Reshape masks for broadcasting
-    neg_det_U_mask = neg_det_U.unsqueeze(-1).unsqueeze(-1)  # [n_particles,1,1]
-    neg_det_sig_U_mask = neg_det_U.unsqueeze(-1)  # [n_particles,1]
-    neg_det_Vh_mask = neg_det_Vh.unsqueeze(-1).unsqueeze(-1)  # [n_particles,1,1]
-    neg_det_sig_Vh_mask = neg_det_Vh.unsqueeze(-1)  # [n_particles,1]
-    # Flip signs on last columns/rows accordingly, out-of-place
-    U = torch.where(
-        neg_det_U_mask.expand_as(U),
-        torch.cat([U[:, :, :-1], -U[:, :, -1:].clone()], dim=2),
-        U
-    )
-    sig = torch.where(
-        neg_det_sig_U_mask.expand_as(sig),
-        torch.cat([sig[:, :-1], -sig[:, -1:].clone()], dim=1),
-        sig
-    )
-    Vh = torch.where(
-        neg_det_Vh_mask.expand_as(Vh),
-        torch.cat([Vh[:, :-1, :], -Vh[:, -1:, :].clone()], dim=1),
-        Vh
-    )
-    sig = torch.where(
-        neg_det_sig_Vh_mask.expand_as(sig),
-        torch.cat([sig[:, :-1], -sig[:, -1:].clone()], dim=1),
-        sig
-    )
-    # Clamp singular values
-    min_val = 1e-6
-    sig = torch.where(
-        sig < min_val,
-        min_val + 0.01 * (sig - min_val),  # small slope below min_val
-        sig
-    )
+    F_reg = F + 1e-6 * identity  # small regularization to avoid numerical issues (not used in SVD)
+    U, sig, Vh = torch.linalg.svd(F_reg, driver='gesvdj')  # F = U @ diag(sig) @ Vh - polar decomposition
+
+    # U and Vh should be rotation matrices with det=+1, but numerical issues may lead to reflections (det=-1)
+    det_U = torch.det(U).detach()  
+    det_Vh = torch.det(Vh).detach() 
+    neg_det_U = det_U < 0  
+    neg_det_Vh = det_Vh < 0  
+
+    # sign of U and Vh corrections
+    neg_det_U_mask = neg_det_U.unsqueeze(-1).unsqueeze(-1)  
+    neg_det_sig_U_mask = neg_det_U.unsqueeze(-1)  
+    neg_det_Vh_mask = neg_det_Vh.unsqueeze(-1).unsqueeze(-1)  
+    neg_det_sig_Vh_mask = neg_det_Vh.unsqueeze(-1)  
+    U = torch.where(neg_det_U_mask.expand_as(U),torch.cat([U[:, :, :-1], -U[:, :, -1:].clone()], dim=2), U) # flip last column to ensure det(U)=+1
+    sig = torch.where(neg_det_sig_U_mask.expand_as(sig), torch.cat([sig[:, :-1], -sig[:, -1:].clone()], dim=1), sig) # flip last singular value to compensate
+    Vh = torch.where(neg_det_Vh_mask.expand_as(Vh), torch.cat([Vh[:, :-1, :], -Vh[:, -1:, :].clone()], dim=1), Vh)  # flip last row to ensure det(Vh)=+1
+    sig = torch.where(neg_det_sig_Vh_mask.expand_as(sig), torch.cat([sig[:, :-1], -sig[:, -1:].clone()], dim=1), sig)  # flip last singular value to compensate
+
+    # soft clamp of sig to preserve gradient
+    min_val = 1e-6  # minimum allowed singular value (prevents inversion/collapse)
+    sig = torch.where( sig < min_val,  min_val + 0.01 * (sig - min_val), sig) # small slope below min_val - soft clamping instead of hard cutoff
     original_sig = sig.clone()
-    # Apply plasticity constraints for snow
-    new_sig = torch.where(snow_mask.unsqueeze(1),
-                          torch.clamp(sig, min=1 - 2.5e-2, max=1 + 4.5e-3),
-                          sig)
-    # Update plastic deformation
-    plastic_ratio = torch.prod(original_sig / new_sig, dim=1, keepdim=True)
-    Jp = Jp * plastic_ratio
-    sig = new_sig
-    J = torch.prod(sig, dim=1)
-    J = torch.clamp(J, min=1e-4)
+    sig = torch.where(snow_mask.unsqueeze(1), torch.clamp(sig, min=1 - 2.5e-2, max=1 + 4.5e-3), sig) # snow can compress up to 2.5% and stretch up to 0.45%
 
-    if frame > 1000:
-        expansion_factor = 1.0  # 1% expansion per timestep
+    # update plastic deformation
+    plastic_ratio = torch.prod(original_sig / sig, dim=1, keepdim=True)  # volume ratio of plastic deformation
+    Jp = Jp * plastic_ratio  # accumulate plastic volume change
 
-    J = J / expansion_factor
-    sig_diag = torch.diag_embed(sig) / expansion_factor
+    J = torch.prod(sig, dim=1)  # Jacobian (volume ratio) J = det(F) = product of singular values
+    J = torch.clamp(J, min=1e-4)  # Prevent complete volume collapse
+
+    if frame > 1000:  # Apply expansion after frame 1000 (debugging/testing)
+        expansion_factor = 1.0  # 1% expansion per timestep (currently disabled at 1.0)
+    J = J / expansion_factor  # Scale down volume
+    sig_diag = torch.diag_embed(sig) / expansion_factor  # Scale down singular values proportionally
+
     # For liquid: F = sqrt(J) * I
-    F_liquid = identity * torch.sqrt(J).unsqueeze(-1).unsqueeze(-1)
+    F_liquid = identity * torch.sqrt(J).unsqueeze(-1).unsqueeze(-1)  # Isotropic deformation (no shear, only volume)
+
     # For solid materials: F = U @ sig_diag @ Vh
-    F_solid = U @ sig_diag @ Vh
+    F_solid = U @ sig_diag @ Vh  # Reconstruct F from SVD after plasticity projection
+
     # Apply reconstruction based on material type
-    F = torch.where(liquid_mask.unsqueeze(-1).unsqueeze(-1), F_liquid, F)
-    F = torch.where((jelly_mask | snow_mask).unsqueeze(-1).unsqueeze(-1), F_solid, F)
+    F = torch.where(liquid_mask.unsqueeze(-1).unsqueeze(-1), F_liquid, F)  # Override with liquid model where applicable
+    F = torch.where((jelly_mask | snow_mask).unsqueeze(-1).unsqueeze(-1), F_solid, F)  # Override with solid model for jelly/snow
 
     # Calculate stress ############################################################################################
     R = U @ Vh
