@@ -53,6 +53,7 @@ class SimulationConfig(BaseModel):
     MPM_young_coeff : float = 1.0
     MPM_surface_tension: float = 0.072
     MPM_tension_scaling: float = 1.0
+    MPM_F_amplitude: float = 1.5
 
     diffusion_coefficients: list[list[float]] = None
 

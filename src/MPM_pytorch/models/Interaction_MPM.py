@@ -66,6 +66,7 @@ class Interaction_MPM(nn.Module):
         self.friction = simulation_config.MPM_friction
         self.surface_tension = simulation_config.MPM_surface_tension
         self.tension_scaling = simulation_config.MPM_tension_scaling
+        self.F_amplitude = simulation_config.MPM_F_amplitude
 
         self.model_MPM_P2G = MPM_P2G(aggr_type='add', device=device)
 
@@ -204,7 +205,7 @@ class Interaction_MPM(nn.Module):
             features = torch.cat((pos, frame), dim=1).detach()
             if 'F' in trainer:
                 features = torch.cat((pos, frame), dim=1).detach()
-                F = self.identity + 1.5 * torch.tanh(self.siren_F(features).reshape(-1, 2, 2))
+                F = self.identity + self.F_amplitude * torch.tanh(self.siren_F(features).reshape(-1, 2, 2))
         if 'Jp' in trainer:
             features = torch.cat((pos, frame), dim=1).detach()
             Jp = self.siren_Jp(features)

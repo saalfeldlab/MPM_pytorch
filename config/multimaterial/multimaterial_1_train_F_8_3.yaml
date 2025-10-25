@@ -1,4 +1,4 @@
-description: '9 discs of different materials falling down in a box  size 512 LR 1E-8 batch 16 coeff_det_F: 0'
+description: '9 discs of different materials falling down in a box  size 256 LR 1E-8 batch 16 coeff_det_F: 0'
 dataset: 'multimaterial_1'
 
 simulation:
@@ -21,6 +21,7 @@ simulation:
   MPM_rho_list: [ 1.0, 0.5, 0.25 ]
   MPM_friction: 0.0
   MPM_young_coeff: 1.0
+  MPM_F_amplitude: 2.5
 
 graph_model:
   particle_model_name: 'PDE_MPM'
@@ -44,10 +45,10 @@ graph_model:
   # Format: [in_features, out_features, hidden_features, hidden_layers, first_omega_0, hidden_omega_0, outermost_linear]
   # Order: [F, Jp, C_normal, C_PDE_MPM_A]
   multi_siren_params: [
-      [3, 4, 512, 3, 512.0, 512.0, True],    # siren_F [0]
-      [3, 1, 512, 3, 512.0, 512.0, True],    # siren_Jp [1]
-      [5, 4, 512, 3, 512.0, 512.0, True],    # siren_C normal [2]
-      [7, 4, 512, 3, 512.0, 512.0, True]     # siren_C PDE_MPM_A [3]
+      [3, 4, 256, 3, 256.0, 256.0, True],    # siren_F [0]
+      [3, 1, 256, 3, 256.0, 256.0, True],    # siren_Jp [1]
+      [5, 4, 256, 3, 256.0, 256.0, True],    # siren_C normal [2]
+      [7, 4, 256, 3, 256.0, 256.0, True]     # siren_C PDE_MPM_A [3]
   ]
 
 
@@ -61,7 +62,7 @@ training:
 
   device: 'auto'
   n_runs: 1
-  n_epochs: 20
+  n_epochs: 10
 
   batch_size: 16
   

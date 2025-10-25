@@ -232,8 +232,9 @@ def data_train_material(config, erase, best_model, device):
             Niter = int(n_frames * data_augmentation_loop // batch_size / batch_ratio)
         else:
             Niter = n_frames * data_augmentation_loop // batch_size
+
+        plot_frequency = int(Niter // 2)
         if epoch == 0:
-            plot_frequency = int(Niter // 2)
             print(f'{Niter} iterations per epoch, plot every {plot_frequency} iterations')
             logger.info(f'{Niter} iterations per epoch, plot every {plot_frequency} iterations')
 
@@ -243,7 +244,7 @@ def data_train_material(config, erase, best_model, device):
         run = 0
         data_id = torch.ones((n_particles,1), dtype = torch.float32, device=device) * run
 
-        for N in trange(Niter, ncols=150):
+        for N in trange(Niter+1, ncols=150):
 
             loss = 0
             optimizer.zero_grad()
