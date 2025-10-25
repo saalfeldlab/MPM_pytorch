@@ -45,6 +45,7 @@ def MPM_step(
 
     identity = torch.eye(2, device=device).unsqueeze(0)  # [1, 2, 2] - Identity matrix for all particles
 
+    # update deformation gradient F ################################################################################
     F = (identity + dt * C) @ F  # F^{n+1} = (I + dt*C^n) @ F^n - Update F using velocity gradient C
 
     h = torch.exp(10 * (1.0 - Jp.squeeze()))  # Jp close to 1, Jp< 1 => h>1 (hardening), Jp>1 => h<1 (softening)
@@ -85,33 +86,32 @@ def MPM_step(
     plastic_ratio = torch.prod(original_sig / sig, dim=1, keepdim=True)  # volume ratio of plastic deformation
     Jp = Jp * plastic_ratio  # accumulate plastic volume change
 
-    J = torch.prod(sig, dim=1)  # Jacobian (volume ratio) J = det(F) = product of singular values
-    J = torch.clamp(J, min=1e-4)  # Prevent complete volume collapse
+    J = torch.prod(sig, dim=1)  # product of singular values
+    J = torch.clamp(J, min=1e-4)  # prevent volume collapsing to 0
 
-    if frame > 1000:  # Apply expansion after frame 1000 (debugging/testing)
-        expansion_factor = 1.0  # 1% expansion per timestep (currently disabled at 1.0)
-    J = J / expansion_factor  # Scale down volume
-    sig_diag = torch.diag_embed(sig) / expansion_factor  # Scale down singular values proportionally
+    if frame > 1000:  # remove expansion after frame 1000
+        expansion_factor = 1.0  
+    J = J / expansion_factor  # scale down volume
+    sig_diag = torch.diag_embed(sig) / expansion_factor  # scale down singular values proportionally
 
-    # For liquid: F = sqrt(J) * I
-    F_liquid = identity * torch.sqrt(J).unsqueeze(-1).unsqueeze(-1)  # Isotropic deformation (no shear, only volume)
+    F_liquid = identity * torch.sqrt(J).unsqueeze(-1).unsqueeze(-1)  # for liquid: F = sqrt(J) * I, isotropic deformation (no shear, only volume)
+    F_solid = U @ sig_diag @ Vh  # for solid materials: F = U @ sig_diag @ Vh, after plasticity projection
+    F = torch.where(liquid_mask.unsqueeze(-1).unsqueeze(-1), F_liquid, F)  
+    F = torch.where((jelly_mask | snow_mask).unsqueeze(-1).unsqueeze(-1), F_solid, F)  
 
-    # For solid materials: F = U @ sig_diag @ Vh
-    F_solid = U @ sig_diag @ Vh  # Reconstruct F from SVD after plasticity projection
 
-    # Apply reconstruction based on material type
-    F = torch.where(liquid_mask.unsqueeze(-1).unsqueeze(-1), F_liquid, F)  # Override with liquid model where applicable
-    F = torch.where((jelly_mask | snow_mask).unsqueeze(-1).unsqueeze(-1), F_solid, F)  # Override with solid model for jelly/snow
 
-    # Calculate stress ############################################################################################
-    R = U @ Vh
-    F_minus_R = F - R
+
+
+    # update stress ############################################################################################
+    # first Piola-Kirchhoff stress: P = 2μ(F-R)F^T + λJ(J-1)I [Pa] (fixed corotated hyperelastic model)
+    R = U @ Vh  # Rotation matrix from polar decomposition
+    F_minus_R = F - R  # F minus rotation (captures deformation without rigid rotation)
     stress = (2 * mu.unsqueeze(-1).unsqueeze(-1) * F_minus_R @ F.transpose(-2, -1) +
-              identity * (la * J * (J - 1)).unsqueeze(-1).unsqueeze(-1))
-    stress = (-dt * p_vol * 4 * inv_dx * inv_dx) * stress
+            identity * (la * J * (J - 1)).unsqueeze(-1).unsqueeze(-1))  # Cauchy/PK1 stress [Pa]
+    stress = (-dt * p_vol * 4 * inv_dx * inv_dx) * stress  # Scale for MPM P2G transfer [force]
 
-
-    # Add surface tension stress for liquids
+    # add surface tension stress for liquids (heuristic approach) ##############################################
     if enable_surface_tension and liquid_mask.any():
         debug_this_frame = debug_surface and (frame % 100 == 0 or frame == 0)
         
@@ -119,12 +119,8 @@ def MPM_step(
             print(f"\n=== Frame {frame} - Surface Tension Debug ===")
             print(f"Applying surface tension with coeff={surface_tension_coeff}")
         
-        # Compute surface tension stress
         surface_stress = compute_surface_tension_stress(X, T, surface_tension_coeff, dx, device, debug_this_frame)
         
-        # Scale surface stress appropriately
-        # Try different scaling factors to find the right balance
-
         surface_stress_scaled = surface_stress * (-dt * p_vol * 4 * inv_dx * inv_dx) * tension_scaling
 
         liquid_stress_scaled = surface_stress_scaled[liquid_mask]
@@ -136,27 +132,45 @@ def MPM_step(
             scale = (percentile / stress_norms[needs_clamping]).unsqueeze(-1).unsqueeze(-1)
             liquid_stress_scaled[needs_clamping] = liquid_stress_scaled[needs_clamping] * scale
                 
-
-        # Only add surface stress to liquid particles
+        # only add surface stress to liquid particles
         stress = torch.where(liquid_mask.unsqueeze(-1).unsqueeze(-1),
                            stress +  surface_stress_scaled,
                            stress)
         
         if debug_this_frame:
-            # Check the relative magnitude of surface stress vs regular stress
             regular_stress_norm = torch.norm(stress[liquid_mask].reshape(-1, 4), dim=1).mean()
             surface_stress_norm = torch.norm(surface_stress_scaled[liquid_mask].reshape(-1, 4), dim=1).mean()
-            print(f"Regular stress magnitude: {regular_stress_norm:.6f}")
-            print(f"Surface stress magnitude: {surface_stress_norm:.6f}")
-            print(f"Ratio surface/regular: {surface_stress_norm/regular_stress_norm:.3f}")
-
-
+            print(f"regular stress magnitude: {regular_stress_norm:.6f}")
+            print(f"surface stress magnitude: {surface_stress_norm:.6f}")
+            print(f"ratio surface/regular: {surface_stress_norm/regular_stress_norm:.3f}")
 
     affine = stress + p_mass.unsqueeze(-1).unsqueeze(-1) * C
+    # stress=force + momentum gradient=force
+
+
+
+
+
 
     # P2G loop ###################################################################################################
 
     base = (X * inv_dx - 0.5).int()
+
+    fx = X * inv_dx - base.float()
+    fx_per_edge = fx.unsqueeze(1).expand(-1, 9, -1).flatten(end_dim=1)  # [n_particles*9, 2]
+    
+    # compute weights for both P2G and G2P
+    w_0 = 0.5 * (1.5 - fx) ** 2
+    w_1 = 0.75 - (fx - 1) ** 2
+    w_2 = 0.5 * (fx - 0.5) ** 2
+    w = torch.stack([w_0, w_1, w_2], dim=1)  # [n_particles, 3, 2]
+
+    # prepare weights per edge for GNN
+    i_indices = offsets[:, 0].long()  # [9]
+    j_indices = offsets[:, 1].long()  # [9]
+    weights_all = w[:, i_indices, 0] * w[:, j_indices, 1]  # [n_particles, 9]
+    weights_per_edge = weights_all.flatten()  # [n_particles*9]
+
     grid_positions = base.unsqueeze(1) + offsets.unsqueeze(0)  # [n_particles, 9, 2]
     particle_indices = torch.arange(n_particles, device=device).unsqueeze(1).expand(-1, 9).flatten()
     grid_indices = grid_positions.flatten().reshape(-1, 2)  # Flatten to [n_particles*9, 2]
@@ -164,8 +178,7 @@ def MPM_step(
     edge_index = torch.stack([particle_indices, grid_indices_1d], dim=0).long()
     edge_index[0, :] += n_grid ** 2  # offset particle indices
 
-    fx = X * inv_dx - base.float()
-    fx_per_edge = fx.unsqueeze(1).expand(-1, 9, -1).flatten(end_dim=1)  # [n_particles*9, 2]
+
 
     # Compute dpos for each edge (needed for affine contribution)
     particle_fx_expanded = fx.unsqueeze(1).expand(-1, 9, -1)  # [n_particles, 9, 2]
@@ -180,18 +193,20 @@ def MPM_step(
     particle_features = torch.cat([p_mass[:, None], V], dim=1)  # [n_particles, 3]
     x_ = torch.cat([grid_features, particle_features], dim=0)  # [n_grid**2 + n_particles, 3]
 
-    dataset = data.Data(x=x_, edge_index=edge_index, fx_per_edge=fx_per_edge,
+
+
+
+    # GNN inference
+    dataset = data.Data(x=x_, edge_index=edge_index, weights_per_edge=weights_per_edge,
                         affine_per_edge=affine_per_edge, dpos_per_edge=dpos_per_edge)
+    
     grid_output = model_MPM(dataset)[0:n_grid ** 2]  # [n_grid**2, 3]
     grid_m = grid_output[:, 0].view(n_grid, n_grid)  # Mass component
     grid_v = grid_output[:, 1:3].view(n_grid, n_grid, 2)  # Velocity components # Reshape to [n_grid, n_grid]
 
-    # Quadratic B-spline kernel weights
-    w_0 = 0.5 * (1.5 - fx) ** 2
-    w_1 = 0.75 - (fx - 1) ** 2
-    w_2 = 0.5 * (fx - 0.5) ** 2
-    # Stack weights [n_particles, 3, 2]
-    w = torch.stack([w_0, w_1, w_2], dim=1)
+
+
+
 
     # Create mask for valid grid points (non-zero mass)
     valid_mass_mask = grid_m > 0
