@@ -57,9 +57,12 @@ def MPM_step(
     mu = torch.where(liquid_mask, torch.tensor(0.0, device=device), mu)  # liquids cannot resist shear deformation, no shape memory
 
     # SVD decomposition
-    F_reg = F + 1e-6 * identity  # small regularization to avoid numerical issues
+    F_reg = F + 1e-6 * identity 
+    F_reg = F_reg.detach()
+     # small regularization to avoid numerical issues
 
-    U, sig, Vh = torch.linalg.svd(F_reg, driver='gesvdj')  # F = U @ diag(sig) @ Vh - polar decomposition
+    U, sig, Vh = torch.linalg.svd(F_reg, driver='gesvdj')
+    # U, sig, Vh = safe_svd(F_reg)  # F = U @ diag(sig) @ Vh - polar decomposition
 
     # U and Vh should be rotation matrices with det=+1, but numerical issues may lead to reflections (det=-1)
     det_U = torch.det(U)
@@ -471,3 +474,137 @@ def compute_surface_tension_stress(X, T, surface_tension_coeff, dx, device, debu
             print(f"WARNING: No surface stress applied!")
     
     return surface_stress
+
+class SafeSVD(torch.autograd.Function):
+    """
+    Custom SVD with numerically stable backward pass.
+    Addresses the instability in torch.linalg.svd backward when:
+    1. Singular values are very close together
+    2. Singular values are very small
+    3. Deformation gradients are extreme
+    """
+    
+    @staticmethod
+    def forward(ctx, F):
+        """
+        Forward: Standard SVD
+        F: [batch, 2, 2] or [batch, 3, 3]
+        Returns: U, sig, Vh
+        """
+        U, sig, Vh = torch.linalg.svd(F, driver='gesvdj')
+        
+        # Save for backward with regularization
+        ctx.save_for_backward(U, sig, Vh)
+        return U, sig, Vh
+    
+    @staticmethod
+    def backward(ctx, grad_U, grad_sig, grad_Vh):
+        """
+        Backward: Stable gradient computation
+        Based on: https://arxiv.org/abs/1509.07838
+        With additional stabilization for extreme values
+        """
+        U, sig, Vh = ctx.saved_tensors
+        
+        # Reconstruct F = U @ diag(sig) @ Vh
+        batch_size = U.shape[0]
+        dim = U.shape[1]
+        
+        # Regularization parameters
+        epsilon = 1e-6  # For division safety
+        sig_separation = 1e-4  # Minimum separation between singular values
+        
+        # Ensure singular values are separated for stable gradients
+        # This prevents 1/(sig_i - sig_j) from exploding
+        sig_diff = sig.unsqueeze(-1) - sig.unsqueeze(-2)  # [batch, dim, dim]
+        sig_diff_safe = torch.where(
+            torch.abs(sig_diff) < sig_separation,
+            torch.sign(sig_diff) * sig_separation + epsilon,
+            sig_diff + epsilon * torch.sign(sig_diff)
+        )
+        
+        # Compute gradient w.r.t. F using chain rule
+        # dL/dF = U @ (dL/dSigma + F_term) @ Vh
+        
+        # 1. Direct gradient through singular values
+        grad_sigma_diag = torch.diag_embed(grad_sig)
+        
+        # 2. Off-diagonal terms from U and Vh gradients
+        # This is where instability occurs in standard implementation
+        if grad_U is not None or grad_Vh is not None:
+            # Compute K matrix with stable division
+            K = 1.0 / sig_diff_safe
+            K = K * (1 - torch.eye(dim, device=U.device).unsqueeze(0))
+            
+            F_term = torch.zeros_like(grad_sigma_diag)
+            
+            if grad_U is not None:
+                # Symmetric term from U gradient
+                U_term = U.transpose(-2, -1) @ grad_U
+                F_term = F_term + (U_term - U_term.transpose(-2, -1)) * K * torch.diag_embed(sig).unsqueeze(-1)
+            
+            if grad_Vh is not None:
+                # Symmetric term from Vh gradient  
+                Vh_term = grad_Vh @ Vh.transpose(-2, -1)
+                F_term = F_term + torch.diag_embed(sig).unsqueeze(-2) * K * (Vh_term - Vh_term.transpose(-2, -1))
+            
+            grad_F = U @ (grad_sigma_diag + F_term) @ Vh
+        else:
+            grad_F = U @ grad_sigma_diag @ Vh
+        
+        # Gradient clipping for safety
+        grad_norm = torch.norm(grad_F.reshape(batch_size, -1), dim=1, keepdim=True).unsqueeze(-1)
+        max_grad_norm = 100.0
+        grad_F = torch.where(
+            grad_norm > max_grad_norm,
+            grad_F * (max_grad_norm / (grad_norm + epsilon)),
+            grad_F
+        )
+        
+        return grad_F
+
+
+def safe_svd(F):
+    """
+    Safe SVD wrapper that can be used as drop-in replacement for torch.linalg.svd
+    
+    Args:
+        F: [batch, d, d] deformation gradient tensor
+        
+    Returns:
+        U, sig, Vh: SVD components with stable gradients
+    """
+    return SafeSVD.apply(F)
+
+
+def test_safe_svd():
+    """Test that safe SVD produces correct forward pass and stable gradients"""
+    torch.manual_seed(42)
+    
+    # Test with extreme deformations
+    F = torch.randn(10, 2, 2, requires_grad=True) * 10  # Large random deformations
+    
+    # Standard SVD
+    try:
+        U1, sig1, Vh1 = torch.linalg.svd(F, driver='gesvdj')
+        loss1 = (U1.sum() + sig1.sum() + Vh1.sum())
+        loss1.backward()
+        print("Standard SVD: Forward OK, Backward OK")
+        print(f"  Gradient stats: min={F.grad.min():.3f}, max={F.grad.max():.3f}, has NaN={F.grad.isnan().any()}")
+    except Exception as e:
+        print(f"Standard SVD failed: {e}")
+    
+    # Safe SVD
+    F.grad = None
+    U2, sig2, Vh2 = safe_svd(F)
+    loss2 = (U2.sum() + sig2.sum() + Vh2.sum())
+    loss2.backward()
+    print("Safe SVD: Forward OK, Backward OK")
+    print(f"  Gradient stats: min={F.grad.min():.3f}, max={F.grad.max():.3f}, has NaN={F.grad.isnan().any()}")
+    
+    # Check forward pass matches
+    U1_check, sig1_check, Vh1_check = torch.linalg.svd(F.detach(), driver='gesvdj')
+    print(f"\nForward pass accuracy:")
+    print(f"  U error: {(U2 - U1_check).abs().max():.2e}")
+    print(f"  sig error: {(sig2 - sig1_check).abs().max():.2e}")
+    print(f"  Vh error: {(Vh2 - Vh1_check).abs().max():.2e}")

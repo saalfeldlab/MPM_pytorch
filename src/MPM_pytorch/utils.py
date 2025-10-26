@@ -1990,7 +1990,7 @@ def plot_fields_movie(trainer, model, x_list, run, start_frame, n_particles, n_f
             
             with writer.saving(fig, out_path, dpi=300):
                 
-                for k in trange(start_frame, n_frames, step_video):
+                for k in range(start_frame, n_frames, step_video):
                     
                     # Clear the figure
                     fig.clear()
