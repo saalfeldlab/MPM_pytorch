@@ -58,9 +58,11 @@ if __name__ == "__main__":
         else:
             best_model = None
     else:
-        task = 'generate'  # 'generate', 'train', 'test'
-        best_model = ''
-        config_list = ['multimaterial_4_collision']  #['multimaterial_1_discs_3types'] # ['cells_tissue_1']
+        task = 'test'  # 'generate', 'train', 'test'
+        best_model = None
+        config_list = ['multimaterial_1_train_F_8_2']
+        # ['multimaterial_shear','multimaterial_rain', 'multimaterial_pincer','multimaterial_tbone','multimaterial_slingshot']  
+        #['multimaterial_1_discs_3types'] # ['cells_tissue_1']
 
         # viz in MPM/graphs_data/multimaterial/multimaterial_4_0_3D/Fig
         # other config files to be found in ./config/*.yaml
@@ -94,7 +96,7 @@ if __name__ == "__main__":
                 alpha=1,
                 erase=False,
                 bSave=True,
-                step=20,
+                step=10,
             ) # config.simulation.n_frames // 100)
 
         if "train" in task:
@@ -104,7 +106,7 @@ if __name__ == "__main__":
             data_test(
                 config=config,
                 config_file=config_file, 
-                visualize=False, 
+                visualize=True, 
                 style='black', 
                 verbose=True, 
                 best_model='best', 

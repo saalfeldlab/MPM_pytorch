@@ -318,10 +318,11 @@ def data_test(config=None, config_file=None, visualize=False, style='color frame
     cmap = CustomColorMap(config=config)  # create colormap for given model_config
     n_runs = train_config.n_runs
 
-    os.makedirs(f"./{log_dir}/tmp_training/tmp_recons", exist_ok=True)
-    files = os.listdir(f"./{log_dir}/tmp_training/tmp_recons")
+    log_dir, logger = create_log_dir(config, False)
+    os.makedirs(f"./{log_dir}/tmp_recons", exist_ok=True)
+    files = os.listdir(f"./{log_dir}/tmp_recons")
     for file in files:
-        os.remove(f"./{log_dir}/tmp_training/tmp_recons/{file}")
+        os.remove(f"./{log_dir}/tmp_recons/{file}")
 
     print('load data ...')
     x_list = []
@@ -359,22 +360,19 @@ def data_test(config=None, config_file=None, visualize=False, style='color frame
 
     time.sleep(1)
 
-    start_it = 0
-
-    x = x_list[0][start_it].clone().detach()
-    n_particles = x.shape[0]
-
+    error_list = []
+    idx = 0
 
     data_id = torch.ones((n_particles,1), dtype = torch.float32, device=device) * run
+    x = torch.tensor(x_list[run][0], dtype=torch.float32, device=device).clone().detach()
 
-    for it in trange(start_it,start_it+800, ncols=150):
+    for it in trange(0, n_frames, ncols=150):
 
-        x = torch.tensor(x_list[run][it], dtype=torch.float32, device=device).clone().detach()
         x_next = torch.tensor(x_list[run][it+1], dtype=torch.float32, device=device).clone().detach()
-
         y = x_next[:, 1:1 + dimension ].clone().detach()  
 
-        with torch.no_grad():  
+        with torch.no_grad():
+            k = it * torch.ones((n_particles,1), dtype = torch.float32, device=device)  
             pred_x, pred_C, pred_F, pred_Jp, pred_S = model(x, data_id=data_id, k=k, trainer=trainer, batch_size=1)
 
         N = x[:,0:1]
@@ -383,11 +381,156 @@ def data_test(config=None, config_file=None, visualize=False, style='color frame
         C = pred_C
         F = pred_F
         Jp = pred_Jp
-        T = x[:,13:14]
-        M = x[:,14:15]
+        T = x[:,14:15]
+        M = x[:,15:16]
         S = pred_S
-        ID = x[:,15:16]
+        ID = x[:,20:21]
 
         x = torch.cat([N, X, V, C.view(-1, 4), F.view(-1, 4), Jp, T, M, S.view(-1,4), ID], dim=1)
         x = x.clone().detach()
+
+        error = (pred_x - y).norm(2) / n_particles
+        error_list.append(to_numpy(error))
+
+
+        if visualize & (it % step == 0) & (it >= 0):
+
+            if 'black' in style:
+                plt.style.use('dark_background')
+            if 'latex' in style:
+                plt.rcParams['text.usetex'] = True
+                rc('font', **{'family': 'serif', 'serif': ['Palatino']})
+
+            if 'centered' in style:
+                x = x - torch.mean(x, dim=0, keepdim=True) + 0.5
+
+            if 'grid' in style:
+                plt.figure(figsize=(15, 10))
+                # 1. V particle level
+                plt.subplot(2, 3, 1)
+                plt.title('objects')
+                for n in range(3):
+                    pos = torch.argwhere(T == n)[:,0]
+                    plt.scatter(to_numpy(x[pos, 1]), to_numpy(x[pos, 2]), s=1, color=cmap.color(n))
+                plt.xlim([0, 1])
+                plt.ylim([0, 1])
+                plt.gca().set_aspect('equal')
+
+                plt.subplot(2, 3, 4)
+                plt.title('Jp (volume deformation)')
+                plt.scatter(X[:, 0].cpu(), X[:, 1].cpu(), c=Jp.cpu(), s=1, cmap='viridis', vmin=0.75, vmax=1.25)
+                plt.colorbar(fraction=0.046, pad=0.04)
+                plt.xlim([0, 1])
+                plt.ylim([0, 1])
+                plt.gca().set_aspect('equal')
+
+                # 2. C particle level
+                plt.subplot(2, 3, 2)
+                c_norm = torch.norm(C.view(n_particles, -1), dim=1).cpu().numpy()
+                plt.scatter(X[:, 0].cpu(), X[:, 1].cpu(), c=c_norm, s=1, cmap='viridis', vmin=0, vmax=80)
+                plt.colorbar(fraction=0.046, pad=0.04)
+                plt.title('C (Jacobian of velocity)')
+                plt.xlim([0, 1])
+                plt.ylim([0, 1])
+                plt.gca().set_aspect('equal')
+
+                # 3. F particle level
+                plt.subplot(2, 3, 3)
+                f_norm = torch.norm(F.view(n_particles, -1), dim=1).cpu().numpy()
+                plt.scatter(X[:, 0].cpu(), X[:, 1].cpu(), c=f_norm, s=1, cmap='coolwarm', vmin=1.44-0.1, vmax=1.44+0.1)
+                plt.colorbar(fraction=0.046, pad=0.04)
+                # print(
+                #     f"F min: {np.min(f_norm):.6f}, max: {np.max(f_norm):.6f}, mean: {np.mean(f_norm):.6f}, std: {np.std(f_norm):.6f}")
+                plt.title('F (deformation)')
+                plt.xlim([0, 1])
+                plt.ylim([0, 1])
+                plt.gca().set_aspect('equal')
+
+                # 4. Stress particle level
+                plt.subplot(2, 3, 5)
+                stress_norm = torch.norm(S.view(n_particles, -1), dim=1)
+                stress_norm = stress_norm[:,None]
+                plt.scatter(X[:, 0].cpu(), X[:, 1].cpu(), c=stress_norm[:, 0].cpu(), s=1, cmap='hot', vmin=0, vmax=6E-3)
+                plt.colorbar(fraction=0.046, pad=0.04)
+                plt.title('stress')
+                plt.xlim([0, 1])
+                plt.ylim([0, 1])
+                plt.gca().set_aspect('equal')
+
+                # 6. Momentum grid level - scatter plot (every 2nd point)
+                plt.subplot(2, 3, 6)
+                GP = torch.norm(GV, dim=2)
+                gp_sub = GP[::2, ::2]
+                gp_flat = gp_sub.cpu().flatten()
+
+                grid_x, grid_y = torch.meshgrid(torch.linspace(0, 1, n_grid), torch.linspace(0, 1, n_grid),
+                                                indexing='ij')
+                grid_x_sub = grid_x[::2, ::2]
+                grid_y_sub = grid_y[::2, ::2]
+                grid_x_flat = grid_x_sub.flatten()
+                grid_y_flat = grid_y_sub.flatten()
+
+                plt.scatter(to_numpy(grid_x_flat), to_numpy(grid_y_flat), c=to_numpy(gp_flat), s=4, cmap='viridis', vmin=0, vmax=6)
+                plt.colorbar(fraction=0.046, pad=0.04)
+                plt.title('grid momentum')
+                plt.xlim([0, 1])
+                plt.ylim([0, 1])
+                plt.gca().set_aspect('equal')
+
+                plt.tight_layout()
+                num = f"{idx:06}"
+                plt.savefig(f"{log_dir}/tmp_recons/Grid_{run}_{num}.png", dpi=100)
+                plt.close()
+            
+            
+            if 'tissue' in config.dataset:
+                fig, ax = fig_init(formatx="%.1f", formaty="%.1f")
+                plt.axis('off')
+                mass = torch.unique(M)
+                is_red = M==mass[1]
+                plt.scatter(to_numpy(x[is_red.squeeze(), 1]), to_numpy(x[is_red.squeeze(), 2]), c='red', s=1, alpha = 1, edgecolors='none')
+                is_green = M==mass[0]
+                plt.scatter(to_numpy(x[is_green.squeeze(), 1]), to_numpy(x[is_green.squeeze(), 2]), c='green', s=1, alpha = 1, edgecolors='none')
+                plt.xlim([0, 1])
+                plt.ylim([0, 1])
+                plt.xticks([])
+                plt.yticks([])
+                plt.tight_layout()
+                num = f"{idx:06}"
+                plt.savefig(f"{log_dir}/tmp_recons/Tissue_{run}_{num}.png", dpi=80)
+                plt.close()
+        
+            else:
+                fig, ax = fig_init(formatx="%.1f", formaty="%.1f")
+                plt.axis('off')
+                if 'F' in style:
+                    f_norm = torch.norm(F.view(n_particles, -1), dim=1).cpu().numpy()
+                    plt.scatter(to_numpy(x[:, 1]), to_numpy(x[:, 2]), c=f_norm, s=10, cmap='coolwarm', vmin=1.44-0.1, vmax=1.44+0.1)
+                elif 'C' in style:
+                    c_norm = torch.norm(C.view(n_particles, -1), dim=1).cpu().numpy()
+                    plt.scatter(to_numpy(x[:, 1]), to_numpy(x[:, 2]), c=c_norm, s=10, cmap='viridis', vmin=0, vmax=80)
+                elif 'Jp' in style:
+                    plt.scatter(to_numpy(x[:, 1]), to_numpy(x[:, 2]), c=to_numpy(Jp), s=10, cmap='viridis', vmin=0.75, vmax=1.25)
+                elif 'S' in style:
+                    stress_norm = torch.norm(S.view(n_particles, -1), dim=1)
+                    stress_norm = stress_norm[:,None]
+                    plt.scatter(to_numpy(x[:, 1]), to_numpy(x[:, 2]), c=to_numpy(stress_norm[:,0]), s=10, cmap='hot', vmin=0, vmax=6E-3)
+                else:
+                    for n in range(3):
+                        pos = torch.argwhere(T == n)[:,0]
+                        if len(pos) > 0:
+                            plt.scatter(to_numpy(x[pos, 1]), to_numpy(x[pos, 2]), s=10, color=cmap.color(n))
+                plt.xlim([0, 1])
+                plt.ylim([0, 1])
+                plt.xticks([])
+                plt.yticks([])
+                plt.tight_layout()
+                num = f"{idx:06}"
+                plt.savefig(f"{log_dir}/tmp_recons/Fig_{run}_{num}.png", dpi=80)
+                plt.close()
+            idx += 1
+
+
+
+        
 

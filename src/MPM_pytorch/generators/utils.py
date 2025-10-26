@@ -513,16 +513,20 @@ def init_MPM_scenario(
         device='cpu'
 ):
     """
-    Initialize MPM particles for specific scenarios.
+    Initialize MPM particles for various collision scenarios.
     
     Scenarios:
-        - 'collision': Two discs with different materials colliding head-on
-                      Left disc (liquid): 80% of particles
-                      Right disc (jelly): 20% of particles (1/4 ratio)
+        - 'collision': Head-on collision of two discs (asymmetric size/particles)
+        - 'tbone': Perpendicular collision (horizontal liquid vs vertical jelly)
+        - 'pincer': Compression test (two discs squeeze a center disc)
+        - 'rain': Multiple small drops falling onto large puddle
+        - 'slingshot': Glancing collision at angle
+        - 'explosion': Radial burst pattern
+        - 'shear': Parallel sliding motion
     
     Args:
-        scenario: Type of scenario ('collision', etc.)
-        n_shapes: Number of objects (must be 2 for collision)
+        scenario: Type of scenario
+        n_shapes: Number of objects
         seed: Random seed for reproducibility
         n_particles: Total number of particles
         n_particle_types: Number of material types
@@ -532,16 +536,7 @@ def init_MPM_scenario(
         device: Torch device ('cpu' or 'cuda')
     
     Returns:
-        N: Particle indices [n_particles, 1]
-        x: Positions [n_particles, 2]
-        v: Velocities [n_particles, 2]
-        C: Affine velocity matrices [n_particles, 2, 2]
-        F: Deformation gradients [n_particles, 2, 2]
-        T: Material types [n_particles, 1]
-        Jp: Plastic deformation [n_particles, 1]
-        M: Masses [n_particles, 1]
-        S: Stress tensors [n_particles, 2, 2]
-        ID: Object IDs [n_particles, 1]
+        N, x, v, C, F, T, Jp, M, S, ID
     """
     torch.manual_seed(seed)
     
@@ -558,83 +553,429 @@ def init_MPM_scenario(
     S = torch.zeros((n_particles, 2, 2), dtype=torch.float32, device=device)
     
     if scenario == 'collision':
-        # Two discs setup for head-on collision
-        # Asymmetric particle distribution: liquid has 4x more particles than jelly
-        disc_radius = 0.1
+        # Head-on collision: Large liquid disc vs small jelly disc
+        # Particle distribution: 80% liquid, 20% jelly
+        particles_liquid = int(n_particles * 0.8)
+        particles_jelly = n_particles - particles_liquid
         
-        # Position discs horizontally aligned, separated for collision
+        # Different radii for each material
+        radius_liquid = 0.12
+        radius_jelly = 0.08
+        
         disc_centers = torch.tensor([
             [0.3, 0.5],  # Left disc (liquid)
             [0.7, 0.5]   # Right disc (jelly)
         ], device=device)
         
-        # Particle distribution: 80% liquid, 20% jelly (1:4 ratio jelly:liquid)
-        particles_liquid = int(n_particles * 0.8)
-        particles_jelly = n_particles - particles_liquid
-        
         particles_per_disc = [particles_liquid, particles_jelly]
+        disc_radii = [radius_liquid, radius_jelly]
+        disc_materials = [0, 1]
+        disc_velocities = [
+            torch.tensor([2.0, 0.0], device=device),   # Moving right
+            torch.tensor([-2.0, 0.0], device=device)   # Moving left
+        ]
         
-        # Generate particles for each disc
+        # Generate particles
         valid_particles = []
         particle_disc_ids = []
         
         for disc_idx in range(2):
-            disc_particles = []
             center = disc_centers[disc_idx]
             n_disc_particles = particles_per_disc[disc_idx]
+            disc_radius = disc_radii[disc_idx]
             
-            # Generate particles in circular pattern using proper area sampling
             for _ in range(n_disc_particles):
                 r = torch.rand(1, device=device).sqrt() * disc_radius
                 theta = torch.rand(1, device=device) * 2 * torch.pi
-                
                 px = center[0] + r * torch.cos(theta)
                 py = center[1] + r * torch.sin(theta)
-                disc_particles.append([px.item(), py.item()])
+                valid_particles.append([px.item(), py.item()])
                 particle_disc_ids.append(disc_idx)
-            
-            valid_particles.extend(disc_particles)
         
-        # Set positions
         positions = torch.tensor(valid_particles, device=device)
         x[:, 0] = positions[:, 0]
         x[:, 1] = positions[:, 1]
         
-        # Set velocities: discs moving toward each other for collision
-        velocity_magnitude = 2.0
+        # Set velocities and materials
+        for disc_idx in range(2):
+            if disc_idx == 0:
+                mask = slice(0, particles_liquid)
+            else:
+                mask = slice(particles_liquid, n_particles)
+            v[mask] = disc_velocities[disc_idx]
+            T[mask] = disc_materials[disc_idx]
         
-        # Left disc (liquid): particles 0 to particles_liquid-1
-        v[:particles_liquid, 0] = velocity_magnitude
-        v[:particles_liquid, 1] = 0.0
+        particle_disc_ids_tensor = torch.tensor(particle_disc_ids, device=device)
+        ID = particle_disc_ids_tensor.unsqueeze(1).int()
+    
+    elif scenario == 'tbone':
+        # T-bone: Horizontal liquid disc (faster) vs vertical jelly disc (normal)
+        # 80% liquid (horizontal), 20% jelly (vertical)
+        particles_liquid = int(n_particles * 0.8)
+        particles_jelly = n_particles - particles_liquid
         
-        # Right disc (jelly): particles particles_liquid to end
-        v[particles_liquid:, 0] = -velocity_magnitude
-        v[particles_liquid:, 1] = 0.0
+        radius_liquid = 0.12
+        radius_jelly = 0.08
         
-        # Assign materials: different material for each disc
-        if n_particle_types > 1:
-            # Left disc: material 0 (liquid)
-            T[:particles_liquid] = 0
-            # Right disc: material 1 (jelly)
-            T[particles_liquid:] = 1
+        disc_centers = torch.tensor([
+            [0.3, 0.5],  # Left disc (liquid) - horizontal
+            [0.5, 0.7]   # Top disc (jelly) - vertical
+        ], device=device)
         
-        # Calculate mass based on material type and density
-        material_densities = torch.tensor(rho_list, device=device)
-        particle_densities = material_densities[T.squeeze()]
-        M = torch.full((n_particles, 1), p_vol, dtype=torch.float32, device=device) * particle_densities.unsqueeze(1)
+        particles_per_disc = [particles_liquid, particles_jelly]
+        disc_radii = [radius_liquid, radius_jelly]
+        disc_materials = [0, 1]
+        disc_velocities = [
+            torch.tensor([3.0, 0.0], device=device),   # Horizontal (faster)
+            torch.tensor([0.0, -2.0], device=device)   # Vertical down
+        ]
         
-        # Object ID for each particle
+        # Generate particles
+        valid_particles = []
+        particle_disc_ids = []
+        
+        for disc_idx in range(2):
+            center = disc_centers[disc_idx]
+            n_disc_particles = particles_per_disc[disc_idx]
+            disc_radius = disc_radii[disc_idx]
+            
+            for _ in range(n_disc_particles):
+                r = torch.rand(1, device=device).sqrt() * disc_radius
+                theta = torch.rand(1, device=device) * 2 * torch.pi
+                px = center[0] + r * torch.cos(theta)
+                py = center[1] + r * torch.sin(theta)
+                valid_particles.append([px.item(), py.item()])
+                particle_disc_ids.append(disc_idx)
+        
+        positions = torch.tensor(valid_particles, device=device)
+        x[:, 0] = positions[:, 0]
+        x[:, 1] = positions[:, 1]
+        
+        # Set velocities and materials
+        for disc_idx in range(2):
+            if disc_idx == 0:
+                mask = slice(0, particles_liquid)
+            else:
+                mask = slice(particles_liquid, n_particles)
+            v[mask] = disc_velocities[disc_idx]
+            T[mask] = disc_materials[disc_idx]
+        
+        particle_disc_ids_tensor = torch.tensor(particle_disc_ids, device=device)
+        ID = particle_disc_ids_tensor.unsqueeze(1).int()
+    
+    elif scenario == 'pincer':
+        # Pincer: Left liquid + right jelly squeeze center jelly (slow compression)
+        # 50% liquid left, 30% jelly center, 20% jelly right
+        particles_liquid_left = int(n_particles * 0.5)
+        particles_jelly_center = int(n_particles * 0.3)
+        particles_jelly_right = n_particles - particles_liquid_left - particles_jelly_center
+        
+        radius_liquid = 0.12
+        radius_jelly_center = 0.10
+        radius_jelly_right = 0.08
+        
+        disc_centers = torch.tensor([
+            [0.25, 0.5],  # Left disc (liquid)
+            [0.5, 0.5],   # Center disc (jelly) - stationary
+            [0.75, 0.5]   # Right disc (jelly)
+        ], device=device)
+        
+        particles_per_disc = [particles_liquid_left, particles_jelly_center, particles_jelly_right]
+        disc_radii = [radius_liquid, radius_jelly_center, radius_jelly_right]
+        disc_materials = [0, 1, 1]
+        disc_velocities = [
+            torch.tensor([0.5, 0.0], device=device),   # Slow right
+            torch.tensor([0.0, 0.0], device=device),   # Stationary
+            torch.tensor([-0.5, 0.0], device=device)   # Slow left
+        ]
+        
+        # Generate particles
+        valid_particles = []
+        particle_disc_ids = []
+        
+        for disc_idx in range(3):
+            center = disc_centers[disc_idx]
+            n_disc_particles = particles_per_disc[disc_idx]
+            disc_radius = disc_radii[disc_idx]
+            
+            for _ in range(n_disc_particles):
+                r = torch.rand(1, device=device).sqrt() * disc_radius
+                theta = torch.rand(1, device=device) * 2 * torch.pi
+                px = center[0] + r * torch.cos(theta)
+                py = center[1] + r * torch.sin(theta)
+                valid_particles.append([px.item(), py.item()])
+                particle_disc_ids.append(disc_idx)
+        
+        positions = torch.tensor(valid_particles, device=device)
+        x[:, 0] = positions[:, 0]
+        x[:, 1] = positions[:, 1]
+        
+        # Set velocities and materials
+        cumsum = [0, particles_liquid_left, particles_liquid_left + particles_jelly_center, n_particles]
+        for disc_idx in range(3):
+            mask = slice(cumsum[disc_idx], cumsum[disc_idx + 1])
+            v[mask] = disc_velocities[disc_idx]
+            T[mask] = disc_materials[disc_idx]
+        
+        particle_disc_ids_tensor = torch.tensor(particle_disc_ids, device=device)
+        ID = particle_disc_ids_tensor.unsqueeze(1).int()
+    
+    elif scenario == 'rain':
+        # Rain: Multiple small jelly drops falling onto large liquid puddle
+        # 70% liquid puddle at bottom, 30% jelly drops above
+        particles_puddle = int(n_particles * 0.7)
+        particles_drops = n_particles - particles_puddle
+        
+        # Puddle at bottom
+        radius_puddle = 0.15
+        center_puddle = torch.tensor([0.5, 0.25], device=device)
+        
+        # Generate puddle particles
+        valid_particles = []
+        particle_disc_ids = []
+        
+        for _ in range(particles_puddle):
+            r = torch.rand(1, device=device).sqrt() * radius_puddle
+            theta = torch.rand(1, device=device) * 2 * torch.pi
+            px = center_puddle[0] + r * torch.cos(theta)
+            py = center_puddle[1] + r * torch.sin(theta)
+            valid_particles.append([px.item(), py.item()])
+            particle_disc_ids.append(0)
+        
+        # Generate rain drops (5 drops)
+        n_drops = 5
+        drop_radius = 0.04
+        particles_per_drop = particles_drops // n_drops
+        
+        drop_x_positions = torch.linspace(0.3, 0.7, n_drops, device=device)
+        drop_y_start = 0.75
+        
+        for drop_idx in range(n_drops):
+            n_drop_particles = particles_per_drop if drop_idx < n_drops - 1 else (particles_drops - drop_idx * particles_per_drop)
+            drop_center = torch.tensor([drop_x_positions[drop_idx].item(), drop_y_start], device=device)
+            
+            for _ in range(n_drop_particles):
+                r = torch.rand(1, device=device).sqrt() * drop_radius
+                theta = torch.rand(1, device=device) * 2 * torch.pi
+                px = drop_center[0] + r * torch.cos(theta)
+                py = drop_center[1] + r * torch.sin(theta)
+                valid_particles.append([px.item(), py.item()])
+                particle_disc_ids.append(drop_idx + 1)
+        
+        positions = torch.tensor(valid_particles, device=device)
+        x[:, 0] = positions[:, 0]
+        x[:, 1] = positions[:, 1]
+        
+        # Velocities: puddle stationary, drops falling
+        v[:particles_puddle, :] = 0.0
+        v[particles_puddle:, 0] = 0.0
+        v[particles_puddle:, 1] = -1.5  # Falling down
+        
+        # Materials: puddle = liquid, drops = jelly
+        T[:particles_puddle] = 0
+        T[particles_puddle:] = 1
+        
+        particle_disc_ids_tensor = torch.tensor(particle_disc_ids, device=device)
+        ID = particle_disc_ids_tensor.unsqueeze(1).int()
+    
+    elif scenario == 'slingshot':
+        # Slingshot: Small fast jelly grazes large slow liquid at angle
+        # 80% liquid, 20% jelly
+        particles_liquid = int(n_particles * 0.8)
+        particles_jelly = n_particles - particles_liquid
+        
+        radius_liquid = 0.12
+        radius_jelly = 0.06
+        
+        # Offset for glancing collision
+        disc_centers = torch.tensor([
+            [0.5, 0.5],    # Center disc (liquid)
+            [0.25, 0.65]   # Top-left disc (jelly) - offset for glancing
+        ], device=device)
+        
+        particles_per_disc = [particles_liquid, particles_jelly]
+        disc_radii = [radius_liquid, radius_jelly]
+        disc_materials = [0, 1]
+        
+        # Liquid barely moving, jelly comes at angle
+        disc_velocities = [
+            torch.tensor([0.2, 0.0], device=device),      # Slow drift right
+            torch.tensor([2.5, -1.5], device=device)      # Fast diagonal (grazing angle)
+        ]
+        
+        # Generate particles
+        valid_particles = []
+        particle_disc_ids = []
+        
+        for disc_idx in range(2):
+            center = disc_centers[disc_idx]
+            n_disc_particles = particles_per_disc[disc_idx]
+            disc_radius = disc_radii[disc_idx]
+            
+            for _ in range(n_disc_particles):
+                r = torch.rand(1, device=device).sqrt() * disc_radius
+                theta = torch.rand(1, device=device) * 2 * torch.pi
+                px = center[0] + r * torch.cos(theta)
+                py = center[1] + r * torch.sin(theta)
+                valid_particles.append([px.item(), py.item()])
+                particle_disc_ids.append(disc_idx)
+        
+        positions = torch.tensor(valid_particles, device=device)
+        x[:, 0] = positions[:, 0]
+        x[:, 1] = positions[:, 1]
+        
+        # Set velocities and materials
+        for disc_idx in range(2):
+            if disc_idx == 0:
+                mask = slice(0, particles_liquid)
+            else:
+                mask = slice(particles_liquid, n_particles)
+            v[mask] = disc_velocities[disc_idx]
+            T[mask] = disc_materials[disc_idx]
+        
+        particle_disc_ids_tensor = torch.tensor(particle_disc_ids, device=device)
+        ID = particle_disc_ids_tensor.unsqueeze(1).int()
+    
+    elif scenario == 'explosion':
+        # Explosion: One liquid disc explodes into 8 jelly fragments radiating outward
+        # 70% liquid center, 30% jelly fragments (distributed among 8 pieces)
+        particles_center = int(n_particles * 0.7)
+        particles_fragments = n_particles - particles_center
+        
+        radius_center = 0.10
+        radius_fragment = 0.04
+        
+        # Center disc
+        center_pos = torch.tensor([0.5, 0.5], device=device)
+        
+        valid_particles = []
+        particle_disc_ids = []
+        
+        # Generate center disc particles
+        for _ in range(particles_center):
+            r = torch.rand(1, device=device).sqrt() * radius_center
+            theta = torch.rand(1, device=device) * 2 * torch.pi
+            px = center_pos[0] + r * torch.cos(theta)
+            py = center_pos[1] + r * torch.sin(theta)
+            valid_particles.append([px.item(), py.item()])
+            particle_disc_ids.append(0)
+        
+        # Generate 8 fragment discs in radial pattern
+        n_fragments = 8
+        particles_per_fragment = particles_fragments // n_fragments
+        fragment_distance = 0.15  # Initial distance from center
+        
+        for frag_idx in range(n_fragments):
+            angle = (2 * torch.pi / n_fragments) * frag_idx
+            frag_center_x = center_pos[0] + fragment_distance * torch.cos(torch.tensor(angle))
+            frag_center_y = center_pos[1] + fragment_distance * torch.sin(torch.tensor(angle))
+            frag_center = torch.tensor([frag_center_x, frag_center_y], device=device)
+            
+            n_frag_particles = particles_per_fragment if frag_idx < n_fragments - 1 else (particles_fragments - frag_idx * particles_per_fragment)
+            
+            for _ in range(n_frag_particles):
+                r = torch.rand(1, device=device).sqrt() * radius_fragment
+                theta = torch.rand(1, device=device) * 2 * torch.pi
+                px = frag_center[0] + r * torch.cos(theta)
+                py = frag_center[1] + r * torch.sin(theta)
+                valid_particles.append([px.item(), py.item()])
+                particle_disc_ids.append(frag_idx + 1)
+        
+        positions = torch.tensor(valid_particles, device=device)
+        x[:, 0] = positions[:, 0]
+        x[:, 1] = positions[:, 1]
+        
+        # Velocities: center stationary, fragments radiating outward
+        v[:particles_center, :] = 0.0
+        
+        explosion_speed = 2.0
+        for frag_idx in range(n_fragments):
+            angle = (2 * torch.pi / n_fragments) * frag_idx
+            vx = explosion_speed * torch.cos(torch.tensor(angle))
+            vy = explosion_speed * torch.sin(torch.tensor(angle))
+            
+            start_idx = particles_center + frag_idx * particles_per_fragment
+            if frag_idx < n_fragments - 1:
+                end_idx = particles_center + (frag_idx + 1) * particles_per_fragment
+            else:
+                end_idx = n_particles
+            
+            v[start_idx:end_idx, 0] = vx
+            v[start_idx:end_idx, 1] = vy
+        
+        # Materials: center = liquid, fragments = jelly
+        T[:particles_center] = 0
+        T[particles_center:] = 1
+        
+        particle_disc_ids_tensor = torch.tensor(particle_disc_ids, device=device)
+        ID = particle_disc_ids_tensor.unsqueeze(1).int()
+    
+    elif scenario == 'shear':
+        # Shear: Two discs moving parallel but at different speeds (shear layer)
+        # 50% each material
+        particles_fast = int(n_particles * 0.5)
+        particles_slow = n_particles - particles_fast
+        
+        radius_disc = 0.10
+        
+        # Vertically stacked discs
+        disc_centers = torch.tensor([
+            [0.5, 0.6],  # Top disc (liquid) - fast
+            [0.5, 0.4]   # Bottom disc (jelly) - slow
+        ], device=device)
+        
+        particles_per_disc = [particles_fast, particles_slow]
+        disc_radii = [radius_disc, radius_disc]
+        disc_materials = [0, 1]
+        
+        # Both moving right but at different speeds (shear)
+        disc_velocities = [
+            torch.tensor([2.5, 0.0], device=device),   # Fast
+            torch.tensor([1.0, 0.0], device=device)    # Slow
+        ]
+        
+        # Generate particles
+        valid_particles = []
+        particle_disc_ids = []
+        
+        for disc_idx in range(2):
+            center = disc_centers[disc_idx]
+            n_disc_particles = particles_per_disc[disc_idx]
+            disc_radius = disc_radii[disc_idx]
+            
+            for _ in range(n_disc_particles):
+                r = torch.rand(1, device=device).sqrt() * disc_radius
+                theta = torch.rand(1, device=device) * 2 * torch.pi
+                px = center[0] + r * torch.cos(theta)
+                py = center[1] + r * torch.sin(theta)
+                valid_particles.append([px.item(), py.item()])
+                particle_disc_ids.append(disc_idx)
+        
+        positions = torch.tensor(valid_particles, device=device)
+        x[:, 0] = positions[:, 0]
+        x[:, 1] = positions[:, 1]
+        
+        # Set velocities and materials
+        for disc_idx in range(2):
+            if disc_idx == 0:
+                mask = slice(0, particles_fast)
+            else:
+                mask = slice(particles_fast, n_particles)
+            v[mask] = disc_velocities[disc_idx]
+            T[mask] = disc_materials[disc_idx]
+        
         particle_disc_ids_tensor = torch.tensor(particle_disc_ids, device=device)
         ID = particle_disc_ids_tensor.unsqueeze(1).int()
     
     else:
-        raise ValueError(f"Unknown scenario: {scenario}. Supported scenarios: 'collision'")
+        raise ValueError(f"Unknown scenario: {scenario}. Supported: collision, tbone, pincer, rain, slingshot, explosion, shear")
+    
+    # Calculate mass based on material type and density
+    material_densities = torch.tensor(rho_list, device=device)
+    particle_densities = material_densities[T.squeeze()]
+    M = torch.full((n_particles, 1), p_vol, dtype=torch.float32, device=device) * particle_densities.unsqueeze(1)
     
     return N, x, v, C, F, T, Jp, M, S, ID
-
-
-
-
 
 def generate_gummy_bear_particles(n_particles, center, size, device='cpu'):
     """

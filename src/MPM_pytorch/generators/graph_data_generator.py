@@ -327,6 +327,7 @@ def data_generate_MPM_2D(
     gravity = simulation_config.MPM_gravity
     friction = simulation_config.MPM_friction
     surface_tension = simulation_config.MPM_surface_tension
+    enable_surface_tension = 'tension' in model_config.particle_model_name
 
     delta_t = simulation_config.delta_t
     n_frames = simulation_config.n_frames
@@ -435,11 +436,6 @@ def data_generate_MPM_2D(
                            S.reshape(n_particles, 4).clone().detach(),ID.clone().detach()), 1)
             if (it >= 0):
                 x_list.append(to_numpy(x))
-
-            enable_surface_tension = 'TENSION' in model_config.particle_model_name
-                # Get surface tension coefficient from config or use default
-                # surface_tension_coeff = getattr(simulation_config, 'surface_tension_coeff', 0.072)
-                # enable_surface_tension = getattr(simulation_config, 'enable_surface_tension', True)
 
             X, V, C, F, Jp, T, M, S, GM, GV = MPM_step(
                 model_MPM, X, V, C, F, Jp, T, M, n_particles, n_grid,
@@ -618,7 +614,7 @@ def data_generate_MPM_2D(
             with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
                 fdst.write(fsrc.read())
             generate_compressed_video_mp4(output_dir=f"./graphs_data/{dataset_name}", run=run,
-                                        config_indices=config_indices, framerate=50)
+                                        config_indices=config_indices, framerate=100)
             # files = glob.glob(f'./graphs_data/{dataset_name}/Fig/*')
             # for f in files:
             #     os.remove(f)
