@@ -500,6 +500,142 @@ def init_MPM_shapes(
     return N, x, v, C, F, T, Jp, M, S, ID
 
 
+
+def init_MPM_scenario(
+        scenario='collision',
+        n_shapes=2,
+        seed=42,
+        n_particles=[],
+        n_particle_types=[],
+        n_grid=[],
+        dx=[],
+        rho_list=[],
+        device='cpu'
+):
+    """
+    Initialize MPM particles for specific scenarios.
+    
+    Scenarios:
+        - 'collision': Two discs with different materials colliding head-on
+                      Left disc (liquid): 80% of particles
+                      Right disc (jelly): 20% of particles (1/4 ratio)
+    
+    Args:
+        scenario: Type of scenario ('collision', etc.)
+        n_shapes: Number of objects (must be 2 for collision)
+        seed: Random seed for reproducibility
+        n_particles: Total number of particles
+        n_particle_types: Number of material types
+        n_grid: Grid resolution
+        dx: Grid spacing
+        rho_list: List of material densities [liquid, jelly, snow]
+        device: Torch device ('cpu' or 'cuda')
+    
+    Returns:
+        N: Particle indices [n_particles, 1]
+        x: Positions [n_particles, 2]
+        v: Velocities [n_particles, 2]
+        C: Affine velocity matrices [n_particles, 2, 2]
+        F: Deformation gradients [n_particles, 2, 2]
+        T: Material types [n_particles, 1]
+        Jp: Plastic deformation [n_particles, 1]
+        M: Masses [n_particles, 1]
+        S: Stress tensors [n_particles, 2, 2]
+        ID: Object IDs [n_particles, 1]
+    """
+    torch.manual_seed(seed)
+    
+    p_vol = (dx * 0.5) ** 2
+    
+    # Initialize state variables
+    N = torch.arange(n_particles, dtype=torch.float32, device=device)[:, None]
+    x = torch.zeros((n_particles, 2), dtype=torch.float32, device=device)
+    v = torch.zeros((n_particles, 2), dtype=torch.float32, device=device)
+    C = torch.zeros((n_particles, 2, 2), dtype=torch.float32, device=device)
+    F = torch.eye(2, dtype=torch.float32, device=device).unsqueeze(0).expand(n_particles, -1, -1)
+    T = torch.ones((n_particles, 1), dtype=torch.int32, device=device)
+    Jp = torch.ones((n_particles, 1), dtype=torch.float32, device=device)
+    S = torch.zeros((n_particles, 2, 2), dtype=torch.float32, device=device)
+    
+    if scenario == 'collision':
+        # Two discs setup for head-on collision
+        # Asymmetric particle distribution: liquid has 4x more particles than jelly
+        disc_radius = 0.1
+        
+        # Position discs horizontally aligned, separated for collision
+        disc_centers = torch.tensor([
+            [0.3, 0.5],  # Left disc (liquid)
+            [0.7, 0.5]   # Right disc (jelly)
+        ], device=device)
+        
+        # Particle distribution: 80% liquid, 20% jelly (1:4 ratio jelly:liquid)
+        particles_liquid = int(n_particles * 0.8)
+        particles_jelly = n_particles - particles_liquid
+        
+        particles_per_disc = [particles_liquid, particles_jelly]
+        
+        # Generate particles for each disc
+        valid_particles = []
+        particle_disc_ids = []
+        
+        for disc_idx in range(2):
+            disc_particles = []
+            center = disc_centers[disc_idx]
+            n_disc_particles = particles_per_disc[disc_idx]
+            
+            # Generate particles in circular pattern using proper area sampling
+            for _ in range(n_disc_particles):
+                r = torch.rand(1, device=device).sqrt() * disc_radius
+                theta = torch.rand(1, device=device) * 2 * torch.pi
+                
+                px = center[0] + r * torch.cos(theta)
+                py = center[1] + r * torch.sin(theta)
+                disc_particles.append([px.item(), py.item()])
+                particle_disc_ids.append(disc_idx)
+            
+            valid_particles.extend(disc_particles)
+        
+        # Set positions
+        positions = torch.tensor(valid_particles, device=device)
+        x[:, 0] = positions[:, 0]
+        x[:, 1] = positions[:, 1]
+        
+        # Set velocities: discs moving toward each other for collision
+        velocity_magnitude = 2.0
+        
+        # Left disc (liquid): particles 0 to particles_liquid-1
+        v[:particles_liquid, 0] = velocity_magnitude
+        v[:particles_liquid, 1] = 0.0
+        
+        # Right disc (jelly): particles particles_liquid to end
+        v[particles_liquid:, 0] = -velocity_magnitude
+        v[particles_liquid:, 1] = 0.0
+        
+        # Assign materials: different material for each disc
+        if n_particle_types > 1:
+            # Left disc: material 0 (liquid)
+            T[:particles_liquid] = 0
+            # Right disc: material 1 (jelly)
+            T[particles_liquid:] = 1
+        
+        # Calculate mass based on material type and density
+        material_densities = torch.tensor(rho_list, device=device)
+        particle_densities = material_densities[T.squeeze()]
+        M = torch.full((n_particles, 1), p_vol, dtype=torch.float32, device=device) * particle_densities.unsqueeze(1)
+        
+        # Object ID for each particle
+        particle_disc_ids_tensor = torch.tensor(particle_disc_ids, device=device)
+        ID = particle_disc_ids_tensor.unsqueeze(1).int()
+    
+    else:
+        raise ValueError(f"Unknown scenario: {scenario}. Supported scenarios: 'collision'")
+    
+    return N, x, v, C, F, T, Jp, M, S, ID
+
+
+
+
+
 def generate_gummy_bear_particles(n_particles, center, size, device='cpu'):
     """
     Generate particles approximating a 2D gummy bear shape with legs touching the body.

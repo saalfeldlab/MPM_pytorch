@@ -5,7 +5,7 @@ from .MPM_3D_P2G import *
 from .MPM_3D_step import *
 
 from .graph_data_generator import *
-from .utils import choose_model, MPM_step, init_MPM_3D_shapes, init_MPM_shapes, generate_compressed_video_mp4, plot_3d_pointcloud, export_for_gaussian_splatting, init_MPM_tissue
+from .utils import choose_model, MPM_step, init_MPM_3D_shapes, init_MPM_shapes, init_MPM_scenario, generate_compressed_video_mp4, plot_3d_pointcloud, export_for_gaussian_splatting, init_MPM_tissue
 
 __all__ = [utils, graph_data_generator, MPM_P2G, MPM_step, MPM_3D_P2G, MPM_3D_step,
-           choose_model, init_MPM_3D_shapes, init_MPM_shapes, plot_3d_pointcloud]
+           choose_model, init_MPM_3D_shapes, init_MPM_shapes, init_MPM_scenario, plot_3d_pointcloud]

@@ -58,7 +58,7 @@ def MPM_step(
 
     # SVD decomposition
     F_reg = F + 1e-6 * identity 
-    F_reg = F_reg.detach()
+
      # small regularization to avoid numerical issues
 
     U, sig, Vh = torch.linalg.svd(F_reg, driver='gesvdj')
