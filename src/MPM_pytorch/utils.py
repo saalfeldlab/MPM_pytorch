@@ -26,6 +26,8 @@ import warnings
 from collections import defaultdict
 import matplotlib.patches as patches
 from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.animation import FFMpegWriter
+from collections import deque 
 
 
 warnings.filterwarnings('ignore')
@@ -1908,24 +1910,25 @@ if self.S_amplitude > 0:
     return results
 
 
-def plot_fields(trainer, model, x_list, run, frame_idx, n_particles, n_frames, device, 
-                log_dir, epoch, N, dataset_name):
+def plot_fields_movie(trainer, model, x_list, run, start_frame, n_particles, n_frames, device, 
+                      log_dir, epoch, N, dataset_name, step_video=10):
     """
-    Plot all fields (F, S, C, Jp) that are present in trainer for a given frame.
+    Create MP4 movies for all fields (F, S, C, Jp) that are present in trainer.
     
     Args:
         trainer: dict containing model configuration (checks for 'F', 'S', 'C', 'Jp' keys)
         model: the neural network model
         x_list: list of particle data arrays
         run: current run index
-        frame_idx: frame index to plot
+        start_frame: starting frame for the movie
         n_particles: number of particles
         n_frames: total number of frames
         device: torch device
-        log_dir: directory for saving plots
+        log_dir: directory for saving videos
         epoch: current training epoch
         N: current training iteration
         dataset_name: name of the dataset
+        step_video: sample every N frames (default: 10)
     """
     
     # Define all possible fields
@@ -1938,15 +1941,6 @@ def plot_fields(trainer, model, x_list, run, frame_idx, n_particles, n_frames, d
             'cmap': 'coolwarm',
             'title': 'F (deformation)',
             'use_identity': True
-        },
-        'S': {
-            'indices': (13, 17),
-            'shape': (-1, 2, 2),
-            'vmin': 0,
-            'vmax': 6E-3,
-            'cmap': 'hot',
-            'title': 'S (stress)',
-            'use_identity': False
         },
         'C': {
             'indices': (5, 9),
@@ -1971,93 +1965,119 @@ def plot_fields(trainer, model, x_list, run, frame_idx, n_particles, n_frames, d
     with torch.no_grad():
         plt.style.use('dark_background')
         
-        # Load particle data for the frame
-        x = torch.tensor(x_list[run][frame_idx], dtype=torch.float32, device=device)
-        pos = x[:, 1:3]  # Particle positions
-        frame_normalized = torch.tensor(frame_idx / n_frames, dtype=torch.float32, device=device)
-        
-        # Prepare features for SIREN
-        features = torch.cat([
-            pos,
-            frame_normalized.expand(n_particles, 1)
-        ], dim=1)
-        
-        # Plot each field that's in trainer
+        # Create movie for each field that's in trainer
         for field_name, config in field_configs.items():
             if field_name not in trainer:
                 continue
             
+            # MP4 writer setup
+            fps = 30
+            metadata = dict(title=f'SIREN {field_name} Field Evolution', artist='Matplotlib', 
+                          comment=f'{field_name} field over time')
+            writer = FFMpegWriter(fps=fps, metadata=metadata)
+            
+            fig = plt.figure(figsize=(15, 5))
+            
+            # Output path
+            out_dir = f"./{log_dir}/tmp_training/siren_{field_name}"
+            os.makedirs(out_dir, exist_ok=True)
+            out_path = f"{out_dir}/{field_name}_field_movie_{epoch}_{N}.mp4"
+            if os.path.exists(out_path):
+                os.remove(out_path)
+            
             # Get SIREN model for this field
             siren_model = getattr(model, f'siren_{field_name}')
             
-            # Get prediction
-            if config['use_identity']:
-                identity = torch.eye(2, device=device).unsqueeze(0).expand(n_particles, -1, -1)
-                field_pred = identity + torch.tanh(siren_model(features).reshape(*config['shape']))
-            else:
-                field_pred = siren_model(features).reshape(*config['shape'])
+            with writer.saving(fig, out_path, dpi=300):
+                
+                for k in trange(start_frame, n_frames, step_video):
+                    
+                    # Clear the figure
+                    fig.clear()
+                    
+                    # Load particle data for frame k
+                    x = torch.tensor(x_list[run][k], dtype=torch.float32, device=device)
+                    pos = x[:, 1:3]  # Particle positions
+                    frame_normalized = torch.tensor(k / n_frames, dtype=torch.float32, device=device)
+                    
+                    # Prepare features for SIREN
+                    features = torch.cat([
+                        pos,
+                        frame_normalized.expand(n_particles, 1)
+                    ], dim=1)
+                    
+                    # Get prediction
+                    if config['use_identity']:
+                        identity = torch.eye(2, device=device).unsqueeze(0).expand(n_particles, -1, -1)
+                        field_pred = identity + torch.tanh(siren_model(features).reshape(*config['shape']))
+                    else:
+                        field_pred = siren_model(features).reshape(*config['shape'])
+                    
+                    # Calculate norms
+                    if field_name == 'Jp':
+                        field_norm_pred = field_pred.cpu().numpy()
+                        field_norm_gt = x[:, config['indices'][0]].cpu().numpy()
+                    else:
+                        field_norm_pred = torch.norm(field_pred.view(n_particles, -1), dim=1).cpu().numpy()
+                        field_gt = x[:, config['indices'][0]:config['indices'][1]].reshape(*config['shape'])
+                        field_norm_gt = torch.norm(field_gt.view(n_particles, -1), dim=1).cpu().numpy()
+                    
+                    # Create subplots
+                    ax1 = fig.add_subplot(1, 3, 1)
+                    ax2 = fig.add_subplot(1, 3, 2)
+                    ax3 = fig.add_subplot(1, 3, 3)
+                    
+                    # Plot ground truth
+                    scatter1 = ax1.scatter(to_numpy(pos[:, 0]), to_numpy(pos[:, 1]), 
+                                        c=field_norm_gt, s=1, cmap=config['cmap'], 
+                                        vmin=config['vmin'], vmax=config['vmax'])
+                    ax1.set_title(f'Ground truth {config["title"]} (Frame {k})', fontsize=10)
+                    ax1.set_xlabel('X')
+                    ax1.set_ylabel('Y')
+                    ax1.set_aspect('equal')
+                    plt.colorbar(scatter1, ax=ax1, label=f'||{field_name}||' if field_name != 'Jp' else 'Jp')
+                    ax1.set_xlim([0, 1])
+                    ax1.set_ylim([0, 1])
+                    
+                    # Plot SIREN predicted
+                    scatter2 = ax2.scatter(to_numpy(pos[:, 0]), to_numpy(pos[:, 1]), 
+                                        c=field_norm_pred, s=1, cmap=config['cmap'],
+                                        vmin=config['vmin'], vmax=config['vmax'])
+                    ax2.set_title(f'SIREN predicted {config["title"]} (Frame {k})', fontsize=10)
+                    ax2.set_xlabel('X')
+                    ax2.set_ylabel('Y')
+                    ax2.set_aspect('equal')
+
+                    # text min max and mean
+                    min_val = field_norm_pred.min()
+                    max_val = field_norm_pred.max()
+                    mean_val = field_norm_pred.mean()
+                    ax2.text(0.05, 0.95, f'min: {min_val:.3f}\nmax: {max_val:.3f}\nmean: {mean_val:.3f}',   transform=ax2.transAxes, fontsize=8, verticalalignment='top')
+
+
+                    plt.colorbar(scatter2, ax=ax2, label=f'||{field_name}||' if field_name != 'Jp' else 'Jp')
+                    ax2.set_xlim([0, 1])
+                    ax2.set_ylim([0, 1])
+                    
+                    # Plot error
+                    field_error = np.abs(field_norm_pred - field_norm_gt)
+                    scatter3 = ax3.scatter(to_numpy(pos[:, 0]), to_numpy(pos[:, 1]), 
+                                        c=field_error, s=1, cmap='viridis',
+                                        vmin=-0.01, vmax=0.01)
+                    ax3.set_title(f'Absolute error (Frame {k})', fontsize=10)
+                    ax3.set_xlabel('X')
+                    ax3.set_ylabel('Y')
+                    ax3.set_aspect('equal')
+                    plt.colorbar(scatter3, ax=ax3, label='|error|')
+                    ax3.set_xlim([0, 1])
+                    ax3.set_ylim([0, 1])
+                    
+                    # Add training info
+                    fig.suptitle(f'Epoch {epoch}, Iter {N} - Training SIREN {field_name} Field', fontsize=12)
+                    
+                    plt.tight_layout()
+                    
+                    # Write frame to video
+                    writer.grab_frame()
             
-            # Calculate norms
-            if field_name == 'Jp':
-                field_norm_pred = field_pred.cpu().numpy()
-                field_norm_gt = x[:, config['indices'][0]].cpu().numpy()
-            else:
-                field_norm_pred = torch.norm(field_pred.view(n_particles, -1), dim=1).cpu().numpy()
-                field_gt = x[:, config['indices'][0]:config['indices'][1]].reshape(*config['shape'])
-                field_norm_gt = torch.norm(field_gt.view(n_particles, -1), dim=1).cpu().numpy()
-            
-            # Create figure with 3 subplots
-            fig = plt.figure(figsize=(15, 5))
-            
-            # Plot 1: Ground truth
-            ax1 = fig.add_subplot(1, 3, 1)
-            scatter1 = ax1.scatter(to_numpy(pos[:, 0]), to_numpy(pos[:, 1]), 
-                                  c=field_norm_gt, s=1, cmap=config['cmap'], 
-                                  vmin=config['vmin'], vmax=config['vmax'])
-            ax1.set_title(f'Ground truth {config["title"]} (Frame {frame_idx})', fontsize=10)
-            ax1.set_xlabel('X')
-            ax1.set_ylabel('Y')
-            ax1.set_aspect('equal')
-            plt.colorbar(scatter1, ax=ax1, label=f'||{field_name}||' if field_name != 'Jp' else 'Jp')
-            ax1.set_xlim([0, 1])
-            ax1.set_ylim([0, 1])
-            
-            # Plot 2: SIREN predicted
-            ax2 = fig.add_subplot(1, 3, 2)
-            scatter2 = ax2.scatter(to_numpy(pos[:, 0]), to_numpy(pos[:, 1]), 
-                                  c=field_norm_pred, s=1, cmap=config['cmap'],
-                                  vmin=config['vmin'], vmax=config['vmax'])
-            ax2.set_title(f'SIREN predicted {config["title"]} (Frame {frame_idx})', fontsize=10)
-            ax2.set_xlabel('X')
-            ax2.set_ylabel('Y')
-            ax2.set_aspect('equal')
-            plt.colorbar(scatter2, ax=ax2, label=f'||{field_name}||' if field_name != 'Jp' else 'Jp')
-            ax2.set_xlim([0, 1])
-            ax2.set_ylim([0, 1])
-            
-            # Plot 3: Error
-            ax3 = fig.add_subplot(1, 3, 3)
-            field_error = np.abs(field_norm_pred - field_norm_gt)
-            scatter3 = ax3.scatter(to_numpy(pos[:, 0]), to_numpy(pos[:, 1]), 
-                                  c=field_error, s=1, cmap='viridis',
-                                  vmin=-0.01, vmax=0.01)
-            ax3.set_title(f'Absolute error (Frame {frame_idx})', fontsize=10)
-            ax3.set_xlabel('X')
-            ax3.set_ylabel('Y')
-            ax3.set_aspect('equal')
-            plt.colorbar(scatter3, ax=ax3, label='|error|')
-            ax3.set_xlim([0, 1])
-            ax3.set_ylim([0, 1])
-            
-            # Add training info
-            fig.suptitle(f'Epoch {epoch}, Iter {N} - Training SIREN {field_name} Field', fontsize=12)
-            
-            plt.tight_layout()
-            
-            # Save figure
-            out_dir = f"./{log_dir}/tmp_training/siren_{field_name}"
-            os.makedirs(out_dir, exist_ok=True)
-            num = f"{frame_idx:06}"
-            plt.savefig(f"{out_dir}/Fig_{run}_{num}_epoch{epoch}_iter{N}.png", dpi=100)
             plt.close(fig)
-            

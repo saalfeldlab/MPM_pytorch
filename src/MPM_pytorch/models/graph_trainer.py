@@ -1,4 +1,5 @@
 import os
+from subprocess import run
 import time
 
 import matplotlib.pyplot as plt
@@ -27,7 +28,7 @@ from tifffile import imwrite, imread
 from matplotlib.colors import LinearSegmentedColormap
 
 from matplotlib.animation import FFMpegWriter
-from collections import deque  # Only if using the rolling buffer version
+from collections import deque 
  
 
 def data_train(config=None, erase=False, best_model=None, device=None):
@@ -139,14 +140,14 @@ def data_train_material(config, erase, best_model, device):
     x = []
     y = []
 
-    results = recommend_amplitude_values(
-            x_list=x_list,
-            run=0,
-            n_frames=1000,
-            device='cuda',
-            sample_every=100,
-            verbose=True
-        )
+    # results = recommend_amplitude_values(
+    #         x_list=x_list,
+    #         run=0,
+    #         n_frames=1000,
+    #         device='cuda',
+    #         sample_every=100,
+    #         verbose=True
+    #     )
 
 
     print('create models ...')
@@ -206,7 +207,7 @@ def data_train_material(config, erase, best_model, device):
         run = 0
         data_id = torch.ones((n_particles,1), dtype = torch.float32, device=device) * run
 
-        for N in trange(Niter+1, ncols=150):
+        for N in trange(Niter, ncols=150):
 
             loss = 0
             optimizer.zero_grad()
@@ -220,13 +221,11 @@ def data_train_material(config, erase, best_model, device):
                 x_next = torch.tensor(x_list[run][k+1], dtype=torch.float32, device=device).clone().detach()
                 k_batch = torch.ones((n_particles,1), dtype = torch.float32, device=device) * k
 
-                if 'F' in trainer:
-                    y = x_next[:, 1:1 + dimension ].clone().detach()  
+                y = x_next[:, 1:1 + dimension ].clone().detach()  
 
                 pred_x, pred_C, pred_F, pred_Jp, pred_S = model(x, data_id=data_id, k=k_batch, trainer=trainer, batch_size=batch_size)
                 
-                if 'F' in trainer:
-                    loss = loss + 1E4 *(pred_x - y).norm(2)
+                loss = loss + 1E4 *(pred_x - y).norm(2)
 
                 # if coeff_Jp_norm > 0 :
                 #     loss = loss + coeff_Jp_norm * F.mse_loss(pred_Jp, torch.ones_like(pred_Jp).detach())
@@ -237,8 +236,6 @@ def data_train_material(config, erase, best_model, device):
                 if coeff_det_F > 0:
                     det_F = torch.det(pred_F.view(-1, 2, 2))
                     loss = loss + coeff_det_F * F.relu(-det_F + 0.1).norm(2)
-                
-
 
             try:
                     
@@ -249,6 +246,7 @@ def data_train_material(config, erase, best_model, device):
                 
             except RuntimeError as e:
 
+                print(f'iteration {N} skipped due to error: {e}')   
                 optimizer.zero_grad()  # Clear any partial gradients
                 continue
 
@@ -257,124 +255,14 @@ def data_train_material(config, erase, best_model, device):
             total_loss += loss.item()
 
 
-
-
-            if ((N % plot_frequency == 0)) & (N > -1):
+            if (N % plot_frequency == 0):
                 
                 # Save model checkpoint
                 torch.save({'model_state_dict': model.state_dict(), 'optimizer_state_dict': optimizer.state_dict()},
                         os.path.join(log_dir, 'models', f'best_model_with_{n_runs - 1}_graphs_{epoch}_{N}.pt'))
-                
-
                 # plots all fields present in trainer (F, S, C, and/or Jp)
-                plot_fields(trainer, model, x_list, 0, 500, n_particles, n_frames, device, log_dir, epoch, N, dataset_name)
-
-                # Create SIREN F field movie
-                # if 'F' in trainer:
-                #     with torch.no_grad():
-                #         plt.style.use('dark_background')
-                        
-                #         # MP4 writer setup
-                #         fps = 30
-                #         metadata = dict(title='SIREN F Field Evolution', artist='Matplotlib', comment='F field over time')
-                #         writer = FFMpegWriter(fps=fps, metadata=metadata)
-                        
-                #         fig = plt.figure(figsize=(15, 5))
-                        
-                #         # Output path
-                #         out_dir = f"./{log_dir}/tmp_training/siren_F"
-                #         os.makedirs(out_dir, exist_ok=True)
-                #         out_path = f"{out_dir}/F_field_movie_{epoch}_{N}.mp4"
-                #         if os.path.exists(out_path):
-                #             os.remove(out_path)
-                        
-                #         # Video parameters
-                #         step_video = 10  # Sample every 10 frames
-                #         n_frames_to_plot = min(200, n_frames)  # Limit to 200 frames for speed
-                        
-                #         with writer.saving(fig, out_path, dpi=300):
-                            
-                #             for k in range(n_frames-1000, n_frames, step_video):
-                                
-                #                 # Clear the figure
-                #                 fig.clear()
-                                
-                #                 # Load particle data for frame k
-                #                 x = torch.tensor(x_list[run][k], dtype=torch.float32, device=device)
-                #                 pos = x[:, 1:3]  # Particle positions
-                #                 frame_normalized = torch.tensor(k / n_frames, dtype=torch.float32, device=device)
-                                
-                #                 # Get SIREN prediction for F
-                #                 features = torch.cat([
-                #                     pos,
-                #                     frame_normalized.expand(n_particles, 1)
-                #                 ], dim=1)
-                                
-                #                 # Apply your identity + tanh formulation
-                #                 identity = torch.eye(2, device=device).unsqueeze(0).expand(n_particles, -1, -1)
-                #                 F_pred = identity + torch.tanh(model.siren_F(features).reshape(-1, 2, 2))
-                                
-                #                 # Calculate F norm for visualization
-                #                 f_norm_pred = torch.norm(F_pred.view(n_particles, -1), dim=1).cpu().numpy()
-                                
-                #                 # Get ground truth F if available
-                #                 F_gt = x[:, 9:13].reshape(-1, 2, 2)
-                #                 f_norm_gt = torch.norm(F_gt.view(n_particles, -1), dim=1).cpu().numpy()
-                                
-                #                 # Create subplots
-                #                 ax1 = fig.add_subplot(1, 3, 1)
-                #                 ax2 = fig.add_subplot(1, 3, 2)
-                #                 ax3 = fig.add_subplot(1, 3, 3)
-                                
-                #                 # Plot ground truth F
-                #                 scatter1 = ax1.scatter(to_numpy(pos[:, 0]), to_numpy(pos[:, 1]), 
-                #                                     c=f_norm_gt, s=1, cmap='coolwarm', 
-                #                                     vmin=np.sqrt(2)-0.1, vmax=np.sqrt(2)+0.1)
-                #                 ax1.set_title(f'ground truth F (Frame {k})', fontsize=10)
-                #                 ax1.set_xlabel('X')
-                #                 ax1.set_ylabel('Y')
-                #                 ax1.set_aspect('equal')
-                #                 plt.colorbar(scatter1, ax=ax1, label='||F||')
-                #                 ax1.set_xlim([0, 1])
-                #                 ax1.set_ylim([0, 1])
-                                
-                #                 # Plot SIREN predicted F
-                #                 scatter2 = ax2.scatter(to_numpy(pos[:, 0]), to_numpy(pos[:, 1]), 
-                #                                     c=f_norm_pred, s=1, cmap='coolwarm',
-                #                                     vmin=np.sqrt(2)-0.1, vmax=np.sqrt(2)+0.1)
-                #                 ax2.set_title(f'SIREN predicted F (Frame {k})', fontsize=10)
-                #                 ax2.set_xlabel('X')
-                #                 ax2.set_ylabel('Y')
-                #                 ax2.set_aspect('equal')
-                #                 plt.colorbar(scatter2, ax=ax2, label='||F||')
-                #                 ax2.set_xlim([0, 1])
-                #                 ax2.set_ylim([0, 1])
-                                
-                #                 # Plot error
-                #                 f_error = np.abs(f_norm_pred - f_norm_gt)
-                #                 scatter3 = ax3.scatter(to_numpy(pos[:, 0]), to_numpy(pos[:, 1]), 
-                #                                     c=f_error, s=1, cmap='viridis',
-                #                                     vmin=-0.01, vmax=0.01)
-                #                 ax3.set_title(f'absolute error (Frame {k})', fontsize=10)
-                #                 ax3.set_xlabel('X')
-                #                 ax3.set_ylabel('Y')
-                #                 ax3.set_aspect('equal')
-                #                 plt.colorbar(scatter3, ax=ax3, label='|error|')
-                #                 ax3.set_xlim([0, 1])
-                #                 ax3.set_ylim([0, 1])
-                                
-                #                 # Add training info
-                #                 fig.suptitle(f'epoch {epoch}, iter {N} - training SIREN F Field', fontsize=12)
-                                
-                #                 plt.tight_layout()
-                                
-                #                 # Write frame to video
-                #                 writer.grab_frame()
-                        
-                #         plt.close(fig)
-
-
-                # check_and_clear_memory(device=device, iteration_number=N, every_n_iterations=Niter // 50, memory_percentage_threshold=0.6)
+                plot_fields_movie(trainer, model, x_list, 0, 500, n_particles, n_frames, device, log_dir, epoch, N, dataset_name)
+                check_and_clear_memory(device=device, iteration_number=N, every_n_iterations=Niter // 50, memory_percentage_threshold=0.6)
 
         torch.save({'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict()},
@@ -384,6 +272,8 @@ def data_train_material(config, erase, best_model, device):
         logger.info("Epoch {}. Loss: {:.10f}".format(epoch, total_loss / n_particles))
         list_loss.append(total_loss / n_particles)
         torch.save(list_loss, os.path.join(log_dir, 'loss.pt'))
+        plot_fields_movie(trainer, model, x_list, 0, 500, n_particles, n_frames, device, log_dir, epoch, N, dataset_name)
+                
 
         plt.style.use('default')
         fig = plt.figure(figsize=(22, 5))
@@ -406,3 +296,98 @@ def data_train_material(config, erase, best_model, device):
 
         plt.savefig(f"./{log_dir}/tmp_training/Fig_{epoch}.tif")
         plt.close()
+
+
+
+def data_test(config=None, config_file=None, visualize=False, style='color frame', verbose=True, best_model=20, step=15, run=0, test_mode='', device=[]):
+    simulation_config = config.simulation
+    train_config = config.training
+    model_config = config.graph_model
+    plot_config = config.plotting
+    trainer = train_config.MPM_trainer
+
+    dimension = simulation_config.dimension
+    n_particles = simulation_config.n_particles
+    n_particle_types = simulation_config.n_particle_types
+    n_grid = simulation_config.n_grid
+
+    delta_t = simulation_config.delta_t
+    dataset_name = config.dataset
+    n_frames = simulation_config.n_frames
+
+    cmap = CustomColorMap(config=config)  # create colormap for given model_config
+    n_runs = train_config.n_runs
+
+    os.makedirs(f"./{log_dir}/tmp_training/tmp_recons", exist_ok=True)
+    files = os.listdir(f"./{log_dir}/tmp_training/tmp_recons")
+    for file in files:
+        os.remove(f"./{log_dir}/tmp_training/tmp_recons/{file}")
+
+    print('load data ...')
+    x_list = []
+    x = np.load(f'graphs_data/{dataset_name}/x_list_{run}.npy')
+    if np.isnan(x).any():
+        print('Pb isnan in x')
+    x_list.append(x)
+    x = torch.tensor(x_list[0][0], dtype=torch.float32, device=device)
+
+    vnorm = torch.tensor(1, device=device)
+    ynorm = torch.tensor(1, device=device)
+
+    print(f'N particles: {n_particles}')
+    print(f'N grid: {n_grid}')
+    print(f'vnorm: {to_numpy(vnorm)}, ynorm: {to_numpy(ynorm)}')
+
+    print('create models ...')
+    model, bc_pos, bc_dpos = choose_training_model(config, device)
+    model.ynorm = ynorm
+    model.vnorm = vnorm
+
+    if best_model == 'best':
+        files = glob.glob(f"{log_dir}/models/*")
+        files.sort(key=sort_key)
+        filename = files[-1]
+        filename = filename.split('/')[-1]
+        filename = filename.split('graphs')[-1][1:-3]
+        best_model = filename
+        print(f'best model: {best_model}')
+    net = f"{log_dir}/models/best_model_with_{n_runs - 1}_graphs_{best_model}.pt"
+    print(f'network: {net}')
+    state_dict = torch.load(net, map_location=device)
+    model.load_state_dict(state_dict['model_state_dict'])
+    model.eval()
+
+    time.sleep(1)
+
+    start_it = 0
+
+    x = x_list[0][start_it].clone().detach()
+    n_particles = x.shape[0]
+
+
+    data_id = torch.ones((n_particles,1), dtype = torch.float32, device=device) * run
+
+    for it in trange(start_it,start_it+800, ncols=150):
+
+        x = torch.tensor(x_list[run][it], dtype=torch.float32, device=device).clone().detach()
+        x_next = torch.tensor(x_list[run][it+1], dtype=torch.float32, device=device).clone().detach()
+
+        y = x_next[:, 1:1 + dimension ].clone().detach()  
+
+        with torch.no_grad():  
+            pred_x, pred_C, pred_F, pred_Jp, pred_S = model(x, data_id=data_id, k=k, trainer=trainer, batch_size=1)
+
+        N = x[:,0:1]
+        X = pred_x
+        V = (pred_x - x[:,1:1+dimension]) / delta_t
+        C = pred_C
+        F = pred_F
+        Jp = pred_Jp
+        T = x[:,13:14]
+        M = x[:,14:15]
+        S = pred_S
+        ID = x[:,15:16]
+
+        x = torch.cat([N, X, V, C.view(-1, 4), F.view(-1, 4), Jp, T, M, S.view(-1,4), ID], dim=1)
+        x = x.clone().detach()
+

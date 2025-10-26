@@ -58,9 +58,9 @@ if __name__ == "__main__":
         else:
             best_model = None
     else:
-        task = 'train'  # 'generate', 'train', 'test'
+        task = 'generate'  # 'generate', 'train', 'test'
         best_model = ''
-        config_list = ['multimaterial_1_train_F_8']  #['multimaterial_1_discs_3types'] # ['cells_tissue_1']
+        config_list = ['multimaterial_1_discs_3types'] # ['multimaterial_1_train_F_8']  #
 
         # viz in MPM/graphs_data/multimaterial/multimaterial_4_0_3D/Fig
         # other config files to be found in ./config/*.yaml
@@ -100,5 +100,17 @@ if __name__ == "__main__":
         if "train" in task:
             data_train(config=config, erase=False, best_model=best_model, device=device)
 
+        if "test" in task:
+            data_test(
+                config=config,
+                config_file=config_file, 
+                visualize=False, 
+                style='black', 
+                verbose=True, 
+                best_model='best', 
+                step=20, 
+                run=0, 
+                test_mode='', 
+                device=device)
 
-# bsub -n 4 -gpu "num=1" -q gpu_h100 -Is "python GNN_particles_Ntype.py"
+

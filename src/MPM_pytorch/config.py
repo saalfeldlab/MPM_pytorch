@@ -57,7 +57,6 @@ class SimulationConfig(BaseModel):
     MPM_F_amplitude: float = 1.5
     MPM_C_amplitude: float = 200.0
     MPM_Jp_amplitude: float = 10.0
-    MPM_S_amplitude: float = 100.0
 
     diffusion_coefficients: list[list[float]] = None
 
@@ -129,8 +128,7 @@ class GraphModelConfig(BaseModel):
     multi_siren_params: Optional[List[List[Union[int, float, bool]]]] = [
         [3, 4, 4096, 3, 4096.0, 4096.0, True],    # siren_F [0]
         [3, 1, 4096, 3, 4096.0, 4096.0, True],    # siren_Jp [1]
-        [5, 4, 4096, 3, 4096.0, 4096.0, True],    # siren_C normal [2]
-        [7, 4, 4096, 3, 4096.0, 4096.0, True]     # siren_C PDE_MPM_A [3]
+        [3, 4, 4096, 3, 4096.0, 4096.0, True],    # siren_C normal [2]
     ]
 
     lin_edge_positive: bool = False

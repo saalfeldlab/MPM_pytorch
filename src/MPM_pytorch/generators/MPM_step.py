@@ -57,30 +57,42 @@ def MPM_step(
     mu = torch.where(liquid_mask, torch.tensor(0.0, device=device), mu)  # liquids cannot resist shear deformation, no shape memory
 
     # SVD decomposition
-    F_reg = F + 1e-6 * identity  # small regularization to avoid numerical issues (not used in SVD)
+    F_reg = F + 1e-6 * identity  # small regularization to avoid numerical issues
+
     U, sig, Vh = torch.linalg.svd(F_reg, driver='gesvdj')  # F = U @ diag(sig) @ Vh - polar decomposition
 
     # U and Vh should be rotation matrices with det=+1, but numerical issues may lead to reflections (det=-1)
-    det_U = torch.det(U).detach()  
-    det_Vh = torch.det(Vh).detach() 
-    neg_det_U = det_U < 0  
-    neg_det_Vh = det_Vh < 0  
+    det_U = torch.det(U)
+    det_Vh = torch.det(Vh)
+    neg_det_U = det_U < 0
+    neg_det_Vh = det_Vh < 0
 
-    # sign of U and Vh corrections
-    neg_det_U_mask = neg_det_U.unsqueeze(-1).unsqueeze(-1).detach()  
-    neg_det_sig_U_mask = neg_det_U.unsqueeze(-1).detach()  
-    neg_det_Vh_mask = neg_det_Vh.unsqueeze(-1).unsqueeze(-1).detach()  
-    neg_det_sig_Vh_mask = neg_det_Vh.unsqueeze(-1).detach()  
-    U = torch.where(neg_det_U_mask.expand_as(U),torch.cat([U[:, :, :-1], -U[:, :, -1:].clone()], dim=2), U) # flip last column to ensure det(U)=+1
-    sig = torch.where(neg_det_sig_U_mask.expand_as(sig), torch.cat([sig[:, :-1], -sig[:, -1:].clone()], dim=1), sig) # flip last singular value to compensate
-    Vh = torch.where(neg_det_Vh_mask.expand_as(Vh), torch.cat([Vh[:, :-1, :], -Vh[:, -1:, :].clone()], dim=1), Vh)  # flip last row to ensure det(Vh)=+1
-    sig = torch.where(neg_det_sig_Vh_mask.expand_as(sig), torch.cat([sig[:, :-1], -sig[:, -1:].clone()], dim=1), sig)  # flip last singular value to compensate
+    # sign corrections - handle each case properly without double-modifying sig
+    if neg_det_U.any():
+        # flip last column of U and last singular value
+        U_corrected = U.clone()
+        U_corrected[neg_det_U, :, -1] *= -1
+        U = U_corrected
+        
+        sig_corrected = sig.clone()
+        sig_corrected[neg_det_U, -1] *= -1
+        sig = sig_corrected
+
+    if neg_det_Vh.any():
+        # flip last row of Vh and last singular value
+        Vh_corrected = Vh.clone()
+        Vh_corrected[neg_det_Vh, -1, :] *= -1
+        Vh = Vh_corrected
+        
+        sig_corrected = sig.clone()
+        sig_corrected[neg_det_Vh, -1] *= -1
+        sig = sig_corrected
 
     # soft clamp of sig to preserve gradient
-    min_val = 1e-6  # minimum allowed singular value (prevents inversion/collapse)
-    sig = torch.where( sig < min_val,  min_val + 0.01 * (sig - min_val), sig) # small slope below min_val - soft clamping instead of hard cutoff
+    min_val = 1e-6
+    sig = torch.where(sig < min_val, min_val + 0.01 * (sig - min_val), sig)
     original_sig = sig.clone()
-    sig = torch.where(snow_mask.unsqueeze(1), torch.clamp(sig, min=1 - 2.5e-2, max=1 + 4.5e-3), sig) # snow can compress up to 2.5% and stretch up to 0.45%
+    sig = torch.where(snow_mask.unsqueeze(1), torch.clamp(sig, min=1 - 2.5e-2, max=1 + 4.5e-3), sig)
 
     # update plastic deformation
     plastic_ratio = torch.prod(original_sig / sig, dim=1, keepdim=True)  # volume ratio of plastic deformation

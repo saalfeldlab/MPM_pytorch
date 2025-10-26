@@ -71,7 +71,6 @@ class Interaction_MPM(nn.Module):
         self.F_amplitude = simulation_config.MPM_F_amplitude
         self.C_amplitude = simulation_config.MPM_C_amplitude
         self.Jp_amplitude = simulation_config.MPM_Jp_amplitude
-        self.S_amplitude = simulation_config.MPM_S_amplitude
 
         siren_params = model_config.multi_siren_params
 
@@ -82,7 +81,6 @@ class Interaction_MPM(nn.Module):
         F_siren_params = siren_params[0]  # [in_features, out_features, hidden_features, hidden_layers, first_omega_0, hidden_omega_0, outermost_linear]
         Jp_siren_params = siren_params[1]
         C_normal_siren_params = siren_params[2]
-        C_PDE_MPM_A_siren_params = siren_params[3]
 
         # Create Siren networks using config parameters
         self.siren_F = Siren(
@@ -103,16 +101,6 @@ class Interaction_MPM(nn.Module):
             first_omega_0=Jp_siren_params[4],
             hidden_omega_0=Jp_siren_params[5],
             outermost_linear=Jp_siren_params[6]
-        ).to(device)
-
-        self.siren_S = Siren(
-            in_features=S_siren_params[0],
-            out_features=S_siren_params[1],
-            hidden_features=S_siren_params[2],
-            hidden_layers=S_siren_params[3],
-            first_omega_0=S_siren_params[4],
-            hidden_omega_0=S_siren_params[5],
-            outermost_linear=S_siren_params[6]
         ).to(device)
 
         self.siren_C = Siren(
@@ -233,24 +221,6 @@ class Interaction_MPM(nn.Module):
                 max_C = 10.0  # Adjust based on dt and typical velocities
                 C = max_C * torch.tanh(C_raw)  # C ∈ [-10, 10]
 
-        # Stress Tensor S (or sigma)
-        if 'S' in trainer:
-            features = torch.cat((pos, frame), dim=1).detach()
-            if self.S_amplitude > 0:
-                # Perturbation around zero stress
-                S = self.S_amplitude * torch.tanh(self.siren_S(features).reshape(-1, 2, 2))
-            elif self.S_amplitude == 0:
-                # Direct prediction
-                S = self.siren_S(features).reshape(-1, 2, 2)
-            elif self.S_amplitude == -1:
-                # Symmetric stress tensor constraint
-                S_raw = self.siren_S(features).reshape(-1, 2, 2)
-                # Ensure symmetry: sigma = (sigma + sigma^T) / 2
-                S = 0.5 * (S_raw + S_raw.transpose(-2, -1))
-                # Optional: bound stress magnitude
-                max_stress = 100.0  # Adjust based on material properties
-                S = max_stress * torch.tanh(S / max_stress)  # Soft bound
-
         # Plastic Deformation Jp
         if 'Jp' in trainer:
             features = torch.cat((pos, frame), dim=1).detach()
@@ -269,7 +239,7 @@ class Interaction_MPM(nn.Module):
                 Jp = torch.exp(torch.clamp(Jp_raw, min=-1.0, max=1.0))
                 # Jp ∈ [exp(-1), exp(1)] = [0.368, 2.718]
 
-        X, V, C, F, Jp, _, _, _, _, _ = MPM_step(self.MPM_P2G, pos, d_pos, C, F, Jp, T,
+        X, V, C, F, Jp, T, M, S, GM, GV = MPM_step(self.MPM_P2G, pos, d_pos, C, F, Jp, T,
                                 M, self.n_particles, self.n_grid,
                                 self.delta_t, self.dx, self.inv_dx, self.mu_0, self.lambda_0,
                                 self.p_vol, self.offsets, self.particle_offsets, 
