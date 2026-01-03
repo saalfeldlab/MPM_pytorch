@@ -60,9 +60,9 @@ if __name__ == "__main__":
     else:
         task = 'generate'  # 'generate', 'train', 'test'
         best_model = ''
-        config_list = ['multimaterial_1_discs_3types', 'multimaterial_1_cells', 'multimaterial_2_cells','multimaterial_1_3D'] 
+        config_list = ['multimaterial_1_discs_3types'] 
 
-        # viz in MPM/graphs_data/multimaterial/multimaterial_4_0_3D/Fig
+        # viz in MPM/graphs_data/multimaterial/.../Fig
         # other config files to be found in ./config/*.yaml
         # out of memory: diminish n_particles
 
@@ -85,13 +85,14 @@ if __name__ == "__main__":
                 device=device,
                 visualize=True,
                 run_vizualized=0,
-                style="black F",  # Style options: "black", "latex", "F", "M"
+                style="black M",  # Style options: "black", "latex", "F", "M", "grid"
                                 # - "black": dark background
                                 # - "latex": use LaTeX rendering
                                 # - "F": color by deformation gradient magnitude
                                 # - "M": color by material type
-                                # - default (no "F" or "M"): color by particle ID
-                                # Can combine: e.g., "black F" or "black latex M"
+                                # - "grid": create detailed grid visualization (2D only)
+                                # - default (no "F" or "M"): color by material type
+                                # Can combine: e.g., "black F" or "black latex M grid"
                 alpha=1,
                 erase=False,
                 bSave=True,

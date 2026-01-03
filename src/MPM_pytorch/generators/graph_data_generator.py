@@ -421,10 +421,26 @@ def data_generate_MPM_2D(
                     rc('font', **{'family': 'serif', 'serif': ['Palatino']})
 
                 fig, ax = fig_init(formatx="%.1f", formaty="%.1f")
-                for n in range(3):
-                    pos = torch.argwhere(T == n)[:,0]
-                    if len(pos) > 0:
-                        plt.scatter(to_numpy(x[pos, 1]), to_numpy(x[pos, 2]), s=10, color=cmap.color(n))
+
+                # Determine color mode based on style
+                if 'F' in style:
+                    # Color by deformation gradient magnitude
+                    f_norm = torch.norm(F.view(n_particles, -1), dim=1).cpu().numpy()
+                    scatter = plt.scatter(X[:, 0].cpu(), X[:, 1].cpu(), c=f_norm, s=10, cmap='coolwarm', vmin=0.9, vmax=1.6)
+                    plt.colorbar(scatter, fraction=0.046, pad=0.04)
+                elif 'M' in style:
+                    # Color by material type
+                    for n in range(3):
+                        pos = torch.argwhere(T == n)[:,0]
+                        if len(pos) > 0:
+                            plt.scatter(to_numpy(x[pos, 1]), to_numpy(x[pos, 2]), s=10, color=cmap.color(n))
+                else:
+                    # Default: color by particle ID or material type
+                    for n in range(3):
+                        pos = torch.argwhere(T == n)[:,0]
+                        if len(pos) > 0:
+                            plt.scatter(to_numpy(x[pos, 1]), to_numpy(x[pos, 2]), s=10, color=cmap.color(n))
+
                 plt.xlim([0, 1])
                 plt.ylim([0, 1])
                 plt.xticks([])
@@ -540,7 +556,7 @@ def data_generate_MPM_2D(
             print(f'data saved at: graphs_data/{dataset_name}/generated_data_{run}.npy')
 
         if visualize & (run == run_vizualized):
-            config_indices = dataset_name.split('fly_N9_')[1] if 'fly_N9_' in dataset_name else 'no_id'
+            config_indices = 'fig'
             src = f"./graphs_data/{dataset_name}/Fig/Fig_0_000000.png"
             dst = f"./graphs_data/{dataset_name}/input_{config_indices}.png"
             with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
@@ -550,6 +566,18 @@ def data_generate_MPM_2D(
             files = glob.glob(f'./graphs_data/{dataset_name}/Fig/*')
             for f in files:
                 os.remove(f)
+
+            if 'grid' in style:
+                config_indices = 'grid'
+                src = f"./graphs_data/{dataset_name}/Grid/Fig_0_000000.png"
+                dst = f"./graphs_data/{dataset_name}/input_{config_indices}.png"
+                with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
+                    fdst.write(fsrc.read())
+                generate_compressed_video_mp4(output_dir=f"./graphs_data/{dataset_name}/Grid", run=run,
+                                            config_indices=config_indices, framerate=50)
+                files = glob.glob(f'./graphs_data/{dataset_name}/Grid/*')
+                for f in files:
+                    os.remove(f)
 
 
 def data_generate_MPM_3D(
