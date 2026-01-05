@@ -228,21 +228,19 @@ if __name__ == "__main__":
                 ) # config.simulation.n_frames // 100)
 
             if "train_INR" in task:
-                # Get field_name and total_steps from raw YAML if Claude task
+                # Get field_name from raw YAML if Claude task
                 if 'Claude' in task:
                     with open(f"{config_root}/{config_file}.yaml", 'r') as f:
                         raw_config = yaml.safe_load(f)
                     field_name = raw_config.get('claude', {}).get('field_name', 'Jp')
-                    total_steps = raw_config.get('claude', {}).get('total_steps', 100000)
                 else:
                     field_name = 'Jp'
-                    total_steps = 100000
 
+                # total_steps is now read from config.training.total_steps inside data_train_INR
                 data_train_INR(
                     config=config,
                     device=device,
                     field_name=field_name,
-                    total_steps=total_steps,
                     erase='Claude' in task,
                     log_file=log_file
                 )

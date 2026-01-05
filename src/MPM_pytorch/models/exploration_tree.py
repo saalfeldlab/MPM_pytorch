@@ -102,6 +102,12 @@ def compute_ucb_scores(analysis_path, ucb_path, c=1.0, current_log_path=None, cu
                     current_node['slope'] = float(slope_str) if slope_str != 'nan' else 0.0
                 else:
                     current_node['slope'] = 0.0
+                training_time_match = re.search(r'training_time[=:]([\d.]+|N/A)', line)
+                if training_time_match:
+                    time_str = training_time_match.group(1)
+                    current_node['training_time_min'] = float(time_str) if time_str != 'N/A' else 0.0
+                else:
+                    current_node['training_time_min'] = 0.0
                 continue
 
         # Save the last node if complete
@@ -139,11 +145,18 @@ def compute_ucb_scores(analysis_path, ucb_path, c=1.0, current_log_path=None, cu
                 slope_str = slope_match.group(1)
                 slope_value = float(slope_str) if slope_str != 'nan' else 0.0
 
+            # parse training_time_min from analysis.log
+            training_time_value = 0.0
+            time_match = re.search(r'training_time_min[=:]\s*([\d.]+)', log_content)
+            if time_match:
+                training_time_value = float(time_match.group(1))
+
             if current_iteration in nodes:
                 # Update existing node's metrics
                 nodes[current_iteration]['final_r2'] = r2_value
                 nodes[current_iteration]['final_mse'] = mse_value
                 nodes[current_iteration]['slope'] = slope_value
+                nodes[current_iteration]['training_time_min'] = training_time_value
             else:
                 # Create new node using parent from previous iteration's "Next: parent=P"
                 prev_iter = current_iteration - 1
@@ -154,7 +167,8 @@ def compute_ucb_scores(analysis_path, ucb_path, c=1.0, current_log_path=None, cu
                     'parent': parent,
                     'final_r2': r2_value,
                     'final_mse': mse_value,
-                    'slope': slope_value
+                    'slope': slope_value,
+                    'training_time_min': training_time_value
                 }
 
     if not nodes:
@@ -223,6 +237,7 @@ def compute_ucb_scores(analysis_path, ucb_path, c=1.0, current_log_path=None, cu
             'final_r2': reward,
             'final_mse': node.get('final_mse', 0.0),
             'slope': node.get('slope', 0.0),
+            'training_time_min': node.get('training_time_min', 0.0),
             'mutation': node.get('mutation', ''),
             'is_current': node_id == current_iteration
         })
@@ -246,7 +261,8 @@ def compute_ucb_scores(analysis_path, ucb_path, c=1.0, current_log_path=None, cu
             line = (f"Node {score['id']}: UCB={score['ucb']:.3f}, "
                     f"parent={parent_str}, visits={score['visits']}, "
                     f"R2={score['final_r2']:.3f}, "
-                    f"slope={score['slope']:.3f}")
+                    f"slope={score['slope']:.3f}, "
+                    f"time={score['training_time_min']:.1f}min")
             if mutation_str:
                 line += f", Mutation={mutation_str}"
             f.write(line + "\n")

@@ -29,6 +29,7 @@ class UCBNode:
     visits: int
     r2: float
     slope: float = 0.0
+    training_time_min: float = 0.0
     mutation: str = ""
 
 
@@ -39,9 +40,9 @@ def parse_ucb_scores(filepath: str) -> list[UCBNode]:
     with open(filepath, 'r') as f:
         content = f.read()
 
-    # Pattern: Node N: UCB=X.XXX, parent=P|root, visits=V, R2=X.XXX, slope=X.XXX, Mutation=...
-    # slope and Mutation are optional for backward compatibility
-    pattern = r'Node (\d+): UCB=([\d.]+), parent=(\d+|root), visits=(\d+), R2=([\d.]+)(?:, slope=([\d.]+))?(?:, Mutation=([^\n\[]+))?'
+    # Pattern: Node N: UCB=X.XXX, parent=P|root, visits=V, R2=X.XXX, slope=X.XXX, time=X.Xmin, Mutation=...
+    # slope, time, and Mutation are optional for backward compatibility
+    pattern = r'Node (\d+): UCB=([\d.]+), parent=(\d+|root), visits=(\d+), R2=([\d.]+)(?:, slope=([\d.]+))?(?:, time=([\d.]+)min)?(?:, Mutation=([^\n\[]+))?'
 
     for match in re.finditer(pattern, content):
         node_id = int(match.group(1))
@@ -51,7 +52,8 @@ def parse_ucb_scores(filepath: str) -> list[UCBNode]:
         visits = int(match.group(4))
         r2 = float(match.group(5))
         slope = float(match.group(6)) if match.group(6) else 0.0
-        mutation = match.group(7).strip() if match.group(7) else ""
+        training_time_min = float(match.group(7)) if match.group(7) else 0.0
+        mutation = match.group(8).strip() if match.group(8) else ""
 
         nodes.append(UCBNode(
             id=node_id,
@@ -60,6 +62,7 @@ def parse_ucb_scores(filepath: str) -> list[UCBNode]:
             visits=visits,
             r2=r2,
             slope=slope,
+            training_time_min=training_time_min,
             mutation=mutation
         ))
 
@@ -225,10 +228,12 @@ def plot_ucb_tree(nodes: list[UCBNode],
                            fontsize=8, xytext=(0, 14), textcoords='offset points',
                            color='#333333', zorder=3)
 
-        # Annotation: UCB/V and R²/slope below the node
+        # Annotation: UCB/V and R²/slope/time below the node
         label_text = f"UCB={node.ucb:.2f} V={node.visits}\nR²={node.r2:.3f}"
         if node.slope > 0:
             label_text += f" slope={node.slope:.3f}"
+        if node.training_time_min > 0:
+            label_text += f"\n{node.training_time_min:.1f}min"
         ax.annotate(label_text, (x, y), ha='center', va='top',
                    fontsize=8, xytext=(0, -14), textcoords='offset points',
                    color='#555555', zorder=3)

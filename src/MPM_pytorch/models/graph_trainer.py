@@ -455,7 +455,7 @@ def data_train_material(config, erase, best_model, device):
         #     plt.close()
 
 
-def data_train_INR(config=None, device=None, field_name='C', total_steps=50000, erase=False, log_file=None):
+def data_train_INR(config=None, device=None, field_name='C', total_steps=None, erase=False, log_file=None):
     """
     Train INR network on MPM fields (C, F, Jp, S) from generated_data.
 
@@ -466,10 +466,13 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=50000, 
         config: Configuration object
         device: torch device
         field_name: Which field to train on ('C', 'F', 'Jp', 'S')
-        total_steps: Number of training steps
+        total_steps: Number of training steps (if None, reads from config.training.total_steps)
         erase: Whether to erase existing log files
         log_file: Optional file handle for writing analysis metrics
     """
+    # Read total_steps from config if not provided
+    if total_steps is None:
+        total_steps = getattr(config.training, 'total_steps', 50000)
 
     log_dir, logger = create_log_dir(config, erase)
     output_folder = os.path.join(log_dir, 'tmp_training', 'external_input')
@@ -613,7 +616,7 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=50000, 
             print(f"  initial omegas: {nnr_f.get_omegas()}")
         print(f"  parameters: {total_params:,}")
 
-    print(f"\ntraining: batch_size={batch_size}, learning_rate={learning_rate}")
+    print(f"\ntraining: batch_size={batch_size}, learning_rate_NNR_f={learning_rate}")
 
     ground_truth = torch.tensor(field_data, dtype=torch.float32, device=device)  # (n_frames, n_particles)
 
@@ -652,6 +655,14 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=50000, 
         optim = torch.optim.Adam(lr=learning_rate, params=nnr_f.parameters())
 
     print(f"training nnr_f for {total_steps} steps...")
+
+    # clamp batch_size to not exceed number of frames
+    if batch_size > n_frames:
+        print(f"warning: batch_size ({batch_size}) > n_frames ({n_frames}), clamping to {n_frames}")
+        batch_size = n_frames
+
+    import time
+    training_start_time = time.time()
 
     loss_list = []
     pbar = trange(total_steps+1, ncols=150)
@@ -998,6 +1009,11 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=50000, 
         slope, intercept, r_value, p_value, std_err = linregress(gt_flat, pred_flat)
         final_r2 = r_value ** 2
 
+    # Calculate training time
+    training_time = time.time() - training_start_time
+    training_time_min = training_time / 60.0
+    print(f"training completed in {training_time_min:.1f} minutes")
+
     # Write analysis.log if log_file provided
     if log_file is not None:
         log_file.write(f"field_name: {field_name}\n")
@@ -1011,10 +1027,11 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=50000, 
         log_file.write(f"n_components: {n_components}\n")
         log_file.write(f"total_steps: {total_steps}\n")
         log_file.write(f"batch_size: {batch_size}\n")
-        log_file.write(f"learning_rate: {learning_rate:.6e}\n")
+        log_file.write(f"learning_rate_NNR_f: {learning_rate:.6e}\n")
         log_file.write(f"hidden_dim_nnr_f: {hidden_dim_nnr_f}\n")
         log_file.write(f"n_layers_nnr_f: {n_layers_nnr_f}\n")
         log_file.write(f"omega_f: {omega_f}\n")
+        log_file.write(f"training_time_min: {training_time_min:.1f}\n")
         if hasattr(nnr_f, 'get_omegas'):
             omegas = nnr_f.get_omegas()
             if omegas:

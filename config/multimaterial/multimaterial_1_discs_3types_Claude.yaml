@@ -67,7 +67,7 @@ training:
   batch_size: 1
   small_init_batch_size: false
   n_runs: 1
-  n_training_frames: 2
+  n_training_frames: 48
   noise_model_level: 1.0e-05
   sparsity: none
   sparsity_freq: 3

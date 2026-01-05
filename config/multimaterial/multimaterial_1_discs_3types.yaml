@@ -63,7 +63,7 @@ training:
   small_init_batch_size: False
   n_runs: 1
 
-  n_training_frames: 2
+  n_training_frames: 48
 
   noise_model_level: 0
   noise_model_level: 1.0E-5

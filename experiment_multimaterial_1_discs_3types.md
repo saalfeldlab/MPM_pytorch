@@ -101,10 +101,13 @@ Edit config file for next iteration according to Parent Selection Rule.
 
 **Training Parameters (change within block):**
 
+Change one paramater at a time for better causal understanding
+
 ```yaml
 training:
   learning_rate_NNR_f: 1.0E-5 # range: 1E-7 to 1E-3
-  batch_size: 8 # values: 4, 8, 16, 32
+  batch_size: 8 # values: 4, 8, 16, 32, never larger than 32
+  total_steps: 50000 # range: 5000-200000 (scale inversely with hidden_dim for ~10min iterations)
 graph_model:
   hidden_dim_nnr_f: 512 # values: 128, 256, 512, 1024, 2048
   n_layers_nnr_f: 3 # range: 2-6
@@ -115,6 +118,8 @@ graph_model:
   # NGP-specific (if inr_type: ngp)
   # ngp_n_levels: 16 # range: 8-24
   # ngp_log2_hashmap_size: 19 # range: 15-22
+# training:
+#   n_training_frames: 48 # increase up to initial n_frames=10000, always n_training_frames > batch_size   
 ```
 
 **Parent Selection Rule:**
@@ -208,9 +213,9 @@ Update `{config}_memory.md`:
 
 ### Regime Comparison Table
 
-| Block | INR Type | Field | Best R² | Optimal lr_NNR_f | Optimal hidden_dim | Optimal n_layers | Optimal omega_f | Key finding |
-| ----- | -------- | ----- | ------- | ---------------- | ------------------ | ---------------- | --------------- | ----------- |
-| 1     | siren_id | Jp    | 0.998   | 1E-5             | 512                | 3                | 30.0            | ...         |
+| Block | INR Type | Field | Best R² | Optimal lr_NNR_f | Optimal hidden_dim | Optimal n_layers | Optimal omega_f | Optimal total_steps | Training time (min) | Key finding |
+| ----- | -------- | ----- | ------- | ---------------- | ------------------ | ---------------- | --------------- | ------------------- | ------------------- | ----------- |
+| 1     | siren_id | Jp    | 0.998   | 1E-5             | 512                | 3                | 30.0            | 50000               | 10.5                | ...         |
 
 ### Established Principles
 
