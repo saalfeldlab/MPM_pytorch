@@ -1,5 +1,6 @@
 import os
 import time
+import glob
 
 import matplotlib.pyplot as plt
 import torch
@@ -454,7 +455,7 @@ def data_train_material(config, erase, best_model, device):
         #     plt.close()
 
 
-def data_train_INR(config=None, device=None, field_name='C', total_steps=50000, erase=False):
+def data_train_INR(config=None, device=None, field_name='C', total_steps=50000, erase=False, log_file=None):
     """
     Train INR network on MPM fields (C, F, Jp, S) from generated_data.
 
@@ -467,11 +468,20 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=50000, 
         field_name: Which field to train on ('C', 'F', 'Jp', 'S')
         total_steps: Number of training steps
         erase: Whether to erase existing log files
+        log_file: Optional file handle for writing analysis metrics
     """
 
     log_dir, logger = create_log_dir(config, erase)
     output_folder = os.path.join(log_dir, 'tmp_training', 'external_input')
     os.makedirs(output_folder, exist_ok=True)
+
+    # Empty output folder at the beginning
+    files = glob.glob(f"{output_folder}/*")
+    for file in files:
+        try:
+            os.remove(file)
+        except:
+            pass
 
     dataset_name = config.dataset
     data_folder = f"graphs_data/{dataset_name}/"
@@ -863,19 +873,43 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=50000, 
                 ax4 = plt.subplot(2, 3, 6)
                 ax4.set_facecolor('black')
                 ax4.scatter(gt_norm, pred_norm, c='white', s=1, alpha=0.5)
-                # Add diagonal line
+
+                # Compute statistics
+                from scipy.stats import linregress
+                slope, intercept, r_value, p_value, std_err = linregress(gt_norm, pred_norm)
+                r2 = r_value ** 2
+                frame_mse = ((pred_norm - gt_norm) ** 2).mean()
+
+                # Add diagonal line (ideal)
                 lims = [min(gt_norm.min(), pred_norm.min()), max(gt_norm.max(), pred_norm.max())]
-                ax4.plot(lims, lims, 'r--', alpha=0.5, lw=1)
+                ax4.plot(lims, lims, 'r--', alpha=0.5, lw=1, label='ideal')
+
+                # Add regression line
+                x_line = np.array([gt_norm.min(), gt_norm.max()])
+                y_line = slope * x_line + intercept
+                ax4.plot(x_line, y_line, 'g-', alpha=0.7, lw=1, label=f'fit (slope={slope:.3f})')
+
+                # Recenter on data range with some padding
+                x_margin = (gt_norm.max() - gt_norm.min()) * 0.05
+                y_margin = (pred_norm.max() - pred_norm.min()) * 0.05
+                ax4.set_xlim([gt_norm.min() - x_margin, gt_norm.max() + x_margin])
+                ax4.set_ylim([pred_norm.min() - y_margin, pred_norm.max() + y_margin])
+
                 ax4.set_xlabel('Ground Truth', color='white', fontsize=11)
                 ax4.set_ylabel('Prediction', color='white', fontsize=11)
                 ax4.set_title(f'Pred vs GT (frame {frame_idx})', color='white', fontsize=12)
                 ax4.tick_params(colors='white', labelsize=10)
                 for spine in ax4.spines.values():
                     spine.set_color('white')
-                frame_mse = ((pred_norm - gt_norm) ** 2).mean()
-                ax4.text(0.05, 0.95, f'MSE: {frame_mse:.6f}',
+
+                # Add statistics text
+                stats_text = f'N: {n_particles}\n'
+                stats_text += f'R²: {r2:.4f}\n'
+                stats_text += f'slope: {slope:.4f}\n'
+                stats_text += f'MSE: {frame_mse:.6f}'
+                ax4.text(0.05, 0.95, stats_text,
                         transform=ax4.transAxes, va='top', ha='left',
-                        fontsize=10, color='white')
+                        fontsize=9, color='white', family='monospace')
 
                 # MSE text on top row
                 ax5 = plt.subplot(2, 3, 3)
@@ -932,5 +966,60 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=50000, 
         print(f"final MSE: {final_mse:.6f}")
         if hasattr(nnr_f, 'get_omegas'):
             print(f"final omegas: {nnr_f.get_omegas()}")
+
+    # Compute R² score for analysis
+    with torch.no_grad():
+        if inr_type == 'siren_t':
+            pred_all = nnr_f(time_input)
+            pred_all = pred_all.reshape(n_frames, n_particles, n_components)
+        elif inr_type == 'siren_id':
+            pred_list = []
+            for t_idx in range(n_frames):
+                t_val = torch.full((n_particles, 1), t_idx / n_frames, device=device)
+                input_t = torch.cat([t_val, neuron_ids_norm[:, None]], dim=1)
+                pred_t = nnr_f(input_t)
+                pred_list.append(pred_t)
+            pred_all = torch.stack(pred_list, dim=0)
+        elif inr_type == 'siren_txy':
+            pred_list = []
+            for t_idx in range(n_frames):
+                t_val = torch.full((n_particles, 1), t_idx / n_frames, device=device)
+                pos_t = particle_pos[t_idx, :, :]
+                input_t = torch.cat([t_val, pos_t], dim=1)
+                pred_t = nnr_f(input_t)
+                pred_list.append(pred_t)
+            pred_all = torch.stack(pred_list, dim=0)
+        elif inr_type == 'ngp':
+            time_all = torch.arange(0, n_frames, dtype=torch.float32, device=device).unsqueeze(1) / n_frames
+            pred_all = nnr_f(time_all)
+            pred_all = pred_all.reshape(n_frames, n_particles, n_components)
+
+        # Compute R² (coefficient of determination)
+        pred_flat = pred_all.reshape(-1).cpu().numpy()
+        gt_flat = ground_truth.reshape(-1).cpu().numpy()
+        from scipy.stats import linregress
+        slope, intercept, r_value, p_value, std_err = linregress(gt_flat, pred_flat)
+        final_r2 = r_value ** 2
+
+    # Write analysis.log if log_file provided
+    if log_file is not None:
+        log_file.write(f"field_name: {field_name}\n")
+        log_file.write(f"inr_type: {inr_type}\n")
+        log_file.write(f"final_mse: {final_mse:.6e}\n")
+        log_file.write(f"final_r2: {final_r2:.6f}\n")
+        log_file.write(f"total_params: {total_params}\n")
+        log_file.write(f"n_particles: {n_particles}\n")
+        log_file.write(f"n_frames: {n_frames}\n")
+        log_file.write(f"n_components: {n_components}\n")
+        log_file.write(f"total_steps: {total_steps}\n")
+        log_file.write(f"batch_size: {batch_size}\n")
+        log_file.write(f"learning_rate: {learning_rate:.6e}\n")
+        log_file.write(f"hidden_dim_nnr_f: {hidden_dim_nnr_f}\n")
+        log_file.write(f"n_layers_nnr_f: {n_layers_nnr_f}\n")
+        log_file.write(f"omega_f: {omega_f}\n")
+        if hasattr(nnr_f, 'get_omegas'):
+            omegas = nnr_f.get_omegas()
+            if omegas:
+                log_file.write(f"final_omega_f: {omegas[0]:.2f}\n")
 
     return nnr_f, loss_list
