@@ -1,0 +1,3 @@
+=== UCB Scores (Block 0, iters 1-12, N=1, c=1.0) ===
+
+Node 1: UCB=1.235, parent=root, visits=1, R2=0.735, MSE=9.044080e+01

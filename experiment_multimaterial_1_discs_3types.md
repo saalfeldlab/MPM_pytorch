@@ -113,19 +113,8 @@ graph_model:
   learning_rate_omega_f: 1.0E-6 # if omega_f_learning=True
   nnr_f_xy_period: 1.0 # spatial normalization for siren_txy
   # NGP-specific (if inr_type: ngp)
-  ngp_n_levels: 16 # range: 8-24
-  ngp_log2_hashmap_size: 19 # range: 15-22
-claude:
-  total_steps: 50000 # range: 10000-200000
-```
-
-**Architecture Parameters (change at block boundaries only):**
-
-```yaml
-graph_model:
-  inr_type: "siren_id" # options: siren_t, siren_id, siren_txy, ngp
-training:
-  n_training_frames: 0 # 0 = use all frames, or specify subset
+  # ngp_n_levels: 16 # range: 8-24
+  # ngp_log2_hashmap_size: 19 # range: 15-22
 ```
 
 **Parent Selection Rule:**
@@ -219,9 +208,9 @@ Update `{config}_memory.md`:
 
 ### Regime Comparison Table
 
-| Block | INR Type | Field | Best R² | Optimal lr_NNR_f | Optimal total_steps | Key finding |
-| ----- | -------- | ----- | ------- | ---------------- | ------------------- | ----------- |
-| 1     | siren_id | Jp    | 0.998   | 1E-5             | 50000               | ...         |
+| Block | INR Type | Field | Best R² | Optimal lr_NNR_f | Optimal hidden_dim | Optimal n_layers | Optimal omega_f | Key finding |
+| ----- | -------- | ----- | ------- | ---------------- | ------------------ | ---------------- | --------------- | ----------- |
+| 1     | siren_id | Jp    | 0.998   | 1E-5             | 512                | 3                | 30.0            | ...         |
 
 ### Established Principles
 

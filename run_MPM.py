@@ -70,7 +70,7 @@ if __name__ == "__main__":
         task = 'train_INR_Claude'  # 'generate', 'train', 'test', 'train_INR', 'Claude'
         best_model = ''
         config_list = ['multimaterial_1_discs_3types']
-        task_params = {'iterations': 10} 
+        task_params = {'iterations': 128} 
 
         # ouput in MPM/graphs_data/multimaterial/
         # other config files to be found in ./config/*.yaml
@@ -93,7 +93,7 @@ if __name__ == "__main__":
         for cfg in config_list:
             cfg_file, pre = add_pre_folder(cfg)
             source_config = f"{config_root}/{pre}{cfg}.yaml"
-            llm_task_name = cfg + "_claude"  # You can customize this naming
+            llm_task_name = cfg + "_Claude"  # You can customize this naming
             target_config = f"{config_root}/{pre}{llm_task_name}.yaml"
 
             if os.path.exists(source_config):
@@ -162,8 +162,8 @@ if __name__ == "__main__":
                     f.write(f"# Working Memory: {config_file_}\n\n")
                     f.write("## Knowledge Base (accumulated across all blocks)\n\n")
                     f.write("### Regime Comparison Table\n")
-                    f.write("| Block | Regime | Best R² | Optimal lr_NNR_f | Optimal total_steps | Optimal hidden_dim | Optimal n_layers | Optimal omega_f | Key finding |\n")
-                    f.write("|-------|--------|---------|------------------|---------------------|--------------------|--------------------|-----------------|-------------|\n\n")
+                    f.write("| Block | Regime | Best R² | Optimal lr_NNR_f | Optimal hidden_dim | Optimal n_layers | Optimal omega_f | Key finding |\n")
+                    f.write("|-------|--------|---------|------------------|--------------------|--------------------|-----------------|-------------|\n\n")
                     f.write("### Established Principles\n\n")
                     f.write("### Open Questions\n\n")
                     f.write("---\n\n")
@@ -300,13 +300,21 @@ Metrics log: {analysis_log_path}
 UCB scores: {ucb_path}
 Current config: {config_path}"""
 
+                # Whitelist only specific files that Claude can edit
+                allowed_edit_files = [
+                    analysis_path,      # {config}_analysis.md - append-only full log
+                    memory_path,        # {config}_memory.md - working memory
+                    experiment_path,    # experiment_{config}.md - protocol (for block-end edits)
+                    config_path         # config YAML file - for parameter updates
+                ]
+
                 claude_cmd = [
                     'claude',
                     '-p', claude_prompt,
                     '--output-format', 'text',
                     '--max-turns', '20',
-                    '--allowedTools',
-                    'Read', 'Edit'
+                    '--allowedTools', 'Read', 'Edit',
+                    '--allowedEditPaths', *allowed_edit_files
                 ]
 
                 # run with real-time output streaming and token expiry detection
@@ -344,6 +352,13 @@ Current config: {config_path}"""
                     dst_protocol = f"{protocol_save_dir}/block_{block_number:03d}.md"
                     if os.path.exists(experiment_path):
                         shutil.copy2(experiment_path, dst_protocol)
+
+                # save config snapshot for each iteration
+                config_save_dir = f"{exploration_dir}/configs"
+                os.makedirs(config_save_dir, exist_ok=True)
+                dst_config = f"{config_save_dir}/iter_{iteration:03d}_config.yaml"
+                if os.path.exists(config_path):
+                    shutil.copy2(config_path, dst_config)
 
                 # save memory file at end of each block (after Claude updates it)
                 if is_block_end:

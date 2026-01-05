@@ -657,7 +657,7 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=50000, 
     print(f"training nnr_f for {total_steps} steps...")
 
     loss_list = []
-    pbar = trange(total_steps + 1, ncols=150)
+    pbar = trange(total_steps+1, ncols=150)
     for step in pbar:
 
         if inr_type == 'siren_t':
@@ -1007,6 +1007,7 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=50000, 
         log_file.write(f"inr_type: {inr_type}\n")
         log_file.write(f"final_mse: {final_mse:.6e}\n")
         log_file.write(f"final_r2: {final_r2:.6f}\n")
+        log_file.write(f"slope: {slope:.6f}\n")
         log_file.write(f"total_params: {total_params}\n")
         log_file.write(f"n_particles: {n_particles}\n")
         log_file.write(f"n_frames: {n_frames}\n")
