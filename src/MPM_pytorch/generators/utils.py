@@ -1360,17 +1360,16 @@ def generate_compressed_video_mp4(output_dir, run=0, framerate=10, output_name="
     """
     import os
     import subprocess
-    fig_dir = os.path.join(output_dir, "Fig")
-    input_pattern = os.path.join(fig_dir, f"Fig_{run}_%06d.png")
-    output_path = os.path.join(output_dir, f"input_{config_indices}{output_name}")
+    input_pattern = os.path.join(output_dir, f"Fig_{run}_%06d.png")
+    output_path = os.path.join(output_dir, "../", f"input_{config_indices}{output_name}")
 
     # count number of files
-    num_files = len([name for name in os.listdir(fig_dir) if name.startswith(f"Fig_{run}_") and name.endswith(".png")])
+    num_files = len([name for name in os.listdir(output_dir) if name.startswith(f"Fig_{run}_") and name.endswith(".png")])
     if num_files == 0:
-        print(f"no image files found in {fig_dir} for run {run}. skipping video generation.")
+        print(f"no image files found in {output_dir} for run {run}. skipping video generation.")
         return
     else:
-        print(f"found {num_files} image files in {fig_dir} for run {run}. generating video...")
+        print(f"found {num_files} image files in {output_dir} for run {run}. generating video...")
     
     ffmpeg_cmd = [
         "ffmpeg",

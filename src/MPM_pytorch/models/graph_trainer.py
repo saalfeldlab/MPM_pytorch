@@ -54,6 +54,7 @@ def data_train(config=None, erase=False, best_model=None, device=None):
 
 
 def data_train_material(config, erase, best_model, device):
+
     simulation_config = config.simulation
     train_config = config.training
     model_config = config.graph_model
@@ -180,6 +181,7 @@ def data_train_material(config, erase, best_model, device):
 
     torch.autograd.set_detect_anomaly(True)
     for epoch in range(start_epoch, n_epochs + 1):
+
 
         logger.info(f"Total allocated memory: {torch.cuda.memory_allocated(device) / 1024 ** 3:.2f} GB")
         logger.info(f"Total reserved memory:  {torch.cuda.memory_reserved(device) / 1024 ** 3:.2f} GB")
@@ -450,3 +452,485 @@ def data_train_material(config, erase, best_model, device):
         #     plt.tight_layout()
         #     plt.savefig(f"./{log_dir}/tmp_training/movie/pred_{k}.tif", dpi=87)
         #     plt.close()
+
+
+def data_train_INR(config=None, device=None, field_name='C', total_steps=50000, erase=False):
+    """
+    Train INR network on MPM fields (C, F, Jp, S) from generated_data.
+
+    This function loads MPM simulation data and trains an implicit neural representation
+    to learn a specific field as a function of (time, particle_id).
+
+    Args:
+        config: Configuration object
+        device: torch device
+        field_name: Which field to train on ('C', 'F', 'Jp', 'S')
+        total_steps: Number of training steps
+        erase: Whether to erase existing log files
+    """
+
+    log_dir, logger = create_log_dir(config, erase)
+    output_folder = os.path.join(log_dir, 'tmp_training', 'external_input')
+    os.makedirs(output_folder, exist_ok=True)
+
+    dataset_name = config.dataset
+    data_folder = f"graphs_data/{dataset_name}/"
+
+    x_list = np.load(f"{data_folder}generated_data_0.npy")
+    print(f"x_list shape: {x_list.shape}")  # (n_frames, n_particles, n_features)
+
+    n_frames, n_particles, n_features = x_list.shape
+    n_training_frames = config.training.n_training_frames
+    if n_training_frames >0 and n_training_frames < n_frames:
+        x_list = x_list[n_frames//2-n_training_frames//2:n_frames//2+n_training_frames//2, :, :]
+        n_frames = n_training_frames
+        print(f"using only {n_training_frames} frames for training.")
+
+    field_indices = {
+        'id': (0, 1, 'Particle number'),
+        'pos': (1, 3, 'Position'),
+        'dpos': (3, 5, 'Velocity'),
+        'C': (5, 9, 'APIC matrix'),
+        'F': (9, 13, 'Deformation gradient'),
+        'Jp': (13, 14, 'Plastic deformation'),
+        'type': (14, 15, 'Material type'),
+        'S': (16, 20, 'Stress tensor'),
+    }
+    start_idx, end_idx, field_desc = field_indices[field_name]
+    n_components = end_idx - start_idx
+
+    print(f"field info:")
+    print(f"  name: {field_name} - {field_desc}")
+    print(f"  indices: [{start_idx}:{end_idx}]")
+
+    field_data = x_list[:, :, start_idx:end_idx]  # shape: (n_frames, n_particles, n_components)
+
+    print(f"field statistics:")
+    print(f"  shape: {field_data.shape}")
+    print(f"  range: [{field_data.min():.4f}, {field_data.max():.4f}]")
+    print(f"  mean: {field_data.mean():.4f}, std: {field_data.std():.4f}")
+
+    # get INR configuration
+    model_config = config.graph_model
+    training_config = config.training
+    inr_type = config.graph_model.inr_type
+
+    # get nnr_f config parameters
+    hidden_dim_nnr_f = getattr(model_config, 'hidden_dim_nnr_f', 1024)
+    n_layers_nnr_f = getattr(model_config, 'n_layers_nnr_f', 3)
+    outermost_linear_nnr_f = getattr(model_config, 'outermost_linear_nnr_f', True)
+    omega_f = getattr(model_config, 'omega_f', 1024)
+    nnr_f_xy_period = getattr(model_config, 'nnr_f_xy_period', 1.0)
+
+    # get training config parameters
+    training_config = config.training
+    batch_size = getattr(training_config, 'batch_size', 8)
+    learning_rate = getattr(training_config, 'learning_rate_NNR_f', 1e-6)
+
+    # determine input/output dimensions based on inr_type
+    if inr_type == 'siren_t':
+        input_size_nnr_f = 1
+        output_size_nnr_f = n_particles * n_components  # outputs all particles at once
+    elif inr_type == 'siren_id':
+        input_size_nnr_f = 2  # (t, id)
+        output_size_nnr_f = n_components  # outputs one particle at a time
+    elif inr_type == 'siren_txy':
+        input_size_nnr_f = 3  # (t, x, y)
+        output_size_nnr_f = n_components  # outputs one particle at a time
+    elif inr_type == 'ngp':
+        input_size_nnr_f = getattr(model_config, 'input_size_nnr_f', 1)
+        output_size_nnr_f = n_particles * n_components  # outputs all particles at once
+    else:
+        raise ValueError(f"unknown inr_type: {inr_type}")
+
+    # create INR model based on type
+    if inr_type == 'ngp':
+
+        # get NGP config parameters
+        ngp_n_levels = getattr(model_config, 'ngp_n_levels', 24)
+        ngp_n_features_per_level = getattr(model_config, 'ngp_n_features_per_level', 2)
+        ngp_log2_hashmap_size = getattr(model_config, 'ngp_log2_hashmap_size', 22)
+        ngp_base_resolution = getattr(model_config, 'ngp_base_resolution', 16)
+        ngp_per_level_scale = getattr(model_config, 'ngp_per_level_scale', 1.4)
+        ngp_n_particles = getattr(model_config, 'ngp_n_particles', 128)
+        ngp_n_hidden_layers = getattr(model_config, 'ngp_n_hidden_layers', 4)
+
+        nnr_f = HashEncodingMLP(
+            n_input_dims=input_size_nnr_f,
+            n_output_dims=output_size_nnr_f,
+            n_levels=ngp_n_levels,
+            n_features_per_level=ngp_n_features_per_level,
+            log2_hashmap_size=ngp_log2_hashmap_size,
+            base_resolution=ngp_base_resolution,
+            per_level_scale=ngp_per_level_scale,
+            n_particles=ngp_n_particles,
+            n_hidden_layers=ngp_n_hidden_layers,
+            output_activation='none'
+        )
+        nnr_f = nnr_f.to(device)
+
+        # count parameters
+        encoding_params = sum(p.numel() for p in nnr_f.encoding.parameters())
+        mlp_params = sum(p.numel() for p in nnr_f.mlp.parameters())
+        total_params = encoding_params + mlp_params
+
+        print(f"\nusing HashEncodingMLP (instantNGP):")
+        print(f"  hash encoding: {ngp_n_levels} levels × {ngp_n_features_per_level} features")
+        print(f"  hash table: 2^{ngp_log2_hashmap_size} = {2**ngp_log2_hashmap_size:,} entries")
+        print(f"  mlp: {ngp_n_particles} × {ngp_n_hidden_layers} hidden → {output_size_nnr_f}")
+        print(f"  parameters: {total_params:,} (encoding: {encoding_params:,}, mlp: {mlp_params:,})")
+        print(f"  compression ratio: {data_dims / total_params:.2f}x")
+
+    elif inr_type in ['siren_t', 'siren_id', 'siren_txy']:
+        # create SIREN model for nnr_f
+        omega_f_learning = getattr(model_config, 'omega_f_learning', False)
+        nnr_f = Siren(
+            in_features=input_size_nnr_f,
+            hidden_features=hidden_dim_nnr_f,
+            hidden_layers=n_layers_nnr_f,
+            out_features=output_size_nnr_f,
+            outermost_linear=outermost_linear_nnr_f,
+            first_omega_0=omega_f,
+            hidden_omega_0=omega_f,
+            learnable_omega=omega_f_learning
+        )
+        nnr_f = nnr_f.to(device)
+
+        # count parameters
+        total_params = sum(p.numel() for p in nnr_f.parameters())
+
+        print(f"\nusing SIREN ({inr_type}):")
+        print(f"  architecture: {input_size_nnr_f} → {hidden_dim_nnr_f} × {n_layers_nnr_f} hidden → {output_size_nnr_f}")
+        print(f"  omega_f: {omega_f} (learnable: {omega_f_learning})")
+        if omega_f_learning and hasattr(nnr_f, 'get_omegas'):
+            print(f"  initial omegas: {nnr_f.get_omegas()}")
+        print(f"  parameters: {total_params:,}")
+
+    print(f"\ntraining: batch_size={batch_size}, learning_rate={learning_rate}")
+
+    ground_truth = torch.tensor(field_data, dtype=torch.float32, device=device)  # (n_frames, n_particles)
+
+    # prepare inputs based on inr_type
+    if inr_type == 'siren_t':
+        # input: normalized time
+        time_input = torch.arange(0, n_frames, dtype=torch.float32, device=device).unsqueeze(1) / n_frames
+
+    elif inr_type == 'siren_id':
+        # input: (t, id)
+        # create particle IDs and normalize by n_particles
+        neuron_ids = np.arange(n_particles)
+        neuron_ids_norm = torch.tensor(neuron_ids / n_particles, dtype=torch.float32, device=device)  # (n_particles,)
+
+    elif inr_type == 'siren_txy':
+        # input: (t, x, y)
+        start_idx, end_idx, _ = field_indices['pos']
+        particle_pos = torch.tensor(x_list[:, :, start_idx:end_idx], dtype=torch.float32, device=device)  / nnr_f_xy_period# (n_particles, 2)
+        time_input = torch.arange(0, n_frames, dtype=torch.float32, device=device).unsqueeze(1) / n_frames
+
+
+    steps_til_summary = total_steps // 10
+
+    # separate omega parameters from other parameters for different learning rates
+    omega_f_learning = getattr(model_config, 'omega_f_learning', False)
+    learning_rate_omega_f = getattr(training_config, 'learning_rate_omega_f', learning_rate)
+    omega_params = [p for name, p in nnr_f.named_parameters() if 'omega' in name]
+    other_params = [p for name, p in nnr_f.named_parameters() if 'omega' not in name]
+    if omega_params and omega_f_learning:
+        optim = torch.optim.Adam([
+            {'params': other_params, 'lr': learning_rate},
+            {'params': omega_params, 'lr': learning_rate_omega_f}
+        ])
+        print(f"using separate learning rates: network={learning_rate}, omega={learning_rate_omega_f}")
+    else:
+        optim = torch.optim.Adam(lr=learning_rate, params=nnr_f.parameters())
+
+    print(f"training nnr_f for {total_steps} steps...")
+
+    loss_list = []
+    pbar = trange(total_steps + 1, ncols=150)
+    for step in pbar:
+
+        if inr_type == 'siren_t':
+            # sample batch_size time frames
+            sample_ids = np.random.choice(n_frames, batch_size, replace=False)
+            time_batch = time_input[sample_ids]  # (batch_size, 1)
+            gt_batch = ground_truth[sample_ids]  # (batch_size, n_particles, n_components)
+            pred = nnr_f(time_batch)  # (batch_size, n_particles * n_components)
+            pred = pred.reshape(batch_size, n_particles, n_components)  # (batch_size, n_particles, n_components)
+
+        elif inr_type == 'siren_id':
+            # sample batch_size time frames, predict all particles for each frame
+            sample_ids = np.random.choice(n_frames, batch_size, replace=False)
+            t_norm = torch.tensor(sample_ids / n_frames, dtype=torch.float32, device=device)  # (batch_size,)
+            # expand to all particles: (batch_size, n_particles, 2)
+            t_expanded = t_norm[:, None, None].expand(batch_size, n_particles, 1)
+            id_expanded = neuron_ids_norm[None, :, None].expand(batch_size, n_particles, 1)
+            input_batch = torch.cat([t_expanded, id_expanded], dim=2)  # (batch_size, n_particles, 2)
+            input_batch = input_batch.reshape(batch_size * n_particles, 2)  # (batch_size * n_particles, 2)
+            gt_batch = ground_truth[sample_ids].reshape(batch_size * n_particles, n_components)  # (batch_size * n_particles, n_components)
+            pred = nnr_f(input_batch)  # (batch_size * n_particles, n_components)
+
+        elif inr_type == 'siren_txy':
+            # sample batch_size time frames, predict all particles for each frame
+            sample_ids = np.random.choice(n_frames, batch_size, replace=False)
+            t_norm = torch.tensor(sample_ids / n_frames, dtype=torch.float32, device=device)  # (batch_size,)
+            # expand to all particles: (batch_size, n_particles, 3)
+            t_expanded = t_norm[:, None, None].expand(batch_size, n_particles, 1)
+            pos_expanded = particle_pos[sample_ids, :, :]  # (batch_size, n_particles, 2) - use positions at sampled frames
+            input_batch = torch.cat([t_expanded, pos_expanded], dim=2)  # (batch_size, n_particles, 3)
+            input_batch = input_batch.reshape(batch_size * n_particles, 3)  # (batch_size * n_particles, 3)
+            gt_batch = ground_truth[sample_ids].reshape(batch_size * n_particles, n_components)  # (batch_size * n_particles, n_components)
+            pred = nnr_f(input_batch)  # (batch_size * n_particles, n_components)
+
+        elif inr_type == 'ngp':
+            # sample batch_size time frames (same as siren_t)
+            sample_ids = np.random.choice(n_frames, batch_size, replace=False)
+            time_batch = torch.tensor(sample_ids / n_frames, dtype=torch.float32, device=device).unsqueeze(1)
+            gt_batch = ground_truth[sample_ids]  # (batch_size, n_particles, n_components)
+            pred = nnr_f(time_batch)  # (batch_size, n_particles * n_components)
+            pred = pred.reshape(batch_size, n_particles, n_components)  # (batch_size, n_particles, n_components)
+
+        # compute loss
+        if inr_type == 'ngp':
+            # relative L2 error - convert targets to match output dtype (tcnn uses float16)
+            relative_l2_error = (pred - gt_batch.to(pred.dtype)) ** 2 / (pred.detach() ** 2 + 0.01)
+            loss = relative_l2_error.mean()
+        else:
+            # standard MSE for SIREN
+            loss = ((pred - gt_batch) ** 2).mean()
+
+        # omega L2 regularization for learnable omega in SIREN (encourages smaller omega)
+        coeff_omega_f_L2 = getattr(training_config, 'coeff_omega_f_L2', 0.0)
+        if omega_f_learning and coeff_omega_f_L2 > 0 and hasattr(nnr_f, 'get_omega_L2_loss'):
+            omega_L2_loss = nnr_f.get_omega_L2_loss()
+            loss = loss + coeff_omega_f_L2 * omega_L2_loss
+
+        optim.zero_grad()
+        loss.backward()
+        optim.step()
+
+        loss_list.append(loss.item())
+        pbar.set_postfix(loss=f"{loss.item():.6f}")
+
+        if step % steps_til_summary == 0:
+            with torch.no_grad():
+                # compute predictions for all frames
+                if inr_type == 'siren_t':
+                    pred_all = nnr_f(time_input)  # (n_frames, n_particles * n_components)
+                    pred_all = pred_all.reshape(n_frames, n_particles, n_components)  # (n_frames, n_particles, n_components)
+
+                elif inr_type == 'siren_id':
+                    # predict all (t, id) combinations
+                    pred_list = []
+                    for t_idx in range(n_frames):
+                        t_val = torch.full((n_particles, 1), t_idx / n_frames, device=device)
+                        input_t = torch.cat([t_val, neuron_ids_norm[:, None]], dim=1)  # (n_particles, 2)
+                        pred_t = nnr_f(input_t)  # (n_particles, n_components)
+                        pred_list.append(pred_t)
+                    pred_all = torch.stack(pred_list, dim=0)  # (n_frames, n_particles, n_components)
+
+                elif inr_type == 'siren_txy':
+                    # predict all (t, x, y) combinations
+                    pred_list = []
+                    for t_idx in range(n_frames):
+                        t_val = torch.full((n_particles, 1), t_idx / n_frames, device=device)
+                        pos_t = particle_pos[t_idx, :, :]  # (n_particles, 2) - positions at frame t_idx
+                        input_t = torch.cat([t_val, pos_t], dim=1)  # (n_particles, 3)
+                        pred_t = nnr_f(input_t)  # (n_particles, n_components)
+                        pred_list.append(pred_t)
+                    pred_all = torch.stack(pred_list, dim=0)  # (n_frames, n_particles, n_components)
+
+                elif inr_type == 'ngp':
+                    time_all = torch.arange(0, n_frames, dtype=torch.float32, device=device).unsqueeze(1) / n_frames
+                    pred_all = nnr_f(time_all)  # (n_frames, n_particles * n_components)
+                    pred_all = pred_all.reshape(n_frames, n_particles, n_components)  # (n_frames, n_particles, n_components)
+
+                gt_np = ground_truth.cpu().numpy()
+                pred_np = pred_all.cpu().numpy()
+
+                # Create 2-row figure: top row for time series, bottom row for spatial plots
+                fig = plt.figure(figsize=(18, 10))
+                fig.patch.set_facecolor('black')
+
+                # ROW 1: Loss and time traces
+                # loss plot
+                ax0 = plt.subplot(2, 3, 1)
+                ax0.set_facecolor('black')
+                ax0.plot(loss_list, color='white', lw=0.1)
+                ax0.set_xlabel('step', color='white', fontsize=12)
+                loss_label = 'Relative L2 Loss' if inr_type == 'ngp' else 'MSE Loss'
+                ax0.set_ylabel(loss_label, color='white', fontsize=12)
+                ax0.set_yscale('log')
+                ax0.tick_params(colors='white', labelsize=11)
+                for spine in ax0.spines.values():
+                    spine.set_color('white')
+
+                # traces plot (10 particles, darkgreen=GT, white=pred)
+                # For multi-component fields, plot first component only
+                ax1 = plt.subplot(2, 3, 2)
+                ax1.set_facecolor('black')
+                ax1.set_axis_off()
+                n_traces = 10
+                trace_ids = np.linspace(0, n_particles - 1, n_traces, dtype=int)
+
+                # Extract first component for plotting if multi-component field
+                if n_components > 1:
+                    gt_plot = gt_np[:, :, 0]  # (n_frames, n_particles) - first component
+                    pred_plot = pred_np[:, :, 0]  # (n_frames, n_particles) - first component
+                else:
+                    gt_plot = gt_np[:, :, 0]  # (n_frames, n_particles)
+                    pred_plot = pred_np[:, :, 0]  # (n_frames, n_particles)
+
+                offset = np.abs(gt_plot).max() * 1.5
+                t = np.arange(n_frames)
+
+                for j, n_idx in enumerate(trace_ids):
+                    y0 = j * offset
+                    ax1.plot(t, gt_plot[:, n_idx] + y0, color='darkgreen', lw=2.0, alpha=0.95)
+                    ax1.plot(t, pred_plot[:, n_idx] + y0, color='white', lw=0.5, alpha=0.95)
+
+                ax1.set_xlim(0, min(20000, n_frames))
+                ax1.set_ylim(-offset * 0.5, offset * (n_traces + 0.5))
+                mse = ((pred_np - gt_np) ** 2).mean()
+                omega_str = ''
+                if hasattr(nnr_f, 'get_omegas'):
+                    omegas = nnr_f.get_omegas()
+                    if omegas:
+                        omega_str = f'  ω: {omegas[0]:.1f}'
+                ax1.text(0.02, 0.98, f'MSE: {mse:.6f}{omega_str}',
+                            transform=ax1.transAxes, va='top', ha='left',
+                            fontsize=12, color='white')
+
+                # ROW 2: Spatial plots at fixed frame (n_frames // 2)
+                frame_idx = n_frames // 2
+
+                # Get positions at this frame
+                pos_data = x_list[frame_idx, :, 1:3]  # (n_particles, 2)
+
+                # Compute field norm for coloring
+                if n_components > 1:
+                    gt_frame = gt_np[frame_idx, :, :]  # (n_particles, n_components)
+                    pred_frame = pred_np[frame_idx, :, :]  # (n_particles, n_components)
+                    gt_norm = np.linalg.norm(gt_frame, axis=1)  # (n_particles,)
+                    pred_norm = np.linalg.norm(pred_frame, axis=1)  # (n_particles,)
+                else:
+                    gt_frame = gt_np[frame_idx, :, 0]  # (n_particles,)
+                    pred_frame = pred_np[frame_idx, :, 0]  # (n_particles,)
+                    gt_norm = gt_frame
+                    pred_norm = pred_frame
+
+                # Determine colormap and range based on field type
+                vmin, vmax = gt_norm.min(), gt_norm.max()
+                if field_name == 'F':
+                    cmap_name = 'coolwarm'
+                    vmin, vmax = 1.44 - 0.2, 1.44 + 0.2
+                elif field_name == 'S':
+                    cmap_name = 'hot'
+                    vmin, vmax = 0, max(6e-3, gt_norm.max())
+                elif field_name == 'Jp':
+                    cmap_name = 'viridis'
+                    vmin, vmax = 0.75, 1.25
+                else:
+                    cmap_name = 'viridis'
+
+                # Ground truth spatial plot
+                ax2 = plt.subplot(2, 3, 4)
+                ax2.set_facecolor('black')
+                sc = ax2.scatter(pos_data[:, 0], pos_data[:, 1], c=gt_norm, s=3, cmap=cmap_name, vmin=vmin, vmax=vmax)
+                plt.colorbar(sc, ax=ax2, fraction=0.046, pad=0.04)
+                ax2.set_title(f'GT {field_name} (frame {frame_idx})', color='white', fontsize=12)
+                ax2.set_xlim([0, 1])
+                ax2.set_ylim([0, 1])
+                ax2.set_aspect('equal')
+                ax2.tick_params(colors='white', labelsize=10)
+                for spine in ax2.spines.values():
+                    spine.set_color('white')
+
+                # Prediction spatial plot
+                ax3 = plt.subplot(2, 3, 5)
+                ax3.set_facecolor('black')
+                sc = ax3.scatter(pos_data[:, 0], pos_data[:, 1], c=pred_norm, s=3, cmap=cmap_name, vmin=vmin, vmax=vmax)
+                plt.colorbar(sc, ax=ax3, fraction=0.046, pad=0.04)
+                ax3.set_title(f'Pred {field_name} (frame {frame_idx})', color='white', fontsize=12)
+                ax3.set_xlim([0, 1])
+                ax3.set_ylim([0, 1])
+                ax3.set_aspect('equal')
+                ax3.tick_params(colors='white', labelsize=10)
+                for spine in ax3.spines.values():
+                    spine.set_color('white')
+
+                # Scatter plot: pred vs gt
+                ax4 = plt.subplot(2, 3, 6)
+                ax4.set_facecolor('black')
+                ax4.scatter(gt_norm, pred_norm, c='white', s=1, alpha=0.5)
+                # Add diagonal line
+                lims = [min(gt_norm.min(), pred_norm.min()), max(gt_norm.max(), pred_norm.max())]
+                ax4.plot(lims, lims, 'r--', alpha=0.5, lw=1)
+                ax4.set_xlabel('Ground Truth', color='white', fontsize=11)
+                ax4.set_ylabel('Prediction', color='white', fontsize=11)
+                ax4.set_title(f'Pred vs GT (frame {frame_idx})', color='white', fontsize=12)
+                ax4.tick_params(colors='white', labelsize=10)
+                for spine in ax4.spines.values():
+                    spine.set_color('white')
+                frame_mse = ((pred_norm - gt_norm) ** 2).mean()
+                ax4.text(0.05, 0.95, f'MSE: {frame_mse:.6f}',
+                        transform=ax4.transAxes, va='top', ha='left',
+                        fontsize=10, color='white')
+
+                # MSE text on top row
+                ax5 = plt.subplot(2, 3, 3)
+                ax5.set_facecolor('black')
+                ax5.set_axis_off()
+                info_text = f'Field: {field_name} ({field_desc})\n'
+                info_text += f'Step: {step}\n'
+                info_text += f'Components: {n_components}\n'
+                info_text += f'Particles: {n_particles}\n'
+                info_text += f'Frames: {n_frames}\n'
+                info_text += f'Overall MSE: {mse:.6f}\n'
+                info_text += f'Frame {frame_idx} MSE: {frame_mse:.6f}'
+                ax5.text(0.1, 0.5, info_text, transform=ax5.transAxes,
+                        va='center', ha='left', fontsize=11, color='white',
+                        family='monospace')
+
+                plt.tight_layout()
+                plt.savefig(f"{output_folder}/{inr_type}_{step}.png", dpi=150)
+                plt.close()
+
+    # save trained model
+    # save_path = f"{output_folder}/nnr_f_{inr_type}_pretrained.pt"
+    # torch.save(nnr_f.state_dict(), save_path)
+    # print(f"\nsaved pretrained nnr_f to: {save_path}")
+
+    # compute final MSE
+    with torch.no_grad():
+        if inr_type == 'siren_t':
+            pred_all = nnr_f(time_input)  # (n_frames, n_particles * n_components)
+            pred_all = pred_all.reshape(n_frames, n_particles, n_components)
+        elif inr_type == 'siren_id':
+            pred_list = []
+            for t_idx in range(n_frames):
+                t_val = torch.full((n_particles, 1), t_idx / n_frames, device=device)
+                input_t = torch.cat([t_val, neuron_ids_norm[:, None]], dim=1)
+                pred_t = nnr_f(input_t)  # (n_particles, n_components)
+                pred_list.append(pred_t)
+            pred_all = torch.stack(pred_list, dim=0)  # (n_frames, n_particles, n_components)
+        elif inr_type == 'siren_txy':
+            pred_list = []
+            for t_idx in range(n_frames):
+                t_val = torch.full((n_particles, 1), t_idx / n_frames, device=device)
+                pos_t = particle_pos[t_idx, :, :]  # (n_particles, 2) - positions at frame t_idx
+                input_t = torch.cat([t_val, pos_t], dim=1)
+                pred_t = nnr_f(input_t)  # (n_particles, n_components)
+                pred_list.append(pred_t)
+            pred_all = torch.stack(pred_list, dim=0)  # (n_frames, n_particles, n_components)
+        elif inr_type == 'ngp':
+            time_all = torch.arange(0, n_frames, dtype=torch.float32, device=device).unsqueeze(1) / n_frames
+            pred_all = nnr_f(time_all)  # (n_frames, n_particles * n_components)
+            pred_all = pred_all.reshape(n_frames, n_particles, n_components)
+
+        final_mse = ((pred_all - ground_truth) ** 2).mean().item()
+        print(f"final MSE: {final_mse:.6f}")
+        if hasattr(nnr_f, 'get_omegas'):
+            print(f"final omegas: {nnr_f.get_omegas()}")
+
+    return nnr_f, loss_list

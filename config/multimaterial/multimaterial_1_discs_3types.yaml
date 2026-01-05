@@ -40,12 +40,17 @@ graph_model:
   hidden_dim_update: 128
   output_size_update: 2
 
-  input_size_nnr: 3
-  n_layers_nnr: 5
-  hidden_dim_nnr: 512
-  output_size_nnr: 4
-  outermost_linear_nnr: True
-  omega: 30.0
+  inr_type: 'siren_txy'
+
+  input_size_nnr_f: 3
+  n_layers_nnr_f: 3
+  hidden_dim_nnr_f: 64
+  output_size_nnr_f: 1
+  outermost_linear_nnr_f: True
+  omega_f: 80.0
+  omega_f_learning: False  # make omega learnable during training
+
+  nnr_f_xy_period: 1.0
 
 plotting:
   colormap: 'tab10'
@@ -57,6 +62,8 @@ training:
   batch_size: 1
   small_init_batch_size: False
   n_runs: 1
+
+  n_training_frames: 2
 
   noise_model_level: 0
   noise_model_level: 1.0E-5
@@ -72,6 +79,9 @@ training:
 
   learning_rate_start: 1E-5
   learning_rate_embedding_start: 1E-2
+  learning_rate_NNR_f: 1E-5
+  
+
 
   MPM_trainer : 'next_S'
 

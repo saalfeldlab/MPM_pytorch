@@ -58,11 +58,11 @@ if __name__ == "__main__":
         else:
             best_model = None
     else:
-        task = 'generate'  # 'generate', 'train', 'test'
+        task = 'train_INR'  # 'generate', 'train', 'test', 'train_INR'
         best_model = ''
         config_list = ['multimaterial_1_discs_3types'] 
 
-        # viz in MPM/graphs_data/multimaterial/.../Fig
+        # ouput in MPM/graphs_data/multimaterial/
         # other config files to be found in ./config/*.yaml
         # out of memory: diminish n_particles
 
@@ -77,7 +77,6 @@ if __name__ == "__main__":
 
         print(f"config_file  {config.config_file}")
         print(f"\033[92mdevice  {device}\033[0m")
-        print(f"data folder  {config.dataset}")
 
         if "generate" in task:
             data_generate(
@@ -85,19 +84,30 @@ if __name__ == "__main__":
                 device=device,
                 visualize=True,
                 run_vizualized=0,
-                style="black M",  # Style options: "black", "latex", "F", "M", "grid"
-                                # - "black": dark background
-                                # - "latex": use LaTeX rendering
-                                # - "F": color by deformation gradient magnitude
-                                # - "M": color by material type
-                                # - "grid": create detailed grid visualization (2D only)
-                                # - default (no "F" or "M"): color by material type
-                                # Can combine: e.g., "black F" or "black latex M grid"
+                style="black M grid",   # style options: "black", "latex", "F", "M", "grid"
+                                        # - "black": dark background
+                                        # - "latex": use LaTeX rendering
+                                        # - "F": color by deformation gradient magnitude
+                                        # - "M": color by material type
+                                        # - "grid": create detailed grid visualization (2D only)
+                                        # - default (no "F" or "M"): color by material type
+                                        # can combine: e.g., "black F" or "black latex M grid"
                 alpha=1,
                 erase=False,
                 bSave=True,
                 step=10,
             ) # config.simulation.n_frames // 100)
+
+        if "train_INR" in task:
+            data_train_INR(
+                config=config,
+                device=device,
+                field_name='Jp',  # Options: 'C', 'F', 'Jp', 'S'
+                total_steps=50000,
+                erase=False
+            )
+
+
 
 
 

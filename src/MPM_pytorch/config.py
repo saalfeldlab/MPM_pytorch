@@ -64,12 +64,6 @@ class SimulationConfig(BaseModel):
     node_value_map: Optional[str] = "input_data/pattern_Null.tif"
     node_proliferation_map: Optional[str] = None
 
-
-
-
-    excitation_value_map: Optional[str] = None
-    excitation: str = "none"
-
     params: list[list[float]]
     func_params: list[tuple] = None
 
@@ -104,25 +98,6 @@ class GraphModelConfig(BaseModel):
     hidden_dim_decoder: int = 1
     n_layers_decoder: int = 1
 
-    # UPDATED: MLP configuration through multi_mlp_params
-    # Format: [input_size, output_size, n_layers, hidden_size, initialisation]
-    # Order: [mu_lambda, sig, F, stress]
-    multi_mlp_params: Optional[List[List[Union[int, str]]]] = [
-        [3, 2, 3, 32, "normal"],      # MLP_mu_lambda [0]
-        [4, 2, 5, 32, "ones"],        # MLP_sig [1]
-        [15, 4, 5, 128, "normal"],    # MLP_F [2]
-        [11, 4, 5, 128, "normal"]     # MLP_stress [3]
-    ]
-
-    # UPDATED: Siren configuration through multi_siren_params
-    # Format: [in_features, out_features, hidden_features, hidden_layers, first_omega_0, hidden_omega_0, outermost_linear]
-    # Order: [F, Jp, C_normal, C_PDE_MPM_A]
-    multi_siren_params: Optional[List[List[Union[int, float, bool]]]] = [
-        [3, 4, 128, 5, 80.0, 80.0, True],    # siren_F [0]
-        [3, 1, 128, 5, 80.0, 80.0, True],    # siren_Jp [1]
-        [5, 4, 128, 5, 80.0, 80.0, True],    # siren_C normal [2]
-        [7, 4, 128, 5, 80.0, 80.0, True]     # siren_C PDE_MPM_A [3]
-    ]
 
     lin_edge_positive: bool = False
 
@@ -154,23 +129,32 @@ class GraphModelConfig(BaseModel):
 
     kernel_type: str = "mlp"
 
-    input_size_nnr: int = 3
-    n_layers_nnr: int = 5
-    hidden_dim_nnr: int = 128
-    output_size_nnr: int = 1
-    outermost_linear_nnr: bool = True
-    omega: float = 80.0
+    # INR type for external input learning
+    # siren_t: input=t, output=n_particles (current implementation, works for n_particles < 100)
+    # siren_id: input=(t, id), output=1 (scales better for large n_particles)
+    # siren_txy: input=(t, x, y), output=1 (uses particle positions)
+    # ngp: instantNGP hash encoding
+    # lowrank: low-rank matrix factorization U @ V (not a neural network)
+    inr_type: Literal["siren_t", "siren_id", "siren_txy", "ngp", "lowrank"] = "siren_t"
 
-    input_size_modulation: int = 2
-    n_layers_modulation: int = 3
-    hidden_dim_modulation: int = 64
-    output_size_modulation: int = 1
+    input_size_nnr_f: int = 3
+    n_layers_nnr_f: int = 5
+    hidden_dim_nnr_f: int = 128
+    output_size_nnr_f: int = 1
+    outermost_linear_nnr_f: bool = True
+    omega_f: float = 80.0
+    omega_f_learning: bool = False  # make omega learnable during training
 
-    input_size_excitation: int = 3
-    n_layers_excitation: int = 5
-    hidden_dim_excitation: int = 128
+    nnr_f_xy_period: float = 1.0
 
-    excitation_dim: int = 1
+    # InstantNGP (hash encoding) parameters
+    ngp_n_levels: int = 24
+    ngp_n_features_per_level: int = 2
+    ngp_log2_hashmap_size: int = 22
+    ngp_base_resolution: int = 16
+    ngp_per_level_scale: float = 1.4
+    ngp_n_neurons: int = 128
+    ngp_n_hidden_layers: int = 4
 
 
 class PlottingConfig(BaseModel):
@@ -221,6 +205,8 @@ class TrainingConfig(BaseModel):
     shared_embedding: bool = False
     embedding_trial: bool = False
     remove_self: bool = True
+
+    n_training_frames: int = 0
 
     pretrained_model: str = ""
     pre_trained_W: str = ""
@@ -276,8 +262,6 @@ class TrainingConfig(BaseModel):
     cluster_distance_threshold: float = 0.01
     cluster_connectivity: Literal["single", "average"] = "single"
 
-    Ising_filter: str = "none"
-
     learning_rate_start: float = 0.001
     learning_rate_embedding_start: float = 0.001
     learning_rate_update_start: float = 0.0
@@ -290,7 +274,10 @@ class TrainingConfig(BaseModel):
     Learning_rate_W_end: float = 0.0001
 
     learning_rate_missing_activity: float = 0.0001
-    learning_rate_NNR: float = 0.0001
+    training_NNR_start_epoch: int = 0
+    learning_rate_NNR_f: float = 0.0001
+    learning_rate_omega_f: float = 0.0001
+    coeff_omega_f_L2: float = 0.0
     training_NNR_start_epoch: int = 0
 
     coeff_W_L1: float = 0.0
