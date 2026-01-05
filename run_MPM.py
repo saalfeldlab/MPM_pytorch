@@ -375,24 +375,11 @@ Current config: {config_path}"""
                         shutil.copy2(memory_path, dst_memory)
                         print(f"\033[92msaved memory snapshot: {dst_memory}\033[0m")
 
-                # recompute UCB scores after Claude
+                # recompute UCB scores after Claude (for next iteration)
                 compute_ucb_scores(analysis_path, ucb_path,
                                    current_log_path=analysis_log_path,
                                    current_iteration=iteration,
                                    block_size=n_iter_block)
-
-                # plot updated UCB tree after Claude modifications
-                ucb_tree_path_final = f"{artifact_paths['tree_save_dir']}/iter_{iteration:03d}_ucb_tree_final.png"
-                nodes = parse_ucb_scores(ucb_path)
-                if nodes:
-                    with open(f"{config_root}/{config_file}.yaml", 'r') as f:
-                        raw_config = yaml.safe_load(f)
-                    field_name = raw_config.get('claude', {}).get('field_name', 'Jp')
-                    field_info = f"Field: {field_name}, Block {block_number}, Iter {iter_in_block}/{n_iter_block} (final)"
-
-                    plot_ucb_tree(nodes, ucb_tree_path_final,
-                                  title=f"UCB Tree - Iter {iteration} (after Claude)",
-                                  field_info=field_info)
 
 
 

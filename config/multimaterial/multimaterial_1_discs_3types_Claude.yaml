@@ -50,7 +50,7 @@ graph_model:
   inr_type: siren_txy
   input_size_nnr_f: 3
   n_layers_nnr_f: 3
-  hidden_dim_nnr_f: 512
+  hidden_dim_nnr_f: 64
   output_size_nnr_f: 1
   outermost_linear_nnr_f: true
   omega_f: 80.0

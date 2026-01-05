@@ -89,13 +89,19 @@ def compute_ucb_scores(analysis_path, ucb_path, c=1.0, current_log_path=None, cu
             if metrics_match and current_node is not None:
                 r2_str = metrics_match.group(1)
                 current_node['final_r2'] = float(r2_str) if r2_str != 'nan' else 0.0
-                # Also extract final_mse from same line
+                # Also extract final_mse and slope from same line
                 mse_match = re.search(r'final_mse=([\d.eE+-]+|nan)', line)
                 if mse_match:
                     mse_str = mse_match.group(1)
                     current_node['final_mse'] = float(mse_str) if mse_str != 'nan' else 0.0
                 else:
                     current_node['final_mse'] = 0.0
+                slope_match = re.search(r'slope=([\d.]+|nan)', line)
+                if slope_match:
+                    slope_str = slope_match.group(1)
+                    current_node['slope'] = float(slope_str) if slope_str != 'nan' else 0.0
+                else:
+                    current_node['slope'] = 0.0
                 continue
 
         # Save the last node if complete
@@ -126,10 +132,18 @@ def compute_ucb_scores(analysis_path, ucb_path, c=1.0, current_log_path=None, cu
                 mse_str = mse_match.group(1)
                 mse_value = float(mse_str) if mse_str != 'nan' else 0.0
 
+            # parse slope from analysis.log
+            slope_value = 0.0
+            slope_match = re.search(r'slope[=:]\s*([\d.]+|nan)', log_content)
+            if slope_match:
+                slope_str = slope_match.group(1)
+                slope_value = float(slope_str) if slope_str != 'nan' else 0.0
+
             if current_iteration in nodes:
                 # Update existing node's metrics
                 nodes[current_iteration]['final_r2'] = r2_value
                 nodes[current_iteration]['final_mse'] = mse_value
+                nodes[current_iteration]['slope'] = slope_value
             else:
                 # Create new node using parent from previous iteration's "Next: parent=P"
                 prev_iter = current_iteration - 1
@@ -139,7 +153,8 @@ def compute_ucb_scores(analysis_path, ucb_path, c=1.0, current_log_path=None, cu
                     'id': current_iteration,
                     'parent': parent,
                     'final_r2': r2_value,
-                    'final_mse': mse_value
+                    'final_mse': mse_value,
+                    'slope': slope_value
                 }
 
     if not nodes:
@@ -207,6 +222,7 @@ def compute_ucb_scores(analysis_path, ucb_path, c=1.0, current_log_path=None, cu
             'ucb': ucb,
             'final_r2': reward,
             'final_mse': node.get('final_mse', 0.0),
+            'slope': node.get('slope', 0.0),
             'mutation': node.get('mutation', ''),
             'is_current': node_id == current_iteration
         })
@@ -230,7 +246,7 @@ def compute_ucb_scores(analysis_path, ucb_path, c=1.0, current_log_path=None, cu
             line = (f"Node {score['id']}: UCB={score['ucb']:.3f}, "
                     f"parent={parent_str}, visits={score['visits']}, "
                     f"R2={score['final_r2']:.3f}, "
-                    f"MSE={score['final_mse']:.6e}")
+                    f"slope={score['slope']:.3f}")
             if mutation_str:
                 line += f", Mutation={mutation_str}"
             f.write(line + "\n")
