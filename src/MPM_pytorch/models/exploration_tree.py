@@ -262,7 +262,7 @@ def save_exploration_artifacts(root_dir, exploration_dir, config, config_file, p
     os.makedirs(protocol_save_dir, exist_ok=True)
 
     # Path to activity visualization (placeholder - create in data_train_INR if needed)
-    log_dir = f"./log/{pre_folder}{config.dataset}/"
+    log_dir = f"./log/{config.dataset}/"
     output_folder = os.path.join(log_dir, 'tmp_training', 'external_input')
 
     # Find the most recent visualization image

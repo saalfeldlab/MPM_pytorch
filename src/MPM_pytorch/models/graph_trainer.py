@@ -720,7 +720,7 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=50000, 
         optim.step()
 
         loss_list.append(loss.item())
-        pbar.set_postfix(loss=f"{loss.item():.6f}")
+        pbar.set_postfix(loss=f"{loss.item():.2f}")
 
         if step % steps_til_summary == 0:
             with torch.no_grad():

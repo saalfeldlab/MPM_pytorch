@@ -33,6 +33,7 @@ from MPM_pytorch.models.graph_trainer import *
 from MPM_pytorch.models.Siren_Network import *
 from MPM_pytorch.models.utils import *
 from MPM_pytorch.models.exploration_tree import compute_ucb_scores, save_exploration_artifacts
+from MPM_pytorch.models.plot_exploration_tree import parse_ucb_scores, plot_ucb_tree
 
 import warnings
 warnings.filterwarnings("ignore", message="pkg_resources is deprecated as an API")
@@ -273,6 +274,20 @@ if __name__ == "__main__":
                                    block_size=n_iter_block)
                 print(f"\033[92mUCB scores computed: {ucb_path}\033[0m")
 
+                # plot UCB tree
+                ucb_tree_path = f"{artifact_paths['tree_save_dir']}/iter_{iteration:03d}_ucb_tree.png"
+                nodes = parse_ucb_scores(ucb_path)
+                if nodes:
+                    # Get field info from config
+                    with open(f"{config_root}/{config_file}.yaml", 'r') as f:
+                        raw_config = yaml.safe_load(f)
+                    field_name = raw_config.get('claude', {}).get('field_name', 'Jp')
+                    field_info = f"Field: {field_name}, Block {block_number}, Iter {iter_in_block}/{n_iter_block}"
+
+                    plot_ucb_tree(nodes, ucb_tree_path,
+                                  title=f"UCB Tree - Iter {iteration}",
+                                  field_info=field_info)
+
                 # check files are ready
                 time.sleep(2)  # pause to ensure files are written
                 activity_path = artifact_paths['activity_path']
@@ -300,21 +315,12 @@ Metrics log: {analysis_log_path}
 UCB scores: {ucb_path}
 Current config: {config_path}"""
 
-                # Whitelist only specific files that Claude can edit
-                allowed_edit_files = [
-                    analysis_path,      # {config}_analysis.md - append-only full log
-                    memory_path,        # {config}_memory.md - working memory
-                    experiment_path,    # experiment_{config}.md - protocol (for block-end edits)
-                    config_path         # config YAML file - for parameter updates
-                ]
-
                 claude_cmd = [
                     'claude',
                     '-p', claude_prompt,
                     '--output-format', 'text',
                     '--max-turns', '20',
-                    '--allowedTools', 'Read', 'Edit',
-                    '--allowedEditPaths', *allowed_edit_files
+                    '--allowedTools', 'Read', 'Edit'
                 ]
 
                 # run with real-time output streaming and token expiry detection
@@ -374,6 +380,19 @@ Current config: {config_path}"""
                                    current_log_path=analysis_log_path,
                                    current_iteration=iteration,
                                    block_size=n_iter_block)
+
+                # plot updated UCB tree after Claude modifications
+                ucb_tree_path_final = f"{artifact_paths['tree_save_dir']}/iter_{iteration:03d}_ucb_tree_final.png"
+                nodes = parse_ucb_scores(ucb_path)
+                if nodes:
+                    with open(f"{config_root}/{config_file}.yaml", 'r') as f:
+                        raw_config = yaml.safe_load(f)
+                    field_name = raw_config.get('claude', {}).get('field_name', 'Jp')
+                    field_info = f"Field: {field_name}, Block {block_number}, Iter {iter_in_block}/{n_iter_block} (final)"
+
+                    plot_ucb_tree(nodes, ucb_tree_path_final,
+                                  title=f"UCB Tree - Iter {iteration} (after Claude)",
+                                  field_info=field_info)
 
 
 
