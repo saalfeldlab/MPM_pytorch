@@ -2,7 +2,7 @@
 
 ## Goal
 
-Map the **MPM INR training landscape**: understand which INR architectures and training configurations achieve best field reconstruction (R² > 0.95) for Material Point Method simulations.
+Map the **MPM INR training landscape**: understand which INR architectures and training configurations achieve best field reconstruction (R² > 0.95) for Material Point Method simulations. Other important evaluation are slope (~1.0) and computation time. Get an intuition for the computation time function of several training parameters. 
 
 ## Iteration Loop Structure
 
@@ -108,6 +108,7 @@ training:
   learning_rate_NNR_f: 1.0E-5 # range: 1E-7 to 1E-3
   batch_size: 8 # values: 4, 8, 16, 32, never larger than 32
   total_steps: 50000 # range: 5000-200000 (scale inversely with hidden_dim for ~10min iterations)
+  n_training_frames: 48 # progression: 48 → 100 → 200 → 500 → 1000 → 2000 → 5000 → 10000
 graph_model:
   hidden_dim_nnr_f: 512 # values: 128, 256, 512, 1024, 2048
   n_layers_nnr_f: 3 # range: 2-6
@@ -118,8 +119,8 @@ graph_model:
   # NGP-specific (if inr_type: ngp)
   # ngp_n_levels: 16 # range: 8-24
   # ngp_log2_hashmap_size: 19 # range: 15-22
-# training:
-#   n_training_frames: 48 # increase up to initial n_frames=10000, always n_training_frames > batch_size   
+claude:
+  field_name: Jp # values: Jp, F, S, C (change between blocks)
 ```
 
 **Parent Selection Rule:**
@@ -187,10 +188,24 @@ After editing, state in analysis log: `"PROTOCOL EDITED: added rule [X]"` or `"P
 - Count consecutive iterations mutating **same parameter**
 - If > 4 consecutive same-param → ADD switch-dimension rule
 
-### STEP 2: Choose Next Architecture
+### STEP 2: Choose Next Block Configuration
 
+**Between-block changes (choose ONE per block boundary):**
+
+Option A: **Change field_name**
+- Rotate through fields: Jp → F → S → C → Jp...
+- Allows testing same architecture across different fields
+
+Option B: **Increase n_training_frames**
+- Progression: 48 → 100 → 200 → 500 → 1000 → 2000 → 5000 → 10000
+- Keep field_name constant to isolate effect of more training data
+- IMPORTANT: Always ensure n_training_frames > batch_size
+
+**Strategy guidelines:**
 - Check Regime Comparison Table → choose untested combination
 - **Do not replicate** previous block unless motivated (testing knowledge transfer)
+- Alternate between Option A and B to build comprehensive understanding
+- When stuck on one field, switch to another to test generalization
 
 ### STEP 3: Update Working Memory
 
@@ -213,9 +228,9 @@ Update `{config}_memory.md`:
 
 ### Regime Comparison Table
 
-| Block | INR Type | Field | Best R² | Optimal lr_NNR_f | Optimal hidden_dim | Optimal n_layers | Optimal omega_f | Optimal total_steps | Training time (min) | Key finding |
-| ----- | -------- | ----- | ------- | ---------------- | ------------------ | ---------------- | --------------- | ------------------- | ------------------- | ----------- |
-| 1     | siren_id | Jp    | 0.998   | 1E-5             | 512                | 3                | 30.0            | 50000               | 10.5                | ...         |
+| Block | INR Type | Field | n_frames | Best R² | Optimal lr_NNR_f | Optimal hidden_dim | Optimal n_layers | Optimal omega_f | Optimal total_steps | Training time (min) | Key finding |
+| ----- | -------- | ----- | -------- | ------- | ---------------- | ------------------ | ---------------- | --------------- | ------------------- | ------------------- | ----------- |
+| 1     | siren_id | Jp    | 48       | 0.998   | 1E-5             | 512                | 3                | 30.0            | 50000               | 10.5                | ...         |
 
 ### Established Principles
 

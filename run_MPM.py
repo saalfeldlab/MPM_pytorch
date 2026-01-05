@@ -189,10 +189,11 @@ if __name__ == "__main__":
             if 'Claude' in task:
                 print(f"\n\n\n\033[94miteration {iteration}/{n_iterations}: {config_file_} ===\033[0m")
                 # block boundary: erase UCB at start of each n_iter_block-iteration block
-                # Read n_iter_block from raw YAML
+                # Read n_iter_block from training config (with fallback to claude section for backward compat)
                 with open(f"{config_root}/{config_file}.yaml", 'r') as f:
                     raw_config = yaml.safe_load(f)
-                n_iter_block = raw_config.get('claude', {}).get('n_iter_block', 12)
+                n_iter_block = raw_config.get('training', {}).get('n_iter_block',
+                               raw_config.get('claude', {}).get('n_iter_block', 16))
                 if iteration > 1 and (iteration - 1) % n_iter_block == 0:
                     ucb_file = f"{root_dir}/{llm_task_name}_ucb_scores.txt"
                     if os.path.exists(ucb_file):

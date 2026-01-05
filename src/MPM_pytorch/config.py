@@ -280,6 +280,7 @@ class TrainingConfig(BaseModel):
     coeff_omega_f_L2: float = 0.0
     training_NNR_start_epoch: int = 0
     total_steps: int = 50000  # INR training steps (Claude-tunable)
+    n_iter_block: int = 16  # Claude block size (iterations per block)
 
     coeff_W_L1: float = 0.0
     coeff_W_L1_rate: float = 0.5

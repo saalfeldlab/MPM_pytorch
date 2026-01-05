@@ -774,7 +774,15 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
                 # loss plot
                 ax0 = plt.subplot(2, 3, 1)
                 ax0.set_facecolor('black')
-                ax0.plot(loss_list, color='white', lw=0.1)
+                ax0.plot(loss_list, color='white', lw=0.1, alpha=0.5)
+                # smoothed average window curve (blue)
+                if len(loss_list) > 100:
+                    window_size = min(500, len(loss_list) // 10)
+                    loss_array = np.array(loss_list)
+                    smoothed_loss = np.convolve(loss_array, np.ones(window_size)/window_size, mode='valid')
+                    # offset x-axis to align with original data
+                    x_smoothed = np.arange(window_size//2, window_size//2 + len(smoothed_loss))
+                    ax0.plot(x_smoothed, smoothed_loss, color='dodgerblue', lw=1.5, alpha=0.9)
                 ax0.set_xlabel('step', color='white', fontsize=12)
                 loss_label = 'Relative L2 Loss' if inr_type == 'ngp' else 'MSE Loss'
                 ax0.set_ylabel(loss_label, color='white', fontsize=12)
