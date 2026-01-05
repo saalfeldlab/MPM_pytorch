@@ -46,8 +46,8 @@ def compute_ucb_scores(analysis_path, ucb_path, c=1.0, current_log_path=None, cu
 
         lines = content.split('\n')
         for i, line in enumerate(lines):
-            # Match iteration header: ## Iter N: [status]
-            iter_match = re.match(r'## Iter (\d+):', line)
+            # Match iteration header: ## Iter N: [status] or ### Iter N: [status]
+            iter_match = re.match(r'##+ Iter (\d+):', line)
             if iter_match:
                 # Save previous node if it has required fields
                 if current_node is not None and 'id' in current_node and 'final_r2' in current_node:

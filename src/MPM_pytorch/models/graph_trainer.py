@@ -508,14 +508,11 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=50000, 
     }
     start_idx, end_idx, field_desc = field_indices[field_name]
     n_components = end_idx - start_idx
+    field_data = x_list[:, :, start_idx:end_idx]  # shape: (n_frames, n_particles, n_components)
 
     print(f"field info:")
     print(f"  name: {field_name} - {field_desc}")
     print(f"  indices: [{start_idx}:{end_idx}]")
-
-    field_data = x_list[:, :, start_idx:end_idx]  # shape: (n_frames, n_particles, n_components)
-
-    print(f"field statistics:")
     print(f"  shape: {field_data.shape}")
     print(f"  range: [{field_data.min():.4f}, {field_data.max():.4f}]")
     print(f"  mean: {field_data.mean():.4f}, std: {field_data.std():.4f}")
@@ -609,7 +606,7 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=50000, 
         # count parameters
         total_params = sum(p.numel() for p in nnr_f.parameters())
 
-        print(f"\nusing SIREN ({inr_type}):")
+        print(f"using SIREN ({inr_type}):")
         print(f"  architecture: {input_size_nnr_f} → {hidden_dim_nnr_f} × {n_layers_nnr_f} hidden → {output_size_nnr_f}")
         print(f"  omega_f: {omega_f} (learnable: {omega_f_learning})")
         if omega_f_learning and hasattr(nnr_f, 'get_omegas'):
