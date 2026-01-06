@@ -259,6 +259,7 @@ if __name__ == "__main__":
                 with open(f"{config_root}/{config_file}.yaml", 'r') as f:
                     raw_config = yaml.safe_load(f)
                 n_iter_block = raw_config.get('claude', {}).get('n_iter_block', 12)
+                ucb_c = raw_config.get('claude', {}).get('ucb_c', 1.414)
                 block_number = (iteration - 1) // n_iter_block + 1
                 iter_in_block = (iteration - 1) % n_iter_block + 1
                 is_block_end = iter_in_block == n_iter_block
@@ -273,11 +274,11 @@ if __name__ == "__main__":
                 config_path = f"{root_dir}/config/{pre_folder}{config_file_}.yaml"
                 ucb_path = f"{root_dir}/{llm_task_name}_ucb_scores.txt"
 
-                compute_ucb_scores(analysis_path, ucb_path,
+                compute_ucb_scores(analysis_path, ucb_path, c=ucb_c,
                                    current_log_path=analysis_log_path,
                                    current_iteration=iteration,
                                    block_size=n_iter_block)
-                print(f"\033[92mUCB scores computed: {ucb_path}\033[0m")
+                print(f"\033[92mUCB scores computed (c={ucb_c}): {ucb_path}\033[0m")
 
                 # plot UCB tree
                 ucb_tree_path = f"{artifact_paths['tree_save_dir']}/iter_{iteration:03d}_ucb_tree.png"
@@ -394,7 +395,7 @@ Current config: {config_path}"""
                         print(f"\033[92msaved memory snapshot: {dst_memory}\033[0m")
 
                 # recompute UCB scores after Claude (for next iteration)
-                compute_ucb_scores(analysis_path, ucb_path,
+                compute_ucb_scores(analysis_path, ucb_path, c=ucb_c,
                                    current_log_path=analysis_log_path,
                                    current_iteration=iteration,
                                    block_size=n_iter_block)

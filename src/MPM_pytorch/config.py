@@ -354,6 +354,7 @@ class ClaudeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     field_name: Literal["F", "Jp", "S", "C"] = "Jp"
+    ucb_c: float = 1.414  # UCB exploration constant: UCB(k) = R²_k + c * sqrt(ln(N) / n_k)
 
 
 # Main config schema for MPM_pytorch

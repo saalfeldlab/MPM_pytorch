@@ -122,6 +122,7 @@ graph_model:
   # ngp_log2_hashmap_size: 19 # range: 15-22
 claude:
   field_name: Jp # values: Jp, F, S, C (change between blocks)
+  ucb_c: 1.414 # UCB exploration constant (0.5-3.0), adjust between blocks
 ```
 
 **Parent Selection Rule:**
@@ -190,6 +191,17 @@ After editing, state in analysis log: `"PROTOCOL EDITED: added rule [X]"` or `"P
 
 - Count consecutive iterations mutating **same parameter**
 - If > 4 consecutive same-param → ADD switch-dimension rule
+
+**UCB exploration constant (ucb_c):**
+
+- `ucb_c` controls exploration vs exploitation: UCB(k) = R²_k + c × sqrt(ln(N) / n_k)
+- Higher c (>1.5) → more exploration of under-visited branches
+- Lower c (<1.0) → more exploitation of high-performing nodes
+- Default: 1.414 (√2, standard UCB1)
+- Adjust between blocks based on search behavior:
+  - If stuck in local optimum (all R² similar, no improvement) → INCREASE ucb_c to 2.0
+  - If too much random exploration (jumping between distant nodes) → DECREASE ucb_c to 1.0
+  - Typical range: 0.5 to 3.0
 
 ### STEP 2: Choose Next Block Configuration
 
