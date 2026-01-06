@@ -135,7 +135,7 @@ class GraphModelConfig(BaseModel):
     # siren_txy: input=(t, x, y), output=1 (uses particle positions)
     # ngp: instantNGP hash encoding
     # lowrank: low-rank matrix factorization U @ V (not a neural network)
-    inr_type: Literal["siren_t", "siren_id", "siren_txy", "ngp", "lowrank"] = "siren_t"
+    inr_type: Literal["siren_t", "siren_txy", "ngp"] = "siren_t"
 
     input_size_nnr_f: int = 3
     n_layers_nnr_f: int = 5
@@ -349,6 +349,13 @@ class TrainingConfig(BaseModel):
     MPM_trainer : str = "F"
 
 
+# Claude exploration config
+class ClaudeConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    field_name: Literal["F", "Jp", "S", "C"] = "Jp"
+
+
 # Main config schema for MPM_pytorch
 
 
@@ -366,6 +373,7 @@ class MPM_pytorchConfig(BaseModel):
     plotting: PlottingConfig
     training: TrainingConfig
     image_data: Optional[ImageData] = None
+    claude: Optional[ClaudeConfig] = None
 
     @staticmethod
     def from_yaml(file_name: str):

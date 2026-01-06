@@ -144,7 +144,8 @@ def compute_layout(tree: dict) -> dict[int, tuple[float, float]]:
 def plot_ucb_tree(nodes: list[UCBNode],
                   output_path: Optional[str] = None,
                   title: str = "UCB Exploration Tree",
-                  field_info: Optional[str] = None):
+                  field_info: Optional[str] = None,
+                  n_training_frames: Optional[int] = None):
     """
     Plot the UCB exploration tree for MPM INR training.
 
@@ -224,8 +225,27 @@ def plot_ucb_tree(nodes: list[UCBNode],
             mutation_text = re.sub(r'\s*\([^)]*\)\s*$', '', node.mutation).strip()
             # Skip simulation change messages (they clutter the plot)
             if not mutation_text.startswith('simulation changed'):
+                # Shorten common parameter names
+                mutation_text = mutation_text.replace('hidden_dim_nnr_f', 'h')
+                mutation_text = mutation_text.replace('n_layers_nnr_f', 'L')
+                mutation_text = mutation_text.replace('learning_rate_NNR_f', 'lr')
+                mutation_text = mutation_text.replace('total_steps', 'steps')
+                mutation_text = mutation_text.replace('omega_f', 'ω')
+                mutation_text = mutation_text.replace('n_training_frames', 'frames')
+                # Extract just the new value (after →) if present, format as "param=value"
+                if '→' in mutation_text:
+                    parts = mutation_text.split('→')
+                    if len(parts) == 2:
+                        # Get param name from left side (before :)
+                        left = parts[0].strip()
+                        new_val = parts[1].strip()
+                        if ':' in left:
+                            param_name = left.split(':')[0].strip()
+                            mutation_text = f"{param_name}={new_val}"
+                        else:
+                            mutation_text = new_val
                 ax.annotate(mutation_text, (x, y), ha='center', va='bottom',
-                           fontsize=8, xytext=(0, 14), textcoords='offset points',
+                           fontsize=7, xytext=(0, 12), textcoords='offset points',
                            color='#333333', zorder=3)
 
         # Annotation: UCB/V and R²/slope/time below the node
@@ -238,13 +258,18 @@ def plot_ucb_tree(nodes: list[UCBNode],
                    fontsize=8, xytext=(0, -14), textcoords='offset points',
                    color='#555555', zorder=3)
 
-    # Add field info at top left of figure
+    # Add field info and n_training_frames at top left of figure
+    info_lines = []
     if field_info:
         # Format: remove extra prefixes, replace underscores with spaces
         field_text = field_info.strip()
         field_text = field_text.replace('_', ' ')
+        info_lines.append(field_text)
+    if n_training_frames is not None:
+        info_lines.append(f"n_frames={n_training_frames}")
+    if info_lines:
         # Place at top left using axes coordinates (0,1 = top left)
-        ax.text(0.02, 0.98, field_text, transform=ax.transAxes,
+        ax.text(0.02, 0.98, '\n'.join(info_lines), transform=ax.transAxes,
                 fontsize=11, ha='left', va='top', color='#333333')
 
     # Remove axis labels and ticks
@@ -262,6 +287,17 @@ def plot_ucb_tree(nodes: list[UCBNode],
 
     ax.grid(False)
     ax.axis('off')
+    ax.set_aspect('equal')  # Ensure circles appear as circles, not ellipses
+
+    # Draw green circle around the best node (highest R²)
+    if nodes:
+        best_node = max(nodes, key=lambda n: n.r2)
+        if best_node.id in positions:
+            x, y = positions[best_node.id]
+            # Draw a circle around the best node
+            best_circle = plt.Circle((x, y), 0.12, fill=False, color='#228B22',
+                                     linewidth=3, alpha=0.5, zorder=4)
+            ax.add_patch(best_circle)
 
     # Legend
     legend_elements = [
@@ -272,6 +308,8 @@ def plot_ucb_tree(nodes: list[UCBNode],
                    markerfacecolor='gray', markersize=8, linestyle='None'),
         plt.Line2D([0], [0], marker='x', color='gray', label='Leaf node',
                    markerfacecolor='gray', markersize=8, linestyle='None', markeredgewidth=2),
+        plt.Line2D([0], [0], marker='o', color='#228B22', label='Best R² node',
+                   markerfacecolor='none', markersize=10, linestyle='None', markeredgewidth=2),
     ]
     ax.legend(handles=legend_elements, loc='upper right', fontsize=9)
 

@@ -153,18 +153,22 @@ if __name__ == "__main__":
                         print(f"  - {f[:-3]}")
                 continue
 
-            # clear analysis and memory files at start (only if not resuming)
+            # clear analysis, memory, and reasoning files at start (only if not resuming)
             if start_iteration == 1:
                 with open(analysis_path, 'w') as f:
                     f.write(f"# Experiment Log: {config_file_}\n\n")
                 print(f"\033[93mcleared {analysis_path}\033[0m")
+                # clear reasoning.log for Claude tasks
+                reasoning_path = analysis_path.replace('_analysis.md', '_reasoning.log')
+                open(reasoning_path, 'w').close()
+                print(f"\033[93mcleared {reasoning_path}\033[0m")
                 # initialize working memory file
                 with open(memory_path, 'w') as f:
                     f.write(f"# Working Memory: {config_file_}\n\n")
                     f.write("## Knowledge Base (accumulated across all blocks)\n\n")
                     f.write("### Regime Comparison Table\n")
-                    f.write("| Block | Regime | Best R² | Optimal lr_NNR_f | Optimal hidden_dim | Optimal n_layers | Optimal omega_f | Key finding |\n")
-                    f.write("|-------|--------|---------|------------------|--------------------|--------------------|-----------------|-------------|\n\n")
+                    f.write("| Block | INR Type | Field | n_frames | Best R² | Best slope | Optimal lr_NNR_f | Optimal hidden_dim | Optimal n_layers | Optimal omega_f | Optimal total_steps | Training time (min) | Key finding |\n")
+                    f.write("|-------|----------|-------|----------|---------|------------|------------------|--------------------|--------------------|-----------------|---------------------|---------------------|-------------|\n\n")
                     f.write("### Established Principles\n\n")
                     f.write("### Open Questions\n\n")
                     f.write("---\n\n")
@@ -180,7 +184,9 @@ if __name__ == "__main__":
                 print(f"\033[93mpreserving {analysis_path} (resuming from iter {start_iteration})\033[0m")
                 print(f"\033[93mpreserving {memory_path} (resuming from iter {start_iteration})\033[0m")
             print(f"\033[93m{experiment_name} ({n_iterations} iterations, starting at {start_iteration})\033[0m")
-
+        else:
+            iteration_range = range(1, 2)
+            
         root_dir = os.path.dirname(os.path.abspath(__file__))
         analysis_log_path = f"{root_dir}/{llm_task_name}_analysis.log"
 
@@ -277,15 +283,18 @@ if __name__ == "__main__":
                 ucb_tree_path = f"{artifact_paths['tree_save_dir']}/iter_{iteration:03d}_ucb_tree.png"
                 nodes = parse_ucb_scores(ucb_path)
                 if nodes:
-                    # Get field info from config
+                    # Get field info, inr_type, and n_training_frames from config
                     with open(f"{config_root}/{config_file}.yaml", 'r') as f:
                         raw_config = yaml.safe_load(f)
                     field_name = raw_config.get('claude', {}).get('field_name', 'Jp')
-                    field_info = f"Field: {field_name}, Block {block_number}, Iter {iter_in_block}/{n_iter_block}"
+                    inr_type = raw_config.get('graph_model', {}).get('inr_type', 'siren_txy')
+                    n_training_frames = raw_config.get('training', {}).get('n_training_frames', None)
+                    field_info = f"{inr_type}, Field: {field_name}, Block {block_number}, Iter {iter_in_block}/{n_iter_block}"
 
                     plot_ucb_tree(nodes, ucb_tree_path,
                                   title=f"UCB Tree - Iter {iteration}",
-                                  field_info=field_info)
+                                  field_info=field_info,
+                                  n_training_frames=n_training_frames)
 
                 # check files are ready
                 time.sleep(2)  # pause to ensure files are written
@@ -350,6 +359,16 @@ Current config: {config_path}"""
                     print(f"\033[93m  2. Then: python run_MPM.py -o {task} {config_file_} start_iteration={iteration}\033[0m")
                     print(f"\033[91m{'='*60}\033[0m")
                     raise SystemExit(1)
+
+                # Save Claude's terminal output to reasoning log (separate from analysis.md)
+                reasoning_log_path = analysis_path.replace('_analysis.md', '_reasoning.log')
+                if output_text.strip():
+                    with open(reasoning_log_path, 'a') as f:
+                        f.write(f"\n{'='*60}\n")
+                        f.write(f"=== Iteration {iteration} ===\n")
+                        f.write(f"{'='*60}\n")
+                        f.write(output_text.strip())
+                        f.write("\n\n")
 
                 # save protocol file at first iteration of each block
                 if iter_in_block == 1:

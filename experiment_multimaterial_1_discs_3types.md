@@ -2,7 +2,7 @@
 
 ## Goal
 
-Map the **MPM INR training landscape**: understand which INR architectures and training configurations achieve best field reconstruction (R² > 0.95) for Material Point Method simulations. Other important evaluation are slope (~1.0) and computation time. Get an intuition for the computation time function of several training parameters. 
+Map the **MPM INR training landscape**: understand which INR architectures and training configurations achieve best field reconstruction (R² > 0.95) for Material Point Method simulations. Other important evaluation are slope (~1.0) and training time. Get an intuition for the training_time. 
 
 ## Iteration Loop Structure
 
@@ -51,7 +51,7 @@ Read `{config}_memory.md` to recall:
 - `total_params`: Number of INR model parameters
 - `training_time`: Wall clock time for training
 - `field_name`: Which MPM field was trained (F, Jp, S, C)
-- `inr_type`: Architecture type (siren_t, siren_id, siren_txy, ngp)
+- `inr_type`: Architecture type (siren_t, siren_txy, ngp)
 
 **UCB scores from `ucb_scores.txt`:**
 
@@ -101,13 +101,14 @@ Edit config file for next iteration according to Parent Selection Rule.
 
 **Training Parameters (change within block):**
 
-Change one paramater at a time for better causal understanding
+Mutate ONE parameter at a time for better causal understanding.
+Does not apply to total_steps, as needed to constrain total training_time ~10 min
 
 ```yaml
 training:
   learning_rate_NNR_f: 1.0E-5 # range: 1E-7 to 1E-3
   batch_size: 8 # values: 4, 8, 16, 32, never larger than 32
-  total_steps: 50000 # range: 5000-200000 (scale inversely with hidden_dim for ~10min iterations)
+  total_steps: 50000 # range: 5000-200000 (SCALE inversely with hidden_dim for training_time ~10 min)
   n_training_frames: 48 # progression: 48 → 100 → 200 → 500 → 1000 → 2000 → 5000 → 10000
 graph_model:
   hidden_dim_nnr_f: 512 # values: 128, 256, 512, 1024, 2048
@@ -141,6 +142,8 @@ Step B: Choose strategy
 | Good config found                    | **robustness-test** | Re-run same config                 |
 | 2+ distant nodes with R² > 0.95      | **recombine**       | Merge params from both nodes       |
 | 100% convergence, branching<10%      | **forced-branch**   | Select node in bottom 50% of tree  |
+| Same param mutated 4+ times          | **switch-param**    | Mutate different parameter         |
+| All R² > 0.94, branching <20%        | **random-branch**   | Select random unvisited parent     |
 
 **Recombination details:**
 
@@ -228,9 +231,9 @@ Update `{config}_memory.md`:
 
 ### Regime Comparison Table
 
-| Block | INR Type | Field | n_frames | Best R² | Optimal lr_NNR_f | Optimal hidden_dim | Optimal n_layers | Optimal omega_f | Optimal total_steps | Training time (min) | Key finding |
-| ----- | -------- | ----- | -------- | ------- | ---------------- | ------------------ | ---------------- | --------------- | ------------------- | ------------------- | ----------- |
-| 1     | siren_id | Jp    | 48       | 0.998   | 1E-5             | 512                | 3                | 30.0            | 50000               | 10.5                | ...         |
+| Block | INR Type | Field | n_frames | Best R² | Best slope | Optimal lr_NNR_f | Optimal hidden_dim | Optimal n_layers | Optimal omega_f | Optimal total_steps | Training time (min) | Key finding |
+| ----- | -------- | ----- | -------- | ------- | ---------- | ---------------- | ------------------ | ---------------- | --------------- | ------------------- | ------------------- | ----------- |
+| 1     | siren_id | Jp    | 48       | 0.998   | 0.990      | 1E-5             | 512                | 3                | 30.0            | 50000               | 10.5                | ...         |
 
 ### Established Principles
 
@@ -386,6 +389,7 @@ Three variants:
 3. **Slow convergence**: lr_NNR_f too low
 4. **Overfitting to noise**: batch_size too small
 5. **Memory OOM**: hidden_dim or n_particles too large
+6. **Training time explosion**: batch_size > 1 causes 7× slowdown (Block 1 finding) - use batch_size=1
 
 ---
 

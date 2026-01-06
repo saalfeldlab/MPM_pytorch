@@ -3,8 +3,8 @@
 ## Knowledge Base (accumulated across all blocks)
 
 ### Regime Comparison Table
-| Block | Regime | Best R² | Optimal lr_NNR_f | Optimal hidden_dim | Optimal n_layers | Optimal omega_f | Key finding |
-|-------|--------|---------|------------------|--------------------|--------------------|-----------------|-------------|
+| Block | INR Type | Field | n_frames | Best R² | Best slope | Optimal lr_NNR_f | Optimal hidden_dim | Optimal n_layers | Optimal omega_f | Optimal total_steps | Training time (min) | Key finding |
+|-------|----------|-------|----------|---------|------------|------------------|--------------------|--------------------|-----------------|---------------------|---------------------|-------------|
 
 ### Established Principles
 
