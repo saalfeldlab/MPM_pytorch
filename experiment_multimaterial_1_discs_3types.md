@@ -356,6 +356,7 @@ Three variants:
 - hidden_dim × n_layers determines capacity
 - More capacity → better fit but slower
 - Typical: 512×3 or 1024×3
+- **IMPORTANT (Block 1 finding)**: Depth > width for siren_txy. 256×4 outperforms both 512×3 and 512×4. Larger hidden_dim (512) requires lower lr (~2E-5 vs 5E-5 for 256)
 
 **SIREN frequency (omega_f)**:
 - Low (1-10): smooth, low-frequency signals
@@ -402,6 +403,7 @@ Three variants:
 4. **Overfitting to noise**: batch_size too small
 5. **Memory OOM**: hidden_dim or n_particles too large
 6. **Training time explosion**: batch_size > 1 causes 7× slowdown (Block 1 finding) - use batch_size=1
+7. **omega_f sensitivity**: For siren_txy, omega_f=30 is optimal. omega_f=20 underperforms, omega_f≥40 causes severe regression (Block 1 finding)
 
 ---
 

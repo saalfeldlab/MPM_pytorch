@@ -1,3 +1,14 @@
-=== UCB Scores (Block 0, iters 1-12, N=1, c=1.414) ===
+=== UCB Scores (Block 0, iters 1-12, N=12, c=1.414) ===
 
-Node 1: UCB=1.181, parent=root, visits=1, R2=0.474, slope=0.061, time=1.8min, Mutation=initial config
+Node 12: UCB=3.357, parent=6, visits=1, R2=0.908, slope=0.693, time=8.0min, Mutation=omega_f: 30 → 20
+Node 10: UCB=3.310, parent=9, visits=1, R2=0.861, slope=0.547, time=24.5min, Mutation=n_layers_nnr_f: 3 → 4
+Node 8: UCB=3.128, parent=6, visits=1, R2=0.679, slope=0.531, time=9.7min, Mutation=n_layers_nnr_f: 4 → 5
+Node 11: UCB=3.025, parent=6, visits=1, R2=0.576, slope=0.455, time=7.9min, Mutation=omega_f: 30 → 40
+Node 9: UCB=2.533, parent=5, visits=2, R2=0.900, slope=0.551, time=19.1min, Mutation=lr_NNR_f: 5E-5 → 2E-5
+Node 7: UCB=2.449, parent=6, visits=1, R2=0.000, slope=0.000, time=8.0min, Mutation=lr_NNR_f: 5E-5 → 1E-4
+Node 5: UCB=1.955, parent=4, visits=3, R2=0.730, slope=0.655, time=19.2min, Mutation=hidden_dim_nnr_f: 256 → 512
+Node 6: UCB=1.758, parent=4, visits=5, R2=0.942, slope=0.726, time=8.0min, Mutation=n_layers_nnr_f: 3 → 4
+Node 4: UCB=1.361, parent=3, visits=9, R2=0.871, slope=0.685, time=6.3min, Mutation=lr_NNR_f: 1E-5 → 5E-5
+Node 3: UCB=1.307, parent=2, visits=10, R2=0.862, slope=0.219, time=6.3min, Mutation=hidden_dim_nnr_f: 64 → 256
+Node 2: UCB=0.957, parent=1, visits=11, R2=0.549, slope=0.059, time=2.0min, Mutation=omega_f: 80 → 30
+Node 1: UCB=0.849, parent=root, visits=12, R2=0.472, slope=0.060, time=2.0min, Mutation=baseline (no parent)

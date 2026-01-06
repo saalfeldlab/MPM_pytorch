@@ -2,16 +2,256 @@
 ============================================================
 === Iteration 1 ===
 ============================================================
-## Iteration 1 Complete
+## Iteration 1 Summary
 
-**Results:** R² = 0.474 (poor) - hidden_dim=64 was too small for 9000 particles
+**Results:** R²=0.472 (poor), slope=0.060, training_time=2.0min
 
-**Diagnosis:** The initial config had insufficient model capacity (hidden_dim=64) and potentially too high omega_f=80.
+**Analysis:** Severe underfitting with omega_f=80 (too high - protocol notes >50 causes instability) and hidden_dim=64 (small).
 
-**Next iteration config:**
-- **Mutation:** hidden_dim_nnr_f: 64 → 512 (8× increase)
-- **Parent:** root (current node performed poorly)
-- **Strategy:** exploit - increase capacity to address underfitting
+**Action for Iteration 2:** 
+- Parent: Node 1 (highest UCB, only node)
+- Mutation: omega_f: 80 → 30 (reduce to standard range)
+- Strategy: exploit - testing if omega_f reduction improves convergence
 
-The config file has been updated for iteration 2. The main change is increasing hidden_dim_nnr_f from 64 to 512, which should significantly improve the model's capacity to represent the Jp field for 9000 particles across 48 frames. The omega_f=80 remains unchanged for now to isolate the effect of hidden_dim.
+Config updated and ready for next iteration.
+
+
+============================================================
+=== Iteration 2 ===
+============================================================
+**Iteration 2 Summary:**
+
+| Metric | Value |
+|--------|-------|
+| R² | 0.549 (poor) |
+| MSE | 107.35 |
+| Training time | 2.0 min |
+| slope | 0.059 |
+
+**Analysis:**
+- Reduced omega_f from 80→30: marginal improvement (+0.077 R²)
+- Still severely underfitting (R²=0.549)
+- hidden_dim=64 is too small - model has insufficient capacity
+
+**Next iteration (Iter 3):**
+- Parent: Node 2 (highest UCB=1.549)
+- Strategy: exploit
+- Mutation: hidden_dim_nnr_f: 64 → 256 (4× increase for more capacity)
+- Expected: Significant R² improvement with larger network
+
+
+============================================================
+=== Iteration 3 ===
+============================================================
+## Iteration 3 Summary
+
+**Results from Iter 2 (just completed):**
+- R²=0.862 (moderate) - significant improvement from 0.549
+- hidden_dim 64→256 was the key change (+0.313 R²)
+- Training time increased from 2.0 to 6.3 min (expected with larger network)
+- Slope=0.219 still low (target ~1.0)
+
+**Iteration 3 Configuration:**
+- Parent: Node 3 (highest UCB=2.086)
+- Strategy: exploit
+- Mutation: `lr_NNR_f: 1E-5 → 5E-5`
+- Rationale: With adequate network capacity now (256 hidden dim), increasing learning rate should improve convergence and help address the low slope
+
+**Config ready for next training run:**
+- `hidden_dim_nnr_f: 256`
+- `omega_f: 30.0`
+- `lr_NNR_f: 5E-5` (changed from 1E-5)
+- `total_steps: 50000`
+
+
+============================================================
+=== Iteration 4 ===
+============================================================
+## Iteration 4 Summary
+
+**Results**: R²=0.871 (moderate), slope=0.685, MSE=20.38, time=6.3min
+
+**Key findings**:
+- Higher lr (1E-5→5E-5) dramatically improved slope (0.219→0.685) with marginal R² gain
+- MSE dropped significantly (74.61→20.38)
+- Pattern emerging: **lr controls convergence quality (slope)**, **hidden_dim controls capacity (R² ceiling)**
+
+**Next iteration (Iter 5)**:
+- Parent: Node 4 (highest UCB=2.285)
+- Strategy: exploit
+- Mutation: hidden_dim_nnr_f: 256 → 512
+- Rationale: Slope improved, now test if increased capacity can push R² toward excellent (>0.95)
+
+**Config updated**: `hidden_dim_nnr_f: 512`
+
+
+============================================================
+=== Iteration 5 ===
+============================================================
+## Iteration 5 Summary
+
+**Result: MODERATE (R² = 0.730) - REGRESSION**
+
+| Metric | Value | Change from Parent |
+|--------|-------|-------------------|
+| R² | 0.730 | -0.141 (worse) |
+| Slope | 0.655 | -0.030 |
+| MSE | 33.59 | +13.21 |
+| Training time | 19.2 min | +12.9 min (3×) |
+| Params | 790,529 | +591,872 |
+
+**Analysis:**
+- Increasing hidden_dim from 256→512 caused significant performance regression
+- R² dropped from 0.871 to 0.730 despite 4× more parameters  
+- Training time tripled (6.3 → 19.2 min)
+- Possible causes: lr=5E-5 too high for larger network, or insufficient training steps for increased capacity
+
+**Next iteration (Iter 6):**
+- Parent: Node 4 (best R²=0.871, UCB=1.925)
+- Strategy: exploit - try depth instead of width
+- Mutation: n_layers_nnr_f: 3 → 4 (keeping hidden_dim=256)
+- Config: lr=5E-5, hidden_dim=256, n_layers=4, omega_f=30
+
+
+============================================================
+=== Iteration 6 ===
+============================================================
+**Iteration 6 Summary:**
+
+## Iter 6: good (R²=0.942)
+- **Node**: id=6, parent=4
+- **Strategy**: exploit (UCB=2.674 highest)
+- **Config**: lr=5E-5, hidden_dim=256, n_layers=4, omega_f=30
+- **Metrics**: R²=0.942, slope=0.726, training_time=8.0min
+- **Mutation**: n_layers 3→4
+
+**Key Finding**: Depth scales better than width for siren_txy on Jp field. Adding 4th layer (+0.071 R²) outperformed doubling hidden_dim to 512 which caused regression (-0.141 R²). Training time remained reasonable (8 min vs 19 min for 512 hidden).
+
+**Next iteration (7)**: 
+- Parent: Node 6 (highest UCB=2.674)
+- Mutation: lr_NNR_f: 5E-5 → 1E-4
+- Goal: Push R² above 0.95 threshold
+
+
+============================================================
+=== Iteration 7 ===
+============================================================
+---
+
+## Iteration 7 Summary
+
+**Result: POOR (R²=0.000)** - Complete training failure
+
+**Iteration 7 Analysis:**
+- Node: id=7, parent=6
+- Mutation: lr_NNR_f: 5E-5 → 1E-4
+- Result: Training collapsed with R²=0.000, confirming lr=1E-4 is too high for siren_txy with 4 layers
+
+**Key Finding:**
+- **Learning rate boundary identified**: lr=1E-4 causes training instability for siren_txy with 4 layers
+- Safe upper bound is ~5E-5 for this architecture
+
+**Config for Iteration 8:**
+Based on UCB scores (Node 6 has highest exploitable UCB after the Iter 7 failure), returning to Node 6's config and trying depth increase instead:
+- `n_layers_nnr_f`: 4 → 5
+- `learning_rate_NNR_f`: 5E-5 (restored from failed 1E-4)
+- All other parameters unchanged from Node 6
+
+This tests whether more depth (5 layers) can push R² above 0.95, since both width increase (Iter 5) and lr increase (Iter 7) failed.
+
+
+============================================================
+=== Iteration 8 ===
+============================================================
+**Iteration 8 Summary:**
+
+**Results:** R²=0.679 (moderate, regression from Node 6's 0.942)
+- Mutation: n_layers 4→5 failed - too deep for siren_txy
+- Confirms optimal depth is 4 layers for this architecture
+
+**Key findings this iteration:**
+- 5 layers causes gradient issues leading to worse R² than even 3 layers
+- Both width increase (512 hidden) and depth increase (5 layers) from the best Node 6 fail
+- Boundaries established: lr≤5E-5, hidden_dim≤256, n_layers=4 optimal
+
+**Configuration for Iter 9:**
+- Parent: Node 5 (highest UCB=2.730)
+- Config: hidden_dim=512, n_layers=3, omega_f=30, batch_size=1
+- Mutation: lr_NNR_f: 5E-5 → 2E-5
+- Hypothesis: Lower lr may help larger network converge better (Node 5 may have been unstable with lr=5E-5)
+
+
+============================================================
+=== Iteration 9 ===
+============================================================
+## Iteration 9 Summary
+
+**Result**: moderate (R²=0.900, slope=0.551, 19.1min)
+
+**Analysis**: Node 9 (parent=5) tested lower lr (5E-5 → 2E-5) with hidden_dim=512. This **rescued** the larger network from the poor R²=0.730 in Node 5 to R²=0.900 (+0.170 improvement). This confirms that larger networks require lower learning rates.
+
+**Key Insight**: hidden_dim=512 can work, but needs lr ≤ 2E-5 (half the lr used for hidden_dim=256).
+
+**Iteration 10 Setup**:
+- Parent: Node 9 (UCB=3.021, highest)
+- Strategy: exploit
+- Mutation: n_layers_nnr_f: 3 → 4
+- Config: lr=2E-5, hidden_dim=512, n_layers=4, omega_f=30
+- Hypothesis: Combining hidden_dim=512 + 4 layers + low lr may exceed Node 6's R²=0.942
+
+**Tree Status** (9 nodes):
+- Best: Node 6 (R²=0.942, hidden_dim=256, n_layers=4)
+- Second: Node 9 (R²=0.900, hidden_dim=512, n_layers=3, lr=2E-5)
+- Active exploration: Width path (512 hidden) now viable with lower lr
+
+
+============================================================
+=== Iteration 10 ===
+============================================================
+**Iteration 10 Complete**
+
+**Summary:**
+- **Result**: R²=0.861 (moderate) - REGRESSION from Node 9
+- **Mutation tested**: n_layers_nnr_f: 3 → 4 on hidden_dim=512 path
+- **Finding**: Combining width (512) + depth (4) doesn't help - performs worse than either:
+  - Node 6 (256×4): R²=0.942
+  - Node 9 (512×3): R²=0.900
+- **Training time**: 24.5 min (excessive, 3× target)
+
+**Key insight**: For siren_txy, there's a capacity/complexity tradeoff. Width and depth don't scale together well. Best results come from moderate width + depth (256×4).
+
+**Next iteration (11):**
+- Parent: Node 6 (best config, R²=0.942)
+- Mutation: omega_f: 30 → 40
+- Strategy: Exploit best config with frequency tuning to push past R²=0.95
+- Config: lr=5E-5, hidden_dim=256, n_layers=4, omega_f=40
+
+
+============================================================
+=== Iteration 11 ===
+============================================================
+## Iteration 11 Summary
+
+**Results (Iter 11, Node 11)**:
+- **R² = 0.576** (poor) - SEVERE REGRESSION from Node 6's 0.942
+- Mutation: omega_f: 30 → 40
+- Training time: 7.9 min
+
+**Key Finding**: omega_f=40 catastrophically degraded performance (-0.366 R²). This confirms omega_f=30 is optimal - both higher values (40, 80) fail badly.
+
+**Config for Iter 12** (last iteration of Block 1):
+- Parent: Node 6 (best config, R²=0.942)
+- Mutation: omega_f: 30 → 20 (testing lower frequency)
+- Config: lr=5E-5, hidden_dim=256, n_layers=4, omega_f=20
+
+**Block 1 Status (11/12 iterations)**:
+- Best: Node 6 (R²=0.942, slope=0.726)
+- Confirmed boundaries: lr_max=5E-5, n_layers_max=4, omega_f=30±10 sensitive
+- Pattern: depth (4 layers) > width (512 hidden) for siren_txy on Jp field
+
+
+============================================================
+=== Iteration 12 ===
+============================================================
+Error: Reached max turns (20)
 

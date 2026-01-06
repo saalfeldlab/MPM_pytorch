@@ -17,6 +17,7 @@ from typing import Optional
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+from matplotlib.patches import Ellipse
 import numpy as np
 
 
@@ -287,17 +288,23 @@ def plot_ucb_tree(nodes: list[UCBNode],
 
     ax.grid(False)
     ax.axis('off')
-    ax.set_aspect('equal')  # Ensure circles appear as circles, not ellipses
 
     # Draw green circle around the best node (highest R²)
+    # Use Ellipse to appear circular regardless of aspect ratio
     if nodes:
         best_node = max(nodes, key=lambda n: n.r2)
         if best_node.id in positions:
             x, y = positions[best_node.id]
-            # Draw a circle around the best node
-            best_circle = plt.Circle((x, y), 0.12, fill=False, color='#228B22',
-                                     linewidth=3, alpha=0.5, zorder=4)
-            ax.add_patch(best_circle)
+            # Calculate ellipse dimensions to appear as circle on screen
+            x_range = ax.get_xlim()[1] - ax.get_xlim()[0]
+            y_range = ax.get_ylim()[1] - ax.get_ylim()[0]
+            # Base radius in data units, scaled to axes
+            radius_x = 0.15 * x_range / 4  # scale factor for width
+            radius_y = 0.15 * y_range / 4  # scale factor for height
+            best_ellipse = Ellipse((x, y), width=radius_x*2, height=radius_y*2,
+                                   fill=False, color='#228B22',
+                                   linewidth=3, alpha=0.5, zorder=4)
+            ax.add_patch(best_ellipse)
 
     # Legend
     legend_elements = [

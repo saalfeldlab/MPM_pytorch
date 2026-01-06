@@ -328,7 +328,7 @@ Current config: {config_path}"""
                     'claude',
                     '-p', claude_prompt,
                     '--output-format', 'text',
-                    '--max-turns', '20',
+                    '--max-turns', '40',
                     '--allowedTools', 'Read', 'Edit'
                 ]
 
