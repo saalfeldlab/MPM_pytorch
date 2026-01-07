@@ -356,7 +356,14 @@ Three variants:
 - hidden_dim × n_layers determines capacity
 - More capacity → better fit but slower
 - Typical: 512×3 or 1024×3
-- **IMPORTANT (Block 1 finding)**: Depth > width for siren_txy. 256×4 outperforms both 512×3 and 512×4. Larger hidden_dim (512) requires lower lr (~2E-5 vs 5E-5 for 256)
+- **IMPORTANT (Block 1 finding)**: Depth vs width tradeoff - 256×4 matches 512×3 accuracy (R²=0.908) at 2.5x faster training (7.7min vs 19.1min)
+- **lr-depth relationship (Block 1 finding)**: Deeper networks require lower lr. Scaling: n_layers=3-4 tolerates lr=2E-5, n_layers=5 needs lr≤2E-5, n_layers=5 + lr=3E-5 fails catastrophically
+- **5-layer ceiling (Block 2 finding)**: n_layers=5 degrades R² regardless of lr (tested 2E-5, 1.5E-5, 1E-5). 4 layers is the optimal depth for siren_txy.
+
+**Training data scaling (Block 2 finding)**:
+- total_steps should scale with n_training_frames
+- Approximate rule: steps_per_frame ≈ 1000-1500 for R²>0.95
+- 48 frames → 50k steps OK; 100 frames → 150k steps needed
 
 **SIREN frequency (omega_f)**:
 - Low (1-10): smooth, low-frequency signals

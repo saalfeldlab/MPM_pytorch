@@ -97,29 +97,33 @@ if __name__ == "__main__":
             llm_task_name = cfg + "_Claude"  # You can customize this naming
             target_config = f"{config_root}/{pre}{llm_task_name}.yaml"
 
-            if os.path.exists(source_config):
-                shutil.copy2(source_config, target_config)
-                print(f"\033[93mcopied {source_config} -> {target_config}\033[0m")
+            # Only copy and initialize config on fresh start (not when resuming)
+            if start_iteration == 1:
+                if os.path.exists(source_config):
+                    shutil.copy2(source_config, target_config)
+                    print(f"\033[93mcopied {source_config} -> {target_config}\033[0m")
 
-                with open(target_config, 'r') as f:
-                    config_data = yaml.safe_load(f)
+                    with open(target_config, 'r') as f:
+                        config_data = yaml.safe_load(f)
 
-                # Get Claude-specific parameters from config if they exist
-                claude_cfg = config_data.get('claude', {})
-                claude_n_epochs = claude_cfg.get('n_epochs', 1)
-                claude_data_augmentation_loop = claude_cfg.get('data_augmentation_loop', 100)
-                claude_total_steps = claude_cfg.get('total_steps', 100000)
+                    # Get Claude-specific parameters from config if they exist
+                    claude_cfg = config_data.get('claude', {})
+                    claude_n_epochs = claude_cfg.get('n_epochs', 1)
+                    claude_data_augmentation_loop = claude_cfg.get('data_augmentation_loop', 100)
+                    claude_total_steps = claude_cfg.get('total_steps', 100000)
 
-                # Modify config for Claude task
-                config_data['dataset'] = llm_task_name
-                config_data['training']['n_epochs'] = claude_n_epochs
-                config_data['training']['data_augmentation_loop'] = claude_data_augmentation_loop
-                config_data['description'] = 'designed by Claude'
+                    # Modify config for Claude task
+                    config_data['dataset'] = llm_task_name
+                    config_data['training']['n_epochs'] = claude_n_epochs
+                    config_data['training']['data_augmentation_loop'] = claude_data_augmentation_loop
+                    config_data['description'] = 'designed by Claude'
 
-                with open(target_config, 'w') as f:
-                    yaml.dump(config_data, f, default_flow_style=False, sort_keys=False)
+                    with open(target_config, 'w') as f:
+                        yaml.dump(config_data, f, default_flow_style=False, sort_keys=False)
 
-                print(f"\033[93mmodified {target_config}: dataset='{llm_task_name}', n_epochs={claude_n_epochs}, data_augmentation_loop={claude_data_augmentation_loop}, total_steps={claude_total_steps}\033[0m")
+                    print(f"\033[93mmodified {target_config}: dataset='{llm_task_name}', n_epochs={claude_n_epochs}, data_augmentation_loop={claude_data_augmentation_loop}, total_steps={claude_total_steps}\033[0m")
+            else:
+                print(f"\033[93mpreserving {target_config} (resuming from iter {start_iteration})\033[0m")
 
         # Update config_list to use the Claude-modified config
         config_list = [llm_task_name]

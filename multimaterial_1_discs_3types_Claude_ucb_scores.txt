@@ -1,14 +1,14 @@
-=== UCB Scores (Block 0, iters 1-12, N=12, c=1.414) ===
+=== UCB Scores (Block 2, iters 25-36, N=12, c=1.414) ===
 
-Node 12: UCB=3.357, parent=6, visits=1, R2=0.908, slope=0.693, time=8.0min, Mutation=omega_f: 30 → 20
-Node 10: UCB=3.310, parent=9, visits=1, R2=0.861, slope=0.547, time=24.5min, Mutation=n_layers_nnr_f: 3 → 4
-Node 8: UCB=3.128, parent=6, visits=1, R2=0.679, slope=0.531, time=9.7min, Mutation=n_layers_nnr_f: 4 → 5
-Node 11: UCB=3.025, parent=6, visits=1, R2=0.576, slope=0.455, time=7.9min, Mutation=omega_f: 30 → 40
-Node 9: UCB=2.533, parent=5, visits=2, R2=0.900, slope=0.551, time=19.1min, Mutation=lr_NNR_f: 5E-5 → 2E-5
-Node 7: UCB=2.449, parent=6, visits=1, R2=0.000, slope=0.000, time=8.0min, Mutation=lr_NNR_f: 5E-5 → 1E-4
-Node 5: UCB=1.955, parent=4, visits=3, R2=0.730, slope=0.655, time=19.2min, Mutation=hidden_dim_nnr_f: 256 → 512
-Node 6: UCB=1.758, parent=4, visits=5, R2=0.942, slope=0.726, time=8.0min, Mutation=n_layers_nnr_f: 3 → 4
-Node 4: UCB=1.361, parent=3, visits=9, R2=0.871, slope=0.685, time=6.3min, Mutation=lr_NNR_f: 1E-5 → 5E-5
-Node 3: UCB=1.307, parent=2, visits=10, R2=0.862, slope=0.219, time=6.3min, Mutation=hidden_dim_nnr_f: 64 → 256
-Node 2: UCB=0.957, parent=1, visits=11, R2=0.549, slope=0.059, time=2.0min, Mutation=omega_f: 80 → 30
-Node 1: UCB=0.849, parent=root, visits=12, R2=0.472, slope=0.060, time=2.0min, Mutation=baseline (no parent)
+Node 36: UCB=3.401, parent=35, visits=1, R2=0.951, slope=0.950, time=0.8min, Mutation=hidden_dim_nnr_f: 256 -> 128
+Node 35: UCB=2.598, parent=34, visits=2, R2=0.965, slope=0.963, time=1.7min, Mutation=hidden_dim_nnr_f: 512 -> 256
+Node 34: UCB=2.172, parent=33, visits=3, R2=0.947, slope=0.937, time=4.2min, Mutation=total_steps: 10000 -> 8000
+Node 33: UCB=1.935, parent=32, visits=4, R2=0.955, slope=0.951, time=5.2min, Mutation=total_steps: 12000 -> 10000
+Node 32: UCB=1.799, parent=31, visits=5, R2=0.983, slope=0.974, time=6.1min, Mutation=total_steps: 15000 -> 12000
+Node 31: UCB=1.664, parent=30, visits=6, R2=0.964, slope=0.965, time=7.6min, Mutation=total_steps: 20000 -> 15000
+Node 30: UCB=1.601, parent=29, visits=7, R2=0.989, slope=0.988, time=10.0min, Mutation=total_steps: 30000 -> 20000
+Node 29: UCB=1.542, parent=28, visits=8, R2=0.998, slope=0.997, time=14.8min, Mutation=total_steps: 50000 -> 30000
+Node 28: UCB=1.469, parent=27, visits=9, R2=0.979, slope=0.983, time=24.4min, Mutation=total_steps: 75000 -> 50000
+Node 27: UCB=1.437, parent=26, visits=10, R2=0.992, slope=0.995, time=36.4min, Mutation=total_steps: 100000 -> 75000
+Node 26: UCB=1.407, parent=25, visits=11, R2=0.999, slope=1.000, time=48.5min, Mutation=total_steps: 150000 -> 100000
+Node 25: UCB=1.376, parent=root, visits=12, R2=0.999, slope=0.999, time=72.5min, Mutation=field_name: Jp -> F (new block)
