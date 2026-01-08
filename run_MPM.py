@@ -260,7 +260,7 @@ if __name__ == "__main__":
                 # This ensures that any changes to Siren_Network.py or graph_trainer.py
                 # made by Claude in previous iterations are picked up
                 if 'Claude' in task:
-                    print(f"\033[93mR\running INR training in subprocess...\033[0m")
+                    print(f"\033[93mrunning INR training in subprocess...\033[0m")
 
                     # Construct subprocess command
                     train_script = os.path.join(root_dir, 'train_INR_subprocess.py')
@@ -364,8 +364,6 @@ if __name__ == "__main__":
                 # check files are ready
                 time.sleep(2)  # pause to ensure files are written
                 activity_path = artifact_paths['activity_path']
-                if not os.path.exists(activity_path):
-                    print(f"\033[91mwarning: activity image not found at {activity_path}\033[0m")
                 if not os.path.exists(analysis_log_path):
                     print(f"\033[91merror: analysis.log not found at {analysis_log_path}\033[0m")
                     continue
