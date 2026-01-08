@@ -53,6 +53,13 @@ Read `{config}_memory.md` to recall:
 - `field_name`: Which MPM field was trained (F, Jp, S, C)
 - `inr_type`: Architecture type (siren_t, siren_txy, ngp)
 
+**Classification:**
+
+- **Excellent**: R² > 0.95
+- **Good**: R² 0.90-0.95
+- **Moderate**: R² 0.75-0.90
+- **Poor**: R² < 0.75
+
 **UCB scores from `ucb_scores.txt`:**
 
 - Provides pre-computed UCB scores for all nodes including current iteration
@@ -87,47 +94,8 @@ Observation: [one line]
 Next: parent=P
 ```
 
-### Step 4: Edit Config File
 
-Edit config file for next iteration according to Parent Selection Rule.
-(The config path is provided in the prompt as "Current config")
-
-**Classification:**
-
-- **Excellent**: R² > 0.95
-- **Good**: R² 0.90-0.95
-- **Moderate**: R² 0.75-0.90
-- **Poor**: R² < 0.75
-
-**Training Parameters (change within block):**
-
-Mutate ONE parameter at a time for better causal understanding.
-Does not apply to total_steps, as needed to constrain total training_time ~10 min
-
-```yaml
-training:
-  learning_rate_NNR_f: 1.0E-5 # range: 1E-7 to 1E-3
-  batch_size: 8 # values: 4, 8, 16, 32, never larger than 32
-  total_steps: 50000 # range: 5000-200000 (SCALE inversely with hidden_dim for training_time ~10 min)
-  n_training_frames: 48 # progression: 48 → 100 → 200 → 500 → 1000 → 2000 → 5000 → 10000
-graph_model:
-  hidden_dim_nnr_f: 512 # values: 128, 256, 512, 1024, 2048
-  n_layers_nnr_f: 3 # range: 2-6
-  omega_f: 30.0 # range: 1.0 to 100.0 (SIREN frequency)
-  omega_f_learning: False # or True
-  learning_rate_omega_f: 1.0E-6 # if omega_f_learning=True
-  nnr_f_xy_period: 1.0 # spatial normalization for siren_txy
-  # NGP-specific (if inr_type: ngp)
-  # ngp_n_levels: 16 # range: 8-24
-  # ngp_log2_hashmap_size: 19 # range: 15-22
-claude:
-  field_name: Jp # values: Jp, F, S, C (change between blocks)
-  ucb_c: 1.414 # UCB exploration constant (0.5-3.0), adjust between blocks
-```
-
-**Parent Selection Rule:**
-
-Step A: Select parent node
+### Step 4: Select parent node in UCB tree
 
 - Read `ucb_scores.txt`
 - If empty → `parent=root`
@@ -156,6 +124,208 @@ Trigger: exists Node A and Node B where:
 Action:
 - parent = higher R² node
 - Mutation = adopt best param from other node
+
+### Step 5: Edit Config File (default) or Modify Code (rare)
+
+Choose ONE:
+- **Step 5.1 (DEFAULT)**: Edit config file parameters only
+- **Step 5.2 (RARE)**: Modify Python code (only when config insufficient)
+
+## Step 5.1: Edit Config File (default approach)
+
+Edit config file for next iteration according to Parent Selection Rule.
+(The config path is provided in the prompt as "Current config")
+
+**Training Parameters (change within block):**
+
+Mutate ONE parameter at a time for better causal understanding.
+Does not apply to total_steps, as needed to constrain total training_time ~10 min
+
+```yaml
+training:
+  learning_rate_NNR_f: 1.0E-5 # range: 1E-7 to 1E-3
+  batch_size: 8 # values: 4, 8, 16, 32, never larger than 32
+  total_steps: 50000 # range: 5000-200000 (SCALE inversely with hidden_dim for training_time ~10 min)
+  n_training_frames: 48 # progression: 48 → 100 → 200 → 500 → 1000 → 2000 → 5000 → 10000
+graph_model:
+  hidden_dim_nnr_f: 512 # values: 128, 256, 512, 1024, 2048
+  n_layers_nnr_f: 3 # range: 2-6
+  omega_f: 30.0 # range: 1.0 to 100.0 (SIREN frequency)
+  omega_f_learning: False # or True
+  learning_rate_omega_f: 1.0E-6 # if omega_f_learning=True
+  nnr_f_xy_period: 1.0 # spatial normalization for siren_txy
+  # NGP-specific (if inr_type: ngp)
+  # ngp_n_levels: 16 # range: 8-24
+  # ngp_log2_hashmap_size: 19 # range: 15-22
+claude:
+  field_name: Jp # values: Jp, F, S, C (change between blocks)
+  ucb_c: 1.414 # UCB exploration constant (0.5-3.0), adjust between blocks
+```
+## Step 5.2: Modify code (OPTIONAL - use sparingly)
+
+**When to modify code:**
+- ONLY when config-level parameters are insufficient
+- When you have a specific architectural hypothesis to test
+- When 3+ iterations suggest a code-level change would help
+- NEVER modify code in first 4 iterations of a block
+
+**Files you can modify:**
+1. `src/MPM_pytorch/models/Siren_Network.py` - Network architecture
+2. `src/MPM_pytorch/models/graph_trainer.py` - Training loop (data_train_INR function)
+
+**How code reloading works:**
+- Training runs in a subprocess (`train_INR_subprocess.py`) for each iteration
+- This subprocess reloads all Python modules, picking up any code modifications
+- Code changes are immediately effective in the next iteration
+- If the subprocess crashes due to syntax errors, the iteration fails and you'll see the error
+
+**Safety rules (CRITICAL):**
+1. **Make minimal changes** - edit only what's necessary
+2. **Test in isolation first** - don't combine code + config changes
+3. **Document thoroughly** - explain WHY in mutation log
+4. **One change at a time** - never modify multiple functions simultaneously
+5. **Preserve interfaces** - don't change function signatures
+6. **Add fallback** - wrap risky code in try/except if possible
+
+**Example modifications allowed:**
+
+### A. Network Architecture Changes (Siren_Network.py)
+
+**Allowed modifications:**
+- Add normalization layers (LayerNorm, BatchNorm) between SIREN layers
+- Add skip connections / residual connections
+- Modify initialization scheme (currently uses SIREN-specific init)
+- Add dropout for regularization
+- Change activation in final layer (currently linear or sin)
+
+**Example: Add LayerNorm after each hidden layer**
+```python
+# In Siren class __init__, after each SineLayer:
+self.net.append(SineLayer(hidden_features, hidden_features, ...))
+self.net.append(nn.LayerNorm(hidden_features))  # ADD THIS
+```
+
+**Template for logging:**
+```
+Mutation: [code] Siren_Network.py: Added LayerNorm after each hidden layer
+Hypothesis: Normalization may stabilize training for high omega_f
+```
+
+### B. Training Loop Changes (graph_trainer.py, data_train_INR function)
+
+**Allowed modifications:**
+- Change optimizer (Adam → AdamW, SGD, RMSprop)
+- Add learning rate scheduler (CosineAnnealingLR, ReduceLROnPlateau)
+- Add gradient clipping
+- Modify loss function (add regularization terms, use different distance metrics)
+- Change data sampling strategy (currently random batch sampling)
+- Add early stopping logic
+
+**Example: Add learning rate schedule**
+```python
+# After optimizer creation (around line 600):
+optim = torch.optim.Adam(lr=learning_rate, params=nnr_f.parameters())
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=total_steps)  # ADD THIS
+
+# In training loop (after optim.step()):
+scheduler.step()  # ADD THIS
+```
+
+**Example: Add gradient clipping**
+```python
+# In training loop, after loss.backward():
+loss.backward()
+torch.nn.utils.clip_grad_norm_(nnr_f.parameters(), max_norm=1.0)  # ADD THIS
+optim.step()
+```
+
+**Example: Change loss function**
+```python
+# Replace MSE with Huber loss (more robust to outliers):
+# OLD: loss = ((model_output - ground_truth_batch) ** 2).mean()
+# NEW:
+loss = torch.nn.functional.huber_loss(model_output, ground_truth_batch, delta=0.1)
+```
+
+### C. Versioning and Rollback
+
+**Before modifying code:**
+1. The system automatically saves config snapshots at `log/Claude_exploration/{instruction}/configs/iter_{N:03d}_config.yaml`
+2. You should similarly version code changes in the log
+
+**After modifying code:**
+1. State clearly in mutation log: `"CODE MODIFIED: {file}:{function} - {one-line description}"`
+2. In memory.md "Emerging Observations", track: "Code mod iter X: {result}"
+3. If modification fails (syntax error, crash), immediately revert and document failure
+
+**Rollback procedure:**
+- If code change causes crash/error, state in observation: "Code modification failed, reverting"
+- Human will manually revert the code change
+- Continue with config-only mutations
+
+### D. Code Modification Decision Tree
+
+```
+Is R² consistently < 0.75 for 4+ iterations with good configs?
+├─ NO → Use config mutations only (Step 5.1)
+└─ YES → Consider code modification
+           ├─ Is the issue architectural? (network capacity, representation)
+           │  └─ YES → Modify Siren_Network.py
+           └─ Is the issue optimization? (convergence, stability)
+              └─ YES → Modify data_train_INR in graph_trainer.py
+```
+
+### E. Specific Hypotheses Worth Testing via Code
+
+**Network architecture:**
+- "Hypothesis: SIREN's periodic activation causes overfitting → test with ReLU in hidden layers"
+- "Hypothesis: Deeper networks need residual connections → add skip connections"
+- "Hypothesis: LayerNorm improves training stability for field S"
+
+**Optimization:**
+- "Hypothesis: Adam's momentum hurts sparse gradient signals → test SGD"
+- "Hypothesis: Learning rate needs warmup → add linear warmup schedule"
+- "Hypothesis: Loss landscape is non-convex → try curriculum learning (easy frames first)"
+
+**Loss function:**
+- "Hypothesis: MSE loss overweights outliers in field F → try Huber loss"
+- "Hypothesis: Need physics-informed loss → add gradient penalty on spatial smoothness"
+
+### F. Logging Code Modifications
+
+**In iteration log, use this format:**
+```
+## Iter N: [excellent/good/moderate/poor]
+Node: id=N, parent=P
+Mode/Strategy: code-modification
+Config: [unchanged from parent, or specify if also changed]
+CODE MODIFICATION:
+  File: src/MPM_pytorch/models/graph_trainer.py
+  Function: data_train_INR
+  Change: Added CosineAnnealingLR scheduler with T_max=total_steps
+  Hypothesis: Decaying learning rate may escape local minimum
+Metrics: final_r2=A, final_mse=B, total_params=C, compression_ratio=D, training_time=E
+Field: field_name=F, inr_type=T
+Mutation: [code] data_train_INR: Added LR scheduler
+Parent rule: [one line]
+Observation: [compare to parent - did code change help?]
+Next: parent=P
+```
+
+### G. Constraints and Prohibitions
+
+**NEVER:**
+- Modify run_MPM.py (breaks the experiment loop)
+- Change function signatures (breaks compatibility)
+- Add dependencies requiring new pip packages (unless absolutely necessary)
+- Make multiple simultaneous code changes (can't isolate causality)
+- Modify code just to "try something" without hypothesis
+
+**ALWAYS:**
+- Explain the hypothesis motivating the code change
+- Compare directly to parent iteration (same config, code-only diff)
+- Document exactly what changed (file, line numbers, what was added/removed)
+- Consider config-based solutions first
 
 ---
 

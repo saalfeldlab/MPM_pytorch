@@ -5,6 +5,7 @@ import yaml
 import argparse
 import networkx as nx
 import os
+import sys
 import scipy.io
 import umap
 import torch
@@ -68,7 +69,7 @@ if __name__ == "__main__":
                 key, value = arg.split('=', 1)
                 task_params[key] = int(value) if value.isdigit() else value
     else:
-        task = 'train_INR_Claude'  # 'generate', 'train', 'test', 'train_INR', 'Claude'
+        task = 'generate' # 'train_INR_Claude'  # 'generate', 'train', 'test', 'train_INR', 'Claude'
         best_model = ''
         config_list = ['multimaterial_1_discs_3types']
         task_params = {'iterations': 1024} 
@@ -247,14 +248,57 @@ if __name__ == "__main__":
                 else:
                     field_name = 'Jp'
 
-                # total_steps is now read from config.training.total_steps inside data_train_INR
-                data_train_INR(
-                    config=config,
-                    device=device,
-                    field_name=field_name,
-                    erase='Claude' in task,
-                    log_file=log_file
-                )
+                # For Claude tasks, run training in subprocess to reload modified code
+                # This ensures that any changes to Siren_Network.py or graph_trainer.py
+                # made by Claude in previous iterations are picked up
+                if 'Claude' in task:
+                    print(f"\033[93mRunning INR training in subprocess (to reload code modifications)...\033[0m")
+
+                    # Construct subprocess command
+                    train_script = os.path.join(root_dir, 'train_INR_subprocess.py')
+                    config_path = f"{config_root}/{config_file}.yaml"
+
+                    train_cmd = [
+                        sys.executable,  # Use same Python interpreter
+                        train_script,
+                        '--config', config_path,
+                        '--field_name', field_name,
+                        '--device', str(device),
+                        '--log_file', analysis_log_path
+                    ]
+                    if 'Claude' in task:
+                        train_cmd.append('--erase')
+
+                    # Run training subprocess and stream output
+                    process = subprocess.Popen(
+                        train_cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        bufsize=1
+                    )
+
+                    # Stream output in real-time
+                    for line in process.stdout:
+                        print(line, end='', flush=True)
+
+                    process.wait()
+
+                    if process.returncode != 0:
+                        print(f"\033[91mTraining subprocess failed with code {process.returncode}\033[0m")
+                        print(f"\033[93mThis may indicate a code modification error. Check the error above.\033[0m")
+                        raise RuntimeError(f"Training failed at iteration {iteration}")
+
+                    print(f"\033[92mTraining subprocess completed successfully\033[0m")
+                else:
+                    # For non-Claude tasks, run directly (no code modifications expected)
+                    data_train_INR(
+                        config=config,
+                        device=device,
+                        field_name=field_name,
+                        erase=False,
+                        log_file=log_file
+                    )
 
             log_file.close()
 
