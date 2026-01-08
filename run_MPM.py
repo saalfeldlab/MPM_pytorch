@@ -72,7 +72,7 @@ if __name__ == "__main__":
                 key, value = arg.split('=', 1)
                 task_params[key] = int(value) if value.isdigit() else value
     else:
-        task = 'generate' # 'train_INR_Claude'  # 'generate', 'train', 'test', 'train_INR', 'Claude'
+        task = 'train_INR_Claude'  # 'generate', 'train', 'test', 'train_INR', 'Claude'
         best_model = ''
         config_list = ['multimaterial_1_discs_3types']
         task_params = {'iterations': 1024} 
@@ -117,7 +117,12 @@ if __name__ == "__main__":
                     claude_total_steps = claude_cfg.get('total_steps', 100000)
 
                     # Modify config for Claude task
-                    config_data['dataset'] = llm_task_name
+                    # Add folder prefix to dataset name (same as done at runtime in line 150)
+                    # This is needed for subprocess to find the correct data path
+                    if pre:  # pre is the folder prefix (e.g., 'multimaterial/')
+                        config_data['dataset'] = pre + llm_task_name
+                    else:
+                        config_data['dataset'] = llm_task_name
                     config_data['training']['n_epochs'] = claude_n_epochs
                     config_data['training']['data_augmentation_loop'] = claude_data_augmentation_loop
                     config_data['description'] = 'designed by Claude'
@@ -263,6 +268,7 @@ if __name__ == "__main__":
 
                     train_cmd = [
                         sys.executable,  # Use same Python interpreter
+                        '-u',  # Force unbuffered output for real-time streaming
                         train_script,
                         '--config', config_path,
                         '--field_name', field_name,
@@ -273,12 +279,17 @@ if __name__ == "__main__":
                         train_cmd.append('--erase')
 
                     # Run training subprocess and stream output
+                    # Set environment to force tqdm to work in non-interactive mode
+                    env = os.environ.copy()
+                    env['PYTHONUNBUFFERED'] = '1'
+
                     process = subprocess.Popen(
                         train_cmd,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.STDOUT,
                         text=True,
-                        bufsize=1
+                        bufsize=1,
+                        env=env
                     )
 
                     # Stream output in real-time

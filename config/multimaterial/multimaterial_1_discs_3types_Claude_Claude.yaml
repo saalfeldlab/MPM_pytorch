@@ -1,5 +1,5 @@
 description: designed by Claude
-dataset: multimaterial/multimaterial_1_discs_3types_Claude
+dataset: multimaterial/multimaterial_1_discs_3types_Claude_Claude
 simulation:
   params:
   - - 0
