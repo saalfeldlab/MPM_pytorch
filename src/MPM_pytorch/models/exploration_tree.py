@@ -84,6 +84,18 @@ def compute_ucb_scores(analysis_path, ucb_path, c=1.0, current_log_path=None, cu
                 current_node['mutation'] = mutation_match.group(1).strip()
                 continue
 
+            # Match CODE MODIFICATION section (check if code was modified)
+            code_mod_match = re.match(r'CODE MODIFICATION:', line)
+            if code_mod_match and current_node is not None:
+                current_node['has_code_mod'] = True
+                # Try to extract the change description from next few lines
+                for j in range(i+1, min(i+10, len(lines))):
+                    change_match = re.match(r'\s*Change:\s*(.+)', lines[j])
+                    if change_match:
+                        current_node['code_change'] = change_match.group(1).strip()
+                        break
+                continue
+
             # Match Metrics line for final_r2
             metrics_match = re.search(r'final_r2=([\d.]+|nan)', line)
             if metrics_match and current_node is not None:
@@ -239,6 +251,8 @@ def compute_ucb_scores(analysis_path, ucb_path, c=1.0, current_log_path=None, cu
             'slope': node.get('slope', 0.0),
             'training_time_min': node.get('training_time_min', 0.0),
             'mutation': node.get('mutation', ''),
+            'has_code_mod': node.get('has_code_mod', False),
+            'code_change': node.get('code_change', ''),
             'is_current': node_id == current_iteration
         })
 
@@ -258,13 +272,25 @@ def compute_ucb_scores(analysis_path, ucb_path, c=1.0, current_log_path=None, cu
         for score in ucb_scores:
             parent_str = score['parent'] if score['parent'] is not None else 'root'
             mutation_str = score.get('mutation', '')
+            has_code_mod = score.get('has_code_mod', False)
+            code_change = score.get('code_change', '')
+
             line = (f"Node {score['id']}: UCB={score['ucb']:.3f}, "
                     f"parent={parent_str}, visits={score['visits']}, "
                     f"R2={score['final_r2']:.3f}, "
                     f"slope={score['slope']:.3f}, "
                     f"time={score['training_time_min']:.1f}min")
+
+            # Add code modification indicator
+            if has_code_mod:
+                line += f" [CODE]"
+                if code_change:
+                    line += f" {code_change}"
+
+            # Add config mutation
             if mutation_str:
                 line += f", Mutation={mutation_str}"
+
             f.write(line + "\n")
 
     return True

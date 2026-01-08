@@ -32,6 +32,8 @@ class UCBNode:
     slope: float = 0.0
     training_time_min: float = 0.0
     mutation: str = ""
+    has_code_mod: bool = False
+    code_change: str = ""
 
 
 def parse_ucb_scores(filepath: str) -> list[UCBNode]:
@@ -41,11 +43,18 @@ def parse_ucb_scores(filepath: str) -> list[UCBNode]:
     with open(filepath, 'r') as f:
         content = f.read()
 
-    # Pattern: Node N: UCB=X.XXX, parent=P|root, visits=V, R2=X.XXX, slope=X.XXX, time=X.Xmin, Mutation=...
-    # slope, time, and Mutation are optional for backward compatibility
-    pattern = r'Node (\d+): UCB=([\d.]+), parent=(\d+|root), visits=(\d+), R2=([\d.]+)(?:, slope=([\d.]+))?(?:, time=([\d.]+)min)?(?:, Mutation=([^\n\[]+))?'
+    # Parse each line - looking for [CODE] marker and extracting code change
+    for line in content.split('\n'):
+        if not line.startswith('Node '):
+            continue
 
-    for match in re.finditer(pattern, content):
+        # Basic node info pattern
+        basic_pattern = r'Node (\d+): UCB=([\d.]+), parent=(\d+|root), visits=(\d+), R2=([\d.]+)(?:, slope=([\d.]+))?(?:, time=([\d.]+)min)?'
+        match = re.match(basic_pattern, line)
+
+        if not match:
+            continue
+
         node_id = int(match.group(1))
         ucb = float(match.group(2))
         parent_str = match.group(3)
@@ -54,7 +63,24 @@ def parse_ucb_scores(filepath: str) -> list[UCBNode]:
         r2 = float(match.group(5))
         slope = float(match.group(6)) if match.group(6) else 0.0
         training_time_min = float(match.group(7)) if match.group(7) else 0.0
-        mutation = match.group(8).strip() if match.group(8) else ""
+
+        # Check for [CODE] marker
+        has_code_mod = '[CODE]' in line
+        code_change = ""
+
+        if has_code_mod:
+            # Extract code change description (text after [CODE])
+            code_match = re.search(r'\[CODE\]\s+([^,]+)', line)
+            if code_match:
+                code_change = code_match.group(1).strip()
+
+        # Extract mutation (config changes)
+        mutation = ""
+        mutation_match = re.search(r', Mutation=(.+)', line)
+        if mutation_match:
+            mutation = mutation_match.group(1).strip()
+            # Remove [CODE] part from mutation if present
+            mutation = re.sub(r'\[CODE\].*', '', mutation).strip()
 
         nodes.append(UCBNode(
             id=node_id,
@@ -64,7 +90,9 @@ def parse_ucb_scores(filepath: str) -> list[UCBNode]:
             r2=r2,
             slope=slope,
             training_time_min=training_time_min,
-            mutation=mutation
+            mutation=mutation,
+            has_code_mod=has_code_mod,
+            code_change=code_change
         ))
 
     return nodes
@@ -215,13 +243,28 @@ def plot_ucb_tree(nodes: list[UCBNode],
             ax.scatter(x, y, c=color, s=size, marker='o',
                       edgecolors='black', linewidths=0.5, zorder=2)
 
+        # Add a special indicator for code modifications (double circle border)
+        if node.has_code_mod:
+            # Draw an outer circle to create double-border effect
+            ax.scatter(x, y, c='none', s=size*1.5, marker='o',
+                      edgecolors='#9b59b6', linewidths=2.5, zorder=2, alpha=0.8)
+
         # Label: node id inside/near the marker (always black)
         ax.annotate(str(node.id), (x, y), ha='center', va='center',
                    fontsize=9,
                    color='black', zorder=3)
 
+        # Code modification indicator above the node
+        if node.has_code_mod and node.code_change:
+            code_text = f"[CODE] {node.code_change}"
+            ax.annotate(code_text, (x, y), ha='center', va='bottom',
+                       fontsize=7, xytext=(0, 22), textcoords='offset points',
+                       color='#9b59b6', fontweight='bold', zorder=3,
+                       bbox=dict(boxstyle='round,pad=0.3', facecolor='#f3e5f5',
+                                edgecolor='#9b59b6', alpha=0.7))
+
         # Mutation above the node (for nodes with id > 1)
-        if node.id > 1 and node.mutation:
+        elif node.id > 1 and node.mutation:
             # Remove parenthesis part from mutation text
             mutation_text = re.sub(r'\s*\([^)]*\)\s*$', '', node.mutation).strip()
             # Skip simulation change messages (they clutter the plot)
@@ -316,6 +359,8 @@ def plot_ucb_tree(nodes: list[UCBNode],
         plt.Line2D([0], [0], marker='x', color='gray', label='Leaf node',
                    markerfacecolor='gray', markersize=8, linestyle='None', markeredgewidth=2),
         plt.Line2D([0], [0], marker='o', color='#228B22', label='Best R² node',
+                   markerfacecolor='none', markersize=10, linestyle='None', markeredgewidth=2),
+        plt.Line2D([0], [0], marker='o', color='#9b59b6', label='Code modification',
                    markerfacecolor='none', markersize=10, linestyle='None', markeredgewidth=2),
     ]
     ax.legend(handles=legend_elements, loc='upper right', fontsize=9)

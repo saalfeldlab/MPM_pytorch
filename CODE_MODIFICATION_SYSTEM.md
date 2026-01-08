@@ -101,7 +101,23 @@ The system automatically:
 - Returns exit code if training fails
 - Error messages captured and displayed
 
-### 2. Automatic Error Detection
+### 2. Automatic Git Version Control
+- After each iteration, modified code files are automatically committed
+- Commit messages include: iteration number, description, hypothesis, file changes
+- Easy rollback via `git revert <commit-hash>`
+- Full modification history in git log
+- Example commit message:
+  ```
+  [Iter 12] Added CosineAnnealingLR scheduler in data_train_INR (graph_trainer.py)
+  Hypothesis: Decaying learning rate may escape local minimum
+
+  File: src/MPM_pytorch/models/graph_trainer.py
+  Changes: +3 lines, -0 lines
+
+  [Automated commit by Claude Code Modification System]
+  ```
+
+### 3. Automatic Error Detection
 ```python
 if process.returncode != 0:
     print("Training subprocess failed")
