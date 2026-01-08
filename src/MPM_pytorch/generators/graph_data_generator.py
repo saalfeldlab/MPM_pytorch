@@ -58,9 +58,6 @@ def data_generate(
         print("watch out: data already generated")
         # return
 
-    if config.data_folder_name != "none":
-        generate_from_data(config=config, device=device, visualize=visualize)
-    else:
         if '3D' in config.dataset:
             data_generate_MPM_3D(
                 config,
@@ -75,7 +72,7 @@ def data_generate(
                 device=device,
                 bSave=bSave,
             )
-        else:
+        else:   #default 2D
             data_generate_MPM_2D(
                 config,
                 visualize=visualize,
@@ -91,207 +88,6 @@ def data_generate(
             )
 
     plt.style.use("default")
-
-
-def taichi_MPM():
-    torch.manual_seed(42)
-    np.random.seed(42)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(42)
-
-    ti.init(arch=ti.gpu)
-
-    # Try to run on GPU
-    quality = 1  # Use a larger value for higher-res simulations
-    n_particles, n_grid = 9000 * quality**2, 128 * quality
-    dx, inv_dx = 1 / n_grid, float(n_grid)
-    dt = 1e-4 / quality
-    p_vol, p_rho = (dx * 0.5) ** 2, 1
-    p_mass = p_vol * p_rho
-    E, nu = 0.1e4, 0.2  # Young's modulus and Poisson's ratio
-    mu_0, lambda_0 = (
-        E / (2 * (1 + nu)),
-        E * nu / ((1 + nu) * (1 - 2 * nu)),
-    )  # Lame parameters
-
-    x = ti.Vector.field(2, dtype=float, shape=n_particles)  # position
-    v = ti.Vector.field(2, dtype=float, shape=n_particles)  # velocity
-    C = ti.Matrix.field(2, 2, dtype=float, shape=n_particles)  # affine velocity field
-    F = ti.Matrix.field(2, 2, dtype=float, shape=n_particles)  # deformation gradient
-    material = ti.field(dtype=int, shape=n_particles)  # material id
-    Jp = ti.field(dtype=float, shape=n_particles)  # plastic deformation
-    grid_v = ti.Vector.field(
-        2, dtype=float, shape=(n_grid, n_grid)
-    )  # grid node momentum/velocity
-    grid_m = ti.field(dtype=float, shape=(n_grid, n_grid))  # grid node mass
-
-    @ti.kernel
-    def substep():
-        for i, j in grid_m:
-            grid_v[i, j] = [0, 0]
-            grid_m[i, j] = 0
-        for p in x:  # Particle state update and scatter to grid (P2G)
-            base = (x[p] * inv_dx - 0.5).cast(int)
-            fx = x[p] * inv_dx - base.cast(float)
-            # Quadratic kernels  [http://mpm.graphics   Eqn. 123, with x=fx, fx-1,fx-2]
-            w = [0.5 * (1.5 - fx) ** 2, 0.75 - (fx - 1) ** 2, 0.5 * (fx - 0.5) ** 2]
-            # F[p]: deformation gradient update
-            F[p] = (ti.Matrix.identity(float, 2) + dt * C[p]) @ F[p]
-            h = ti.exp(10 * (1.0 - Jp[p]))
-            if material[p] == 1:  # jelly, make it softer
-                h = 0.3
-            mu, la = mu_0 * h, lambda_0 * h
-            if material[p] == 0:  # liquid
-                mu = 0.0
-
-            U, sig, V = ti.svd(F[p])
-
-            # Avoid zero eigenvalues because of numerical errors
-            for d in ti.static(range(2)):
-                sig[d, d] = ti.max(sig[d, d], 1e-6)
-            J = 1.0
-            for d in ti.static(range(2)):
-                new_sig = sig[d, d]
-                if material[p] == 2:  # Snow
-                    new_sig = ti.min(
-                        ti.max(sig[d, d], 1 - 2.5e-2), 1 + 4.5e-3
-                    )  # Plasticity
-                Jp[p] *= sig[d, d] / new_sig
-                sig[d, d] = new_sig
-                J *= new_sig
-            if material[p] == 0:
-                # Reset deformation gradient to avoid numerical instability
-                F[p] = ti.Matrix.identity(float, 2) * ti.sqrt(J)
-            elif material[p] == 2:
-                # Reconstruct elastic deformation gradient after plasticity
-                F[p] = U @ sig @ V.transpose()
-            stress = 2 * mu * (F[p] - U @ V.transpose()) @ F[
-                p
-            ].transpose() + ti.Matrix.identity(float, 2) * la * J * (J - 1)
-            stress = (-dt * p_vol * 4 * inv_dx * inv_dx) * stress
-            affine = stress + p_mass * C[p]
-            # Loop over 3x3 grid node neighborhood
-            for i, j in ti.static(ti.ndrange(3, 3)):
-                offset = ti.Vector([i, j])
-                dpos = (offset.cast(float) - fx) * dx
-                weight = w[i][0] * w[j][1]
-                grid_v[base + offset] += weight * (p_mass * v[p] + affine @ dpos)
-                grid_m[base + offset] += weight * p_mass
-
-        for i, j in grid_m:
-            if grid_m[i, j] > 0:  # No need for epsilon here
-                grid_v[i, j] = (1 / grid_m[i, j]) * grid_v[i, j]  # Momentum to velocity
-                grid_v[i, j][1] -= dt * 50  # gravity
-                if i < 3 and grid_v[i, j][0] < 0:
-                    grid_v[i, j][0] = 0  # Boundary conditions
-                if i > n_grid - 3 and grid_v[i, j][0] > 0:
-                    grid_v[i, j][0] = 0
-                if j < 3 and grid_v[i, j][1] < 0:
-                    grid_v[i, j][1] = 0
-                if j > n_grid - 3 and grid_v[i, j][1] > 0:
-                    grid_v[i, j][1] = 0
-        for p in x:  # grid to particle (G2P)
-            base = (x[p] * inv_dx - 0.5).cast(int)
-            fx = x[p] * inv_dx - base.cast(float)
-            w = [0.5 * (1.5 - fx) ** 2, 0.75 - (fx - 1.0) ** 2, 0.5 * (fx - 0.5) ** 2]
-            new_v = ti.Vector.zero(float, 2)
-            new_C = ti.Matrix.zero(float, 2, 2)
-            for i, j in ti.static(ti.ndrange(3, 3)):
-                # loop over 3x3 grid node neighborhood
-                dpos = ti.Vector([i, j]).cast(float) - fx
-                g_v = grid_v[base + ti.Vector([i, j])]
-                weight = w[i][0] * w[j][1]
-                new_v += weight * g_v
-                new_C += 4 * inv_dx * weight * g_v.outer_product(dpos)
-            v[p], C[p] = new_v, new_C
-            x[p] += dt * v[p]  # advection
-
-    group_size = n_particles // 3
-
-    @ti.kernel
-    def initialize():
-        for i in range(n_particles):
-            x[i] = [
-                ti.random() * 0.2 + 0.3 + 0.10 * (i // group_size),
-                ti.random() * 0.2 + 0.05 + 0.32 * (i // group_size),
-            ]
-            material[i] = 1  # i // group_size  # 0: fluid 1: jelly 2: snow
-            v[i] = ti.Matrix([0, 0])
-            F[i] = ti.Matrix([[1, 0], [0, 1]])
-            Jp[i] = 1
-
-    initialize()
-
-    # for n in range(2000):
-    #     substep()
-
-    # Separate particle visualization
-    x_np = x.to_numpy()
-    material_np = material.to_numpy()
-
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-
-    colors = ["blue", "red", "green"]
-    material_names = ["Liquid", "Jelly", "Snow"]
-
-    # Full domain view
-    for mat_type in range(3):
-        mask = material_np == mat_type
-        if np.any(mask):
-            ax1.scatter(
-                x_np[mask, 0],
-                x_np[mask, 1],
-                s=3,
-                color=colors[mat_type],
-                label=material_names[mat_type],
-                alpha=0.7,
-            )
-    ax1.set_xlim([0, 1])
-    ax1.set_ylim([0, 1])
-    ax1.set_title("Final Particle Positions")
-    ax1.set_xlabel("x")
-    ax1.set_ylabel("y")
-    ax1.legend()
-    ax1.grid(True, alpha=0.3)
-
-    # Zoomed view
-    for mat_type in range(3):
-        mask = material_np == mat_type
-        if np.any(mask):
-            ax2.scatter(
-                x_np[mask, 0],
-                x_np[mask, 1],
-                s=8,
-                color=colors[mat_type],
-                label=material_names[mat_type],
-                alpha=0.7,
-            )
-    ax2.set_xlim([0.2, 0.8])
-    ax2.set_ylim([0.2, 0.8])
-    ax2.set_title("Particle Positions (Zoomed)")
-    ax2.set_xlabel("x")
-    ax2.set_ylabel("y")
-    ax2.legend()
-    ax2.grid(True, alpha=0.3)
-
-    plt.tight_layout()
-    plt.savefig("particles_taichi.png", dpi=150, bbox_inches="tight")
-    plt.close()
-
-    gui = ti.GUI("Taichi MLS-MPM-99", res=512, background_color=0x112F41)
-    while not gui.get_event(ti.GUI.ESCAPE, ti.GUI.EXIT):
-        for s in range(int(2e-3 // dt)):
-            substep()
-        gui.circles(
-            x.to_numpy(),
-            radius=1.5,
-            palette=[0x068587, 0xED553B, 0xEEEEF0],
-            palette_indices=material,
-        )
-        # Change to gui.show(f'{frame:06d}.png') to write images to disk
-        gui.show()
-
-
 
 
 def data_generate_MPM_2D(
@@ -315,13 +111,12 @@ def data_generate_MPM_2D(
 
     print(f'generating 2D data ... {model_config.particle_model_name} {model_config.mesh_model_name}')
 
-    dimension = simulation_config.dimension
+    dimension = 2
     max_radius = simulation_config.max_radius
     min_radius = simulation_config.min_radius
     n_particle_types = simulation_config.n_particle_types
     n_particles = simulation_config.n_particles
     n_grid = simulation_config.n_grid
-    group_size = n_particles // n_particle_types
     MPM_n_objects = simulation_config.MPM_n_objects
     MPM_object_type = simulation_config.MPM_object_type
     gravity = simulation_config.MPM_gravity
@@ -374,20 +169,8 @@ def data_generate_MPM_2D(
     for run in range(config.training.n_runs):
         x_list = []
 
-
-        if 'tissue' in config.dataset:
-            # Initialize 2D MPM shapes as tissue
-            N, X, V, C, F, T, Jp, M, S, ID = init_MPM_tissue(
-                image_path=simulation_config.image_path,
-                n_particles=n_particles,
-                n_grid=n_grid,
-                dx=dx,
-                rho_list=rho_list,
-                seed=simulation_config.seed,
-                device=device
-            )
-        elif 'cells' in config.dataset:
-            # Initialize 2D MPM shapes as cells
+        if 'cells' in config.dataset:
+            # initialize 2D MPM shapes as cells
             N, X, V, C, F, T, Jp, M, S, ID = init_MPM_cells(
                 n_shapes=MPM_n_objects,
                 seed=simulation_config.seed,
@@ -413,7 +196,7 @@ def data_generate_MPM_2D(
             )
 
         else:
-            # Initialize 2D MPM shapes
+            # initialize 2D MPM shapes
             N, X, V, C, F, T, Jp, M, S, ID = init_MPM_shapes(
                 geometry=MPM_object_type,
                 n_shapes=MPM_n_objects,
@@ -426,7 +209,7 @@ def data_generate_MPM_2D(
                 device=device
             )
 
-        # Main simulation loop
+        # main simulation loop
         idx = 0
         for it in trange(simulation_config.start_frame, n_frames, ncols=150):
             x = torch.cat((N.clone().detach(), X.clone().detach(), V.clone().detach(),
@@ -453,8 +236,35 @@ def data_generate_MPM_2D(
                     plt.rcParams['text.usetex'] = True
                     rc('font', **{'family': 'serif', 'serif': ['Palatino']})
 
-                if 'centered' in style:
-                    x = x - torch.mean(x, dim=0, keepdim=True) + 0.5
+                fig, ax = fig_init(formatx="%.1f", formaty="%.1f")
+
+                # Determine color mode based on style
+                if 'F' in style:
+                    # Color by deformation gradient magnitude
+                    f_norm = torch.norm(F.view(n_particles, -1), dim=1).cpu().numpy()
+                    scatter = plt.scatter(X[:, 0].cpu(), X[:, 1].cpu(), c=f_norm, s=10, cmap='coolwarm', vmin=0.9, vmax=1.6)
+                    plt.colorbar(scatter, fraction=0.046, pad=0.04)
+                elif 'M' in style:
+                    # Color by material type
+                    for n in range(3):
+                        pos = torch.argwhere(T == n)[:,0]
+                        if len(pos) > 0:
+                            plt.scatter(to_numpy(x[pos, 1]), to_numpy(x[pos, 2]), s=10, color=cmap.color(n))
+                else:
+                    # Default: color by particle ID or material type
+                    for n in range(3):
+                        pos = torch.argwhere(T == n)[:,0]
+                        if len(pos) > 0:
+                            plt.scatter(to_numpy(x[pos, 1]), to_numpy(x[pos, 2]), s=10, color=cmap.color(n))
+
+                plt.xlim([0, 1])
+                plt.ylim([0, 1])
+                plt.xticks([])
+                plt.yticks([])
+                plt.tight_layout()
+                num = f"{idx:06}"
+                plt.savefig(f"graphs_data/{dataset_name}/Fig/Fig_{run}_{num}.png", dpi=80)
+                plt.close()
 
                 if 'grid' in style:
                     plt.figure(figsize=(15, 10))
@@ -600,7 +410,7 @@ def data_generate_MPM_2D(
                     plt.close()
                 idx += 1
 
-        # Save results
+        # save results
         if bSave:
             dataset_name = config.dataset
             x_array = np.array(x_list)
@@ -608,16 +418,28 @@ def data_generate_MPM_2D(
             print(f'data saved at: graphs_data/{dataset_name}/x_list_{run}.npy')
 
         if visualize & (run == run_vizualized):
-            config_indices = dataset_name.split('/')[-1]
+            config_indices = 'fig'
             src = f"./graphs_data/{dataset_name}/Fig/Fig_0_000000.png"
             dst = f"./graphs_data/{dataset_name}/input_{config_indices}.png"
             with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
                 fdst.write(fsrc.read())
-            generate_compressed_video_mp4(output_dir=f"./graphs_data/{dataset_name}", run=run,
-                                        config_indices=config_indices, framerate=100)
-            # files = glob.glob(f'./graphs_data/{dataset_name}/Fig/*')
-            # for f in files:
-            #     os.remove(f)
+            generate_compressed_video_mp4(output_dir=f"./graphs_data/{dataset_name}/Fig", run=run,
+                                        config_indices=config_indices, framerate=50)
+            files = glob.glob(f'./graphs_data/{dataset_name}/Fig/*')
+            for f in files:
+                os.remove(f)
+
+            if 'grid' in style:
+                config_indices = 'grid'
+                src = f"./graphs_data/{dataset_name}/Grid/Fig_0_000000.png"
+                dst = f"./graphs_data/{dataset_name}/input_{config_indices}.png"
+                with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
+                    fdst.write(fsrc.read())
+                generate_compressed_video_mp4(output_dir=f"./graphs_data/{dataset_name}/Grid", run=run,
+                                            config_indices=config_indices, framerate=50)
+                files = glob.glob(f'./graphs_data/{dataset_name}/Grid/*')
+                for f in files:
+                    os.remove(f)
 
 
 def data_generate_MPM_3D(

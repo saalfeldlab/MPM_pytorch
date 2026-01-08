@@ -1,6 +1,7 @@
 import os
 from subprocess import run
 import time
+import glob
 
 import matplotlib.pyplot as plt
 import torch
@@ -58,6 +59,7 @@ def data_train(config=None, erase=False, best_model=None, device=None):
 
 
 def data_train_material(config, erase, best_model, device):
+
     simulation_config = config.simulation
     train_config = config.training
     model_config = config.graph_model
@@ -188,6 +190,10 @@ def data_train_material(config, erase, best_model, device):
     torch.autograd.set_detect_anomaly(True)
     for epoch in range(start_epoch, n_epochs + 1):
 
+
+        logger.info(f"Total allocated memory: {torch.cuda.memory_allocated(device) / 1024 ** 3:.2f} GB")
+        logger.info(f"Total reserved memory:  {torch.cuda.memory_reserved(device) / 1024 ** 3:.2f} GB")
+
         batch_size = int(get_batch_size(epoch))
         logger.info(f'batch_size: {batch_size}')
 
@@ -298,239 +304,690 @@ def data_train_material(config, erase, best_model, device):
         plt.close()
 
 
+        # net = os.path.join(log_dir, 'models', f'best_model_with_{n_runs - 1}_graphs_{epoch}.pt')
+        # state_dict = torch.load(net, map_location=device)
+        # model.load_state_dict(state_dict['model_state_dict'])
+        # print(f'reload best_model: {net}')
+        #
+        # for k in trange(0, n_frames-10, n_frames // 50):
+        #
+        #     with torch.no_grad():
+        #         x = torch.tensor(x_list[run][k], dtype=torch.float32, device=device).clone().detach()
+        #         x_next = torch.tensor(x_list[run][k+1], dtype=torch.float32, device=device).clone().detach()
+        #         if 'F' in trainer:
+        #             y = x_next[:, 5 + dimension * 2: 9 + dimension * 2].clone().detach()  # F
+        #         elif trainer == 'S':
+        #             y = x[:, 12 + dimension * 2: 16 + dimension * 2].clone().detach()  # S
+        #         elif 'C' in trainer:
+        #             y = x[:, 1 + dimension * 2: 5 + dimension * 2].clone().detach()
+        #
+        #         if 'GNN_C' in trainer:
+        #             distance = torch.sum(bc_dpos(x[:, None, 1:dimension + 1] - x[None, :, 1:dimension + 1]) ** 2, dim=2)
+        #             adj_t = ((distance < max_radius ** 2) & (distance >= min_radius ** 2)).float() * 1
+        #             edges = adj_t.nonzero().t().contiguous()
+        #             dataset = data.Data(x=x, edge_index=edges, num_nodes=x.shape[0])
+        #             pred = model.GNN_C(dataset, training=False)
+        #         else:
+        #             data_id = torch.ones((n_particles, 1), dtype=torch.float32, device=device) * run
+        #             k_list_tensor = torch.ones((n_particles, 1), dtype=torch.int, device=device) * k
+        #             dataset = data.Data(x=x, edge_index=[], num_nodes=x.shape[0])
+        #             pred = model(dataset, data_id=data_id, k=k_list_tensor, trainer=trainer)
+        #
+        #         error = F.mse_loss(pred, y).item()
+        #
+        #     fig = plt.figure(figsize=(20, 6))
+        #     plt.subplot(1, 3, 1)
+        #     if 'F' in trainer:
+        #         f_norm = torch.norm(y.view(n_particles, -1), dim=1).cpu().numpy()
+        #         plt.scatter(x[:, 1].cpu(), x[:, 2].cpu(), c=f_norm, s=1, cmap='coolwarm', vmin=1.44 - 0.2,
+        #                     vmax=1.44 + 0.2)
+        #         plt.colorbar(fraction=0.046, pad=0.04)
+        #     elif trainer == 'S':
+        #         stress_norm = torch.norm(y.view(n_particles, -1), dim=1)
+        #         stress_norm = stress_norm[:, None]
+        #         plt.scatter(x[:, 1].cpu(), x[:, 2].cpu(), c=stress_norm[:, 0].cpu(), s=1, cmap='hot', vmin=0, vmax=6E-3)
+        #         plt.colorbar(fraction=0.046, pad=0.04)
+        #     elif 'C' in trainer:
+        #         c_norm = torch.norm(y.view(n_particles, -1), dim=1)
+        #         c_norm = c_norm[:, None]
+        #         c_norm_np = c_norm[:, 0].cpu().numpy()
+        #         x_cpu = x.cpu()
+        #         topk_indices = c_norm_np.argsort()[-250:]
+        #         plt.scatter(x_cpu[:, 1], x_cpu[:, 2], c=c_norm_np, s=1, cmap='viridis', vmin=0, vmax=80)
+        #         plt.colorbar(fraction=0.046, pad=0.04)
+        #         plt.scatter(x_cpu[topk_indices, 1], x_cpu[topk_indices, 2], c='red', s=1)
+        #     plt.xlim([0, 1])
+        #     plt.ylim([0, 1])
+        #
+        #     plt.subplot(1, 3, 2)
+        #     if 'F' in trainer:
+        #         f_norm = torch.norm(pred.view(n_particles, -1), dim=1).cpu().numpy()
+        #         plt.scatter(x[:, 1].cpu(), x[:, 2].cpu(), c=f_norm, s=1, cmap='coolwarm', vmin=1.44 - 0.2,
+        #                     vmax=1.44 + 0.2)
+        #         plt.colorbar(fraction=0.046, pad=0.04)
+        #     elif trainer == 'S':
+        #         stress_norm = torch.norm(pred.view(n_particles, -1), dim=1)
+        #         stress_norm = stress_norm[:, None]
+        #         plt.scatter(x[:, 1].cpu(), x[:, 2].cpu(), c=stress_norm[:, 0].cpu(), s=1, cmap='hot', vmin=0, vmax=6E-3)
+        #         plt.colorbar(fraction=0.046, pad=0.04)
+        #     elif 'C' in trainer:
+        #         c_norm = torch.norm(pred.view(n_particles, -1), dim=1)
+        #         c_norm = c_norm[:, None]
+        #         c_norm_np = c_norm[:, 0].cpu().numpy()
+        #         x_cpu = x.cpu()
+        #         topk_indices = c_norm_np.argsort()[-250:]
+        #         plt.scatter(x_cpu[:, 1], x_cpu[:, 2], c=c_norm_np, s=1, cmap='viridis', vmin=0, vmax=80)
+        #         plt.colorbar(fraction=0.046, pad=0.04)
+        #         plt.scatter(x_cpu[topk_indices, 1], x_cpu[topk_indices, 2], c='red', s=1)
+        #
+        #     plt.xlim([0, 1])
+        #     plt.ylim([0, 1])
+        #     plt.text(0.05, 0.95,
+        #              f'epoch: {epoch} iteration: {N} error: {error:.2f}', )
+        #
+        #     plt.subplot(1, 3, 3)
+        #     if 'C' in trainer:
+        #         # c_norm = torch.norm(y.view(n_particles, -1), dim=1)
+        #         # c_norm_pred = torch.norm(pred.view(n_particles, -1), dim=1)
+        #         # plt.scatter(c_norm.cpu(), c_norm_pred.cpu(), s=1, c='w', alpha=0.5, edgecolors='none')
+        #         for m in range(4):
+        #             plt.scatter(y[:, m].cpu(), pred[:, m].cpu(), s=1, c='w', alpha=0.5, edgecolors='none')
+        #         plt.xlim([-200, 200])
+        #         plt.ylim([-200, 200])
+        #
+        #     plt.tight_layout()
+        #     plt.savefig(f"./{log_dir}/tmp_training/movie/pred_{k}.tif", dpi=87)
+        #     plt.close()
 
-def data_test(config=None, config_file=None, visualize=False, style='color frame', verbose=True, best_model=20, step=15, run=0, test_mode='', device=[]):
-    simulation_config = config.simulation
-    train_config = config.training
-    model_config = config.graph_model
-    plot_config = config.plotting
-    trainer = train_config.MPM_trainer
 
-    dimension = simulation_config.dimension
-    n_particles = simulation_config.n_particles
-    n_particle_types = simulation_config.n_particle_types
-    n_grid = simulation_config.n_grid
+def data_train_INR(config=None, device=None, field_name='C', total_steps=None, erase=False, log_file=None):
+    """
+    Train INR network on MPM fields (C, F, Jp, S) from generated_data.
 
-    delta_t = simulation_config.delta_t
-    dataset_name = config.dataset
-    n_frames = simulation_config.n_frames
+    This function loads MPM simulation data and trains an implicit neural representation
+    to learn a specific field as a function of (time, particle_id).
 
-    cmap = CustomColorMap(config=config)  # create colormap for given model_config
-    n_runs = train_config.n_runs
+    Args:
+        config: Configuration object
+        device: torch device
+        field_name: Which field to train on ('C', 'F', 'Jp', 'S')
+        total_steps: Number of training steps (if None, reads from config.training.total_steps)
+        erase: Whether to erase existing log files
+        log_file: Optional file handle for writing analysis metrics
+    """
+    # Read total_steps from config if not provided
+    if total_steps is None:
+        total_steps = getattr(config.training, 'total_steps', 50000)
 
-    log_dir, logger = create_log_dir(config, False)
-    os.makedirs(f"./{log_dir}/tmp_recons", exist_ok=True)
-    files = os.listdir(f"./{log_dir}/tmp_recons")
+    log_dir, logger = create_log_dir(config, erase)
+    output_folder = os.path.join(log_dir, 'tmp_training', 'external_input')
+    os.makedirs(output_folder, exist_ok=True)
+
+    # Empty output folder at the beginning
+    files = glob.glob(f"{output_folder}/*")
     for file in files:
-        os.remove(f"./{log_dir}/tmp_recons/{file}")
+        try:
+            os.remove(file)
+        except:
+            pass
 
-    print('load data ...')
-    x_list = []
-    x = np.load(f'graphs_data/{dataset_name}/x_list_{run}.npy')
-    if np.isnan(x).any():
-        print('Pb isnan in x')
-    x_list.append(x)
-    x = torch.tensor(x_list[0][0], dtype=torch.float32, device=device)
+    dataset_name = config.dataset
+    data_folder = f"graphs_data/{dataset_name}/"
 
-    vnorm = torch.tensor(1, device=device)
-    ynorm = torch.tensor(1, device=device)
+    x_list = np.load(f"{data_folder}generated_data_0.npy")
+    print(f"x_list shape: {x_list.shape}")  # (n_frames, n_particles, n_features)
 
-    print(f'N particles: {n_particles}')
-    print(f'N grid: {n_grid}')
-    print(f'vnorm: {to_numpy(vnorm)}, ynorm: {to_numpy(ynorm)}')
+    n_frames, n_particles, n_features = x_list.shape
+    n_training_frames = config.training.n_training_frames
+    if n_training_frames >0 and n_training_frames < n_frames:
+        x_list = x_list[n_frames//2-n_training_frames//2:n_frames//2+n_training_frames//2, :, :]
+        n_frames = n_training_frames
+        print(f"using only {n_training_frames} frames for training.")
 
-    print('create models ...')
-    model, bc_pos, bc_dpos = choose_training_model(config, device)
-    model.ynorm = ynorm
-    model.vnorm = vnorm
+    field_indices = {
+        'id': (0, 1, 'Particle number'),
+        'pos': (1, 3, 'Position'),
+        'dpos': (3, 5, 'Velocity'),
+        'C': (5, 9, 'APIC matrix'),
+        'F': (9, 13, 'Deformation gradient'),
+        'Jp': (13, 14, 'Plastic deformation'),
+        'type': (14, 15, 'Material type'),
+        'S': (16, 20, 'Stress tensor'),
+    }
+    start_idx, end_idx, field_desc = field_indices[field_name]
+    n_components = end_idx - start_idx
+    field_data = x_list[:, :, start_idx:end_idx]  # shape: (n_frames, n_particles, n_components)
 
-    if best_model == 'best':
-        files = glob.glob(f"{log_dir}/models/*")
-        files.sort(key=sort_key)
-        filename = files[-1]
-        filename = filename.split('/')[-1]
-        filename = filename.split('graphs')[-1][1:-3]
-        best_model = filename
-        print(f'best model: {best_model}')
-    net = f"{log_dir}/models/best_model_with_{n_runs - 1}_graphs_{best_model}.pt"
-    print(f'network: {net}')
-    state_dict = torch.load(net, map_location=device)
-    model.load_state_dict(state_dict['model_state_dict'])
-    model.eval()
+    print(f"field info:")
+    print(f"  name: {field_name} - {field_desc}")
+    print(f"  indices: [{start_idx}:{end_idx}]")
+    print(f"  shape: {field_data.shape}")
+    print(f"  range: [{field_data.min():.4f}, {field_data.max():.4f}]")
+    print(f"  mean: {field_data.mean():.4f}, std: {field_data.std():.4f}")
 
-    time.sleep(1)
+    # get INR configuration
+    model_config = config.graph_model
+    training_config = config.training
+    inr_type = config.graph_model.inr_type
 
-    error_list = []
-    idx = 0
+    # get nnr_f config parameters
+    hidden_dim_nnr_f = getattr(model_config, 'hidden_dim_nnr_f', 1024)
+    n_layers_nnr_f = getattr(model_config, 'n_layers_nnr_f', 3)
+    outermost_linear_nnr_f = getattr(model_config, 'outermost_linear_nnr_f', True)
+    omega_f = getattr(model_config, 'omega_f', 1024)
+    nnr_f_xy_period = getattr(model_config, 'nnr_f_xy_period', 1.0)
 
-    data_id = torch.ones((n_particles,1), dtype = torch.float32, device=device) * run
-    x = torch.tensor(x_list[run][0], dtype=torch.float32, device=device).clone().detach()
+    # get training config parameters
+    training_config = config.training
+    batch_size = getattr(training_config, 'batch_size', 8)
+    learning_rate = getattr(training_config, 'learning_rate_NNR_f', 1e-6)
 
-    for it in trange(0, n_frames, ncols=150):
+    # determine input/output dimensions based on inr_type
+    if inr_type == 'siren_t':
+        input_size_nnr_f = 1
+        output_size_nnr_f = n_particles * n_components  # outputs all particles at once
+    elif inr_type == 'siren_id':
+        input_size_nnr_f = 2  # (t, id)
+        output_size_nnr_f = n_components  # outputs one particle at a time
+    elif inr_type == 'siren_txy':
+        input_size_nnr_f = 3  # (t, x, y)
+        output_size_nnr_f = n_components  # outputs one particle at a time
+    elif inr_type == 'ngp':
+        input_size_nnr_f = getattr(model_config, 'input_size_nnr_f', 1)
+        output_size_nnr_f = n_particles * n_components  # outputs all particles at once
+    else:
+        raise ValueError(f"unknown inr_type: {inr_type}")
 
-        x_next = torch.tensor(x_list[run][it+1], dtype=torch.float32, device=device).clone().detach()
-        y = x_next[:, 1:1 + dimension ].clone().detach()  
+    # create INR model based on type
+    if inr_type == 'ngp':
 
-        with torch.no_grad():
-            k = it * torch.ones((n_particles,1), dtype = torch.float32, device=device)  
-            pred_x, pred_C, pred_F, pred_Jp, pred_S = model(x, data_id=data_id, k=k, trainer=trainer, batch_size=1)
+        # get NGP config parameters
+        ngp_n_levels = getattr(model_config, 'ngp_n_levels', 24)
+        ngp_n_features_per_level = getattr(model_config, 'ngp_n_features_per_level', 2)
+        ngp_log2_hashmap_size = getattr(model_config, 'ngp_log2_hashmap_size', 22)
+        ngp_base_resolution = getattr(model_config, 'ngp_base_resolution', 16)
+        ngp_per_level_scale = getattr(model_config, 'ngp_per_level_scale', 1.4)
+        ngp_n_particles = getattr(model_config, 'ngp_n_particles', 128)
+        ngp_n_hidden_layers = getattr(model_config, 'ngp_n_hidden_layers', 4)
 
-        N = x[:,0:1]
-        X = pred_x
-        V = (pred_x - x[:,1:1+dimension]) / delta_t
-        C = pred_C
-        F = pred_F
-        Jp = pred_Jp
-        T = x[:,14:15]
-        M = x[:,15:16]
-        S = pred_S
-        ID = x[:,20:21]
+        nnr_f = HashEncodingMLP(
+            n_input_dims=input_size_nnr_f,
+            n_output_dims=output_size_nnr_f,
+            n_levels=ngp_n_levels,
+            n_features_per_level=ngp_n_features_per_level,
+            log2_hashmap_size=ngp_log2_hashmap_size,
+            base_resolution=ngp_base_resolution,
+            per_level_scale=ngp_per_level_scale,
+            n_particles=ngp_n_particles,
+            n_hidden_layers=ngp_n_hidden_layers,
+            output_activation='none'
+        )
+        nnr_f = nnr_f.to(device)
 
-        x = torch.cat([N, X, V, C.view(-1, 4), F.view(-1, 4), Jp, T, M, S.view(-1,4), ID], dim=1)
-        x = x.clone().detach()
+        # count parameters
+        encoding_params = sum(p.numel() for p in nnr_f.encoding.parameters())
+        mlp_params = sum(p.numel() for p in nnr_f.mlp.parameters())
+        total_params = encoding_params + mlp_params
 
-        error = (pred_x - y).norm(2) / n_particles
-        error_list.append(to_numpy(error))
+        print(f"\nusing HashEncodingMLP (instantNGP):")
+        print(f"  hash encoding: {ngp_n_levels} levels × {ngp_n_features_per_level} features")
+        print(f"  hash table: 2^{ngp_log2_hashmap_size} = {2**ngp_log2_hashmap_size:,} entries")
+        print(f"  mlp: {ngp_n_particles} × {ngp_n_hidden_layers} hidden → {output_size_nnr_f}")
+        print(f"  parameters: {total_params:,} (encoding: {encoding_params:,}, mlp: {mlp_params:,})")
+        print(f"  compression ratio: {data_dims / total_params:.2f}x")
+
+    elif inr_type in ['siren_t', 'siren_id', 'siren_txy']:
+        # create SIREN model for nnr_f
+        omega_f_learning = getattr(model_config, 'omega_f_learning', False)
+        nnr_f = Siren(
+            in_features=input_size_nnr_f,
+            hidden_features=hidden_dim_nnr_f,
+            hidden_layers=n_layers_nnr_f,
+            out_features=output_size_nnr_f,
+            outermost_linear=outermost_linear_nnr_f,
+            first_omega_0=omega_f,
+            hidden_omega_0=omega_f,
+            learnable_omega=omega_f_learning
+        )
+        nnr_f = nnr_f.to(device)
+
+        # count parameters
+        total_params = sum(p.numel() for p in nnr_f.parameters())
+
+        print(f"using SIREN ({inr_type}):")
+        print(f"  architecture: {input_size_nnr_f} → {hidden_dim_nnr_f} × {n_layers_nnr_f} hidden → {output_size_nnr_f}")
+        print(f"  omega_f: {omega_f} (learnable: {omega_f_learning})")
+        if omega_f_learning and hasattr(nnr_f, 'get_omegas'):
+            print(f"  initial omegas: {nnr_f.get_omegas()}")
+        print(f"  parameters: {total_params:,}")
+
+    print(f"\ntraining: batch_size={batch_size}, learning_rate_NNR_f={learning_rate}")
+
+    ground_truth = torch.tensor(field_data, dtype=torch.float32, device=device)  # (n_frames, n_particles)
+
+    # prepare inputs based on inr_type
+    if inr_type == 'siren_t':
+        # input: normalized time
+        time_input = torch.arange(0, n_frames, dtype=torch.float32, device=device).unsqueeze(1) / n_frames
+
+    elif inr_type == 'siren_id':
+        # input: (t, id)
+        # create particle IDs and normalize by n_particles
+        neuron_ids = np.arange(n_particles)
+        neuron_ids_norm = torch.tensor(neuron_ids / n_particles, dtype=torch.float32, device=device)  # (n_particles,)
+
+    elif inr_type == 'siren_txy':
+        # input: (t, x, y)
+        start_idx, end_idx, _ = field_indices['pos']
+        particle_pos = torch.tensor(x_list[:, :, start_idx:end_idx], dtype=torch.float32, device=device)  / nnr_f_xy_period# (n_particles, 2)
+        time_input = torch.arange(0, n_frames, dtype=torch.float32, device=device).unsqueeze(1) / n_frames
 
 
-        if visualize & (it % step == 0) & (it >= 0):
+    steps_til_summary = total_steps // 10
 
-            if 'black' in style:
-                plt.style.use('dark_background')
-            if 'latex' in style:
-                plt.rcParams['text.usetex'] = True
-                rc('font', **{'family': 'serif', 'serif': ['Palatino']})
+    # separate omega parameters from other parameters for different learning rates
+    omega_f_learning = getattr(model_config, 'omega_f_learning', False)
+    learning_rate_omega_f = getattr(training_config, 'learning_rate_omega_f', learning_rate)
+    omega_params = [p for name, p in nnr_f.named_parameters() if 'omega' in name]
+    other_params = [p for name, p in nnr_f.named_parameters() if 'omega' not in name]
+    if omega_params and omega_f_learning:
+        optim = torch.optim.Adam([
+            {'params': other_params, 'lr': learning_rate},
+            {'params': omega_params, 'lr': learning_rate_omega_f}
+        ])
+        print(f"using separate learning rates: network={learning_rate}, omega={learning_rate_omega_f}")
+    else:
+        optim = torch.optim.Adam(lr=learning_rate, params=nnr_f.parameters())
 
-            if 'centered' in style:
-                x = x - torch.mean(x, dim=0, keepdim=True) + 0.5
+    print(f"training nnr_f for {total_steps} steps...")
 
-            if 'grid' in style:
-                plt.figure(figsize=(15, 10))
-                # 1. V particle level
-                plt.subplot(2, 3, 1)
-                plt.title('objects')
-                for n in range(3):
-                    pos = torch.argwhere(T == n)[:,0]
-                    plt.scatter(to_numpy(x[pos, 1]), to_numpy(x[pos, 2]), s=1, color=cmap.color(n))
-                plt.xlim([0, 1])
-                plt.ylim([0, 1])
-                plt.gca().set_aspect('equal')
+    # clamp batch_size to not exceed number of frames
+    if batch_size > n_frames:
+        print(f"warning: batch_size ({batch_size}) > n_frames ({n_frames}), clamping to {n_frames}")
+        batch_size = n_frames
 
-                plt.subplot(2, 3, 4)
-                plt.title('Jp (volume deformation)')
-                plt.scatter(X[:, 0].cpu(), X[:, 1].cpu(), c=Jp.cpu(), s=1, cmap='viridis', vmin=0.75, vmax=1.25)
-                plt.colorbar(fraction=0.046, pad=0.04)
-                plt.xlim([0, 1])
-                plt.ylim([0, 1])
-                plt.gca().set_aspect('equal')
+    import time
+    training_start_time = time.time()
 
-                # 2. C particle level
-                plt.subplot(2, 3, 2)
-                c_norm = torch.norm(C.view(n_particles, -1), dim=1).cpu().numpy()
-                plt.scatter(X[:, 0].cpu(), X[:, 1].cpu(), c=c_norm, s=1, cmap='viridis', vmin=0, vmax=80)
-                plt.colorbar(fraction=0.046, pad=0.04)
-                plt.title('C (Jacobian of velocity)')
-                plt.xlim([0, 1])
-                plt.ylim([0, 1])
-                plt.gca().set_aspect('equal')
+    loss_list = []
+    pbar = trange(total_steps+1, ncols=150)
+    for step in pbar:
 
-                # 3. F particle level
-                plt.subplot(2, 3, 3)
-                f_norm = torch.norm(F.view(n_particles, -1), dim=1).cpu().numpy()
-                plt.scatter(X[:, 0].cpu(), X[:, 1].cpu(), c=f_norm, s=1, cmap='coolwarm', vmin=1.44-0.1, vmax=1.44+0.1)
-                plt.colorbar(fraction=0.046, pad=0.04)
-                # print(
-                #     f"F min: {np.min(f_norm):.6f}, max: {np.max(f_norm):.6f}, mean: {np.mean(f_norm):.6f}, std: {np.std(f_norm):.6f}")
-                plt.title('F (deformation)')
-                plt.xlim([0, 1])
-                plt.ylim([0, 1])
-                plt.gca().set_aspect('equal')
+        if inr_type == 'siren_t':
+            # sample batch_size time frames
+            sample_ids = np.random.choice(n_frames, batch_size, replace=False)
+            time_batch = time_input[sample_ids]  # (batch_size, 1)
+            gt_batch = ground_truth[sample_ids]  # (batch_size, n_particles, n_components)
+            pred = nnr_f(time_batch)  # (batch_size, n_particles * n_components)
+            pred = pred.reshape(batch_size, n_particles, n_components)  # (batch_size, n_particles, n_components)
 
-                # 4. Stress particle level
-                plt.subplot(2, 3, 5)
-                stress_norm = torch.norm(S.view(n_particles, -1), dim=1)
-                stress_norm = stress_norm[:,None]
-                plt.scatter(X[:, 0].cpu(), X[:, 1].cpu(), c=stress_norm[:, 0].cpu(), s=1, cmap='hot', vmin=0, vmax=6E-3)
-                plt.colorbar(fraction=0.046, pad=0.04)
-                plt.title('stress')
-                plt.xlim([0, 1])
-                plt.ylim([0, 1])
-                plt.gca().set_aspect('equal')
+        elif inr_type == 'siren_id':
+            # sample batch_size time frames, predict all particles for each frame
+            sample_ids = np.random.choice(n_frames, batch_size, replace=False)
+            t_norm = torch.tensor(sample_ids / n_frames, dtype=torch.float32, device=device)  # (batch_size,)
+            # expand to all particles: (batch_size, n_particles, 2)
+            t_expanded = t_norm[:, None, None].expand(batch_size, n_particles, 1)
+            id_expanded = neuron_ids_norm[None, :, None].expand(batch_size, n_particles, 1)
+            input_batch = torch.cat([t_expanded, id_expanded], dim=2)  # (batch_size, n_particles, 2)
+            input_batch = input_batch.reshape(batch_size * n_particles, 2)  # (batch_size * n_particles, 2)
+            gt_batch = ground_truth[sample_ids].reshape(batch_size * n_particles, n_components)  # (batch_size * n_particles, n_components)
+            pred = nnr_f(input_batch)  # (batch_size * n_particles, n_components)
 
-                # 6. Momentum grid level - scatter plot (every 2nd point)
-                plt.subplot(2, 3, 6)
-                GP = torch.norm(GV, dim=2)
-                gp_sub = GP[::2, ::2]
-                gp_flat = gp_sub.cpu().flatten()
+        elif inr_type == 'siren_txy':
+            # sample batch_size time frames, predict all particles for each frame
+            sample_ids = np.random.choice(n_frames, batch_size, replace=False)
+            t_norm = torch.tensor(sample_ids / n_frames, dtype=torch.float32, device=device)  # (batch_size,)
+            # expand to all particles: (batch_size, n_particles, 3)
+            t_expanded = t_norm[:, None, None].expand(batch_size, n_particles, 1)
+            pos_expanded = particle_pos[sample_ids, :, :]  # (batch_size, n_particles, 2) - use positions at sampled frames
+            input_batch = torch.cat([t_expanded, pos_expanded], dim=2)  # (batch_size, n_particles, 3)
+            input_batch = input_batch.reshape(batch_size * n_particles, 3)  # (batch_size * n_particles, 3)
+            gt_batch = ground_truth[sample_ids].reshape(batch_size * n_particles, n_components)  # (batch_size * n_particles, n_components)
+            pred = nnr_f(input_batch)  # (batch_size * n_particles, n_components)
 
-                grid_x, grid_y = torch.meshgrid(torch.linspace(0, 1, n_grid), torch.linspace(0, 1, n_grid),
-                                                indexing='ij')
-                grid_x_sub = grid_x[::2, ::2]
-                grid_y_sub = grid_y[::2, ::2]
-                grid_x_flat = grid_x_sub.flatten()
-                grid_y_flat = grid_y_sub.flatten()
+        elif inr_type == 'ngp':
+            # sample batch_size time frames (same as siren_t)
+            sample_ids = np.random.choice(n_frames, batch_size, replace=False)
+            time_batch = torch.tensor(sample_ids / n_frames, dtype=torch.float32, device=device).unsqueeze(1)
+            gt_batch = ground_truth[sample_ids]  # (batch_size, n_particles, n_components)
+            pred = nnr_f(time_batch)  # (batch_size, n_particles * n_components)
+            pred = pred.reshape(batch_size, n_particles, n_components)  # (batch_size, n_particles, n_components)
 
-                plt.scatter(to_numpy(grid_x_flat), to_numpy(grid_y_flat), c=to_numpy(gp_flat), s=4, cmap='viridis', vmin=0, vmax=6)
-                plt.colorbar(fraction=0.046, pad=0.04)
-                plt.title('grid momentum')
-                plt.xlim([0, 1])
-                plt.ylim([0, 1])
-                plt.gca().set_aspect('equal')
+        # compute loss
+        if inr_type == 'ngp':
+            # relative L2 error - convert targets to match output dtype (tcnn uses float16)
+            relative_l2_error = (pred - gt_batch.to(pred.dtype)) ** 2 / (pred.detach() ** 2 + 0.01)
+            loss = relative_l2_error.mean()
+        else:
+            # standard MSE for SIREN
+            loss = ((pred - gt_batch) ** 2).mean()
 
-                plt.tight_layout()
-                num = f"{idx:06}"
-                plt.savefig(f"{log_dir}/tmp_recons/Grid_{run}_{num}.png", dpi=100)
-                plt.close()
-            
-            
-            if 'tissue' in config.dataset:
-                fig, ax = fig_init(formatx="%.1f", formaty="%.1f")
-                plt.axis('off')
-                mass = torch.unique(M)
-                is_red = M==mass[1]
-                plt.scatter(to_numpy(x[is_red.squeeze(), 1]), to_numpy(x[is_red.squeeze(), 2]), c='red', s=1, alpha = 1, edgecolors='none')
-                is_green = M==mass[0]
-                plt.scatter(to_numpy(x[is_green.squeeze(), 1]), to_numpy(x[is_green.squeeze(), 2]), c='green', s=1, alpha = 1, edgecolors='none')
-                plt.xlim([0, 1])
-                plt.ylim([0, 1])
-                plt.xticks([])
-                plt.yticks([])
-                plt.tight_layout()
-                num = f"{idx:06}"
-                plt.savefig(f"{log_dir}/tmp_recons/Tissue_{run}_{num}.png", dpi=80)
-                plt.close()
-        
-            else:
-                fig, ax = fig_init(formatx="%.1f", formaty="%.1f")
-                plt.axis('off')
-                if 'F' in style:
-                    f_norm = torch.norm(F.view(n_particles, -1), dim=1).cpu().numpy()
-                    plt.scatter(to_numpy(x[:, 1]), to_numpy(x[:, 2]), c=f_norm, s=10, cmap='coolwarm', vmin=1.44-0.1, vmax=1.44+0.1)
-                elif 'C' in style:
-                    c_norm = torch.norm(C.view(n_particles, -1), dim=1).cpu().numpy()
-                    plt.scatter(to_numpy(x[:, 1]), to_numpy(x[:, 2]), c=c_norm, s=10, cmap='viridis', vmin=0, vmax=80)
-                elif 'Jp' in style:
-                    plt.scatter(to_numpy(x[:, 1]), to_numpy(x[:, 2]), c=to_numpy(Jp), s=10, cmap='viridis', vmin=0.75, vmax=1.25)
-                elif 'S' in style:
-                    stress_norm = torch.norm(S.view(n_particles, -1), dim=1)
-                    stress_norm = stress_norm[:,None]
-                    plt.scatter(to_numpy(x[:, 1]), to_numpy(x[:, 2]), c=to_numpy(stress_norm[:,0]), s=10, cmap='hot', vmin=0, vmax=6E-3)
+        # omega L2 regularization for learnable omega in SIREN (encourages smaller omega)
+        coeff_omega_f_L2 = getattr(training_config, 'coeff_omega_f_L2', 0.0)
+        if omega_f_learning and coeff_omega_f_L2 > 0 and hasattr(nnr_f, 'get_omega_L2_loss'):
+            omega_L2_loss = nnr_f.get_omega_L2_loss()
+            loss = loss + coeff_omega_f_L2 * omega_L2_loss
+
+        optim.zero_grad()
+        loss.backward()
+        optim.step()
+
+        loss_list.append(loss.item())
+        pbar.set_postfix(loss=f"{loss.item():.2f}")
+
+        if step % steps_til_summary == 0:
+            with torch.no_grad():
+                # compute predictions for all frames
+                if inr_type == 'siren_t':
+                    pred_all = nnr_f(time_input)  # (n_frames, n_particles * n_components)
+                    pred_all = pred_all.reshape(n_frames, n_particles, n_components)  # (n_frames, n_particles, n_components)
+
+                elif inr_type == 'siren_id':
+                    # predict all (t, id) combinations
+                    pred_list = []
+                    for t_idx in range(n_frames):
+                        t_val = torch.full((n_particles, 1), t_idx / n_frames, device=device)
+                        input_t = torch.cat([t_val, neuron_ids_norm[:, None]], dim=1)  # (n_particles, 2)
+                        pred_t = nnr_f(input_t)  # (n_particles, n_components)
+                        pred_list.append(pred_t)
+                    pred_all = torch.stack(pred_list, dim=0)  # (n_frames, n_particles, n_components)
+
+                elif inr_type == 'siren_txy':
+                    # predict all (t, x, y) combinations
+                    pred_list = []
+                    for t_idx in range(n_frames):
+                        t_val = torch.full((n_particles, 1), t_idx / n_frames, device=device)
+                        pos_t = particle_pos[t_idx, :, :]  # (n_particles, 2) - positions at frame t_idx
+                        input_t = torch.cat([t_val, pos_t], dim=1)  # (n_particles, 3)
+                        pred_t = nnr_f(input_t)  # (n_particles, n_components)
+                        pred_list.append(pred_t)
+                    pred_all = torch.stack(pred_list, dim=0)  # (n_frames, n_particles, n_components)
+
+                elif inr_type == 'ngp':
+                    time_all = torch.arange(0, n_frames, dtype=torch.float32, device=device).unsqueeze(1) / n_frames
+                    pred_all = nnr_f(time_all)  # (n_frames, n_particles * n_components)
+                    pred_all = pred_all.reshape(n_frames, n_particles, n_components)  # (n_frames, n_particles, n_components)
+
+                gt_np = ground_truth.cpu().numpy()
+                pred_np = pred_all.cpu().numpy()
+
+                # Create 2-row figure: top row for time series, bottom row for spatial plots
+                fig = plt.figure(figsize=(18, 10))
+                fig.patch.set_facecolor('black')
+
+                # ROW 1: Loss and time traces
+                # loss plot
+                ax0 = plt.subplot(2, 3, 1)
+                ax0.set_facecolor('black')
+                ax0.plot(loss_list, color='white', lw=0.1, alpha=0.5)
+                # smoothed average window curve (red)
+                if len(loss_list) > 100:
+                    window_size = min(500, len(loss_list) // 10)
+                    loss_array = np.array(loss_list)
+                    smoothed_loss = np.convolve(loss_array, np.ones(window_size)/window_size, mode='valid')
+                    # offset x-axis to align with original data
+                    x_smoothed = np.arange(window_size//2, window_size//2 + len(smoothed_loss))
+                    ax0.plot(x_smoothed, smoothed_loss, color='red', lw=1.5, alpha=0.9)
+                ax0.set_xlabel('step', color='white', fontsize=12)
+                loss_label = 'Relative L2 Loss' if inr_type == 'ngp' else 'MSE Loss'
+                ax0.set_ylabel(loss_label, color='white', fontsize=12)
+                ax0.set_yscale('log')
+                ax0.tick_params(colors='white', labelsize=11)
+                for spine in ax0.spines.values():
+                    spine.set_color('white')
+
+                # traces plot (10 particles, darkgreen=GT, white=pred)
+                # For multi-component fields, plot first component only
+                ax1 = plt.subplot(2, 3, 2)
+                ax1.set_facecolor('black')
+                ax1.set_axis_off()
+                n_traces = 10
+                trace_ids = np.linspace(0, n_particles - 1, n_traces, dtype=int)
+
+                # Extract first component for plotting if multi-component field
+                if n_components > 1:
+                    gt_plot = gt_np[:, :, 0]  # (n_frames, n_particles) - first component
+                    pred_plot = pred_np[:, :, 0]  # (n_frames, n_particles) - first component
                 else:
-                    for n in range(3):
-                        pos = torch.argwhere(T == n)[:,0]
-                        if len(pos) > 0:
-                            plt.scatter(to_numpy(x[pos, 1]), to_numpy(x[pos, 2]), s=10, color=cmap.color(n))
-                plt.xlim([0, 1])
-                plt.ylim([0, 1])
-                plt.xticks([])
-                plt.yticks([])
+                    gt_plot = gt_np[:, :, 0]  # (n_frames, n_particles)
+                    pred_plot = pred_np[:, :, 0]  # (n_frames, n_particles)
+
+                offset = np.abs(gt_plot).max() * 1.5
+                t = np.arange(n_frames)
+
+                for j, n_idx in enumerate(trace_ids):
+                    y0 = j * offset
+                    ax1.plot(t, gt_plot[:, n_idx] + y0, color='darkgreen', lw=2.0, alpha=0.95)
+                    ax1.plot(t, pred_plot[:, n_idx] + y0, color='white', lw=0.5, alpha=0.95)
+
+                ax1.set_xlim(0, min(20000, n_frames))
+                ax1.set_ylim(-offset * 0.5, offset * (n_traces + 0.5))
+                mse = ((pred_np - gt_np) ** 2).mean()
+                omega_str = ''
+                if hasattr(nnr_f, 'get_omegas'):
+                    omegas = nnr_f.get_omegas()
+                    if omegas:
+                        omega_str = f'  ω: {omegas[0]:.1f}'
+                ax1.text(0.02, 0.98, f'MSE: {mse:.6f}{omega_str}',
+                            transform=ax1.transAxes, va='top', ha='left',
+                            fontsize=12, color='white')
+
+                # ROW 2: Spatial plots at fixed frame (n_frames // 2)
+                frame_idx = n_frames // 2
+
+                # Get positions at this frame
+                pos_data = x_list[frame_idx, :, 1:3]  # (n_particles, 2)
+
+                # Compute field norm for coloring
+                if n_components > 1:
+                    gt_frame = gt_np[frame_idx, :, :]  # (n_particles, n_components)
+                    pred_frame = pred_np[frame_idx, :, :]  # (n_particles, n_components)
+                    gt_norm = np.linalg.norm(gt_frame, axis=1)  # (n_particles,)
+                    pred_norm = np.linalg.norm(pred_frame, axis=1)  # (n_particles,)
+                else:
+                    gt_frame = gt_np[frame_idx, :, 0]  # (n_particles,)
+                    pred_frame = pred_np[frame_idx, :, 0]  # (n_particles,)
+                    gt_norm = gt_frame
+                    pred_norm = pred_frame
+
+                # Determine colormap and range based on field type
+                vmin, vmax = gt_norm.min(), gt_norm.max()
+                if field_name == 'F':
+                    cmap_name = 'coolwarm'
+                    vmin, vmax = 1.44 - 0.2, 1.44 + 0.2
+                elif field_name == 'S':
+                    cmap_name = 'hot'
+                    vmin, vmax = 0, max(6e-3, gt_norm.max())
+                elif field_name == 'Jp':
+                    cmap_name = 'viridis'
+                    vmin, vmax = 0.75, 1.25
+                else:
+                    cmap_name = 'viridis'
+
+                # Ground truth spatial plot
+                ax2 = plt.subplot(2, 3, 4)
+                ax2.set_facecolor('black')
+                sc = ax2.scatter(pos_data[:, 0], pos_data[:, 1], c=gt_norm, s=3, cmap=cmap_name, vmin=vmin, vmax=vmax)
+                plt.colorbar(sc, ax=ax2, fraction=0.046, pad=0.04)
+                ax2.set_title(f'GT {field_name} (frame {frame_idx})', color='white', fontsize=12)
+                ax2.set_xlim([0, 1])
+                ax2.set_ylim([0, 1])
+                ax2.set_aspect('equal')
+                ax2.tick_params(colors='white', labelsize=10)
+                for spine in ax2.spines.values():
+                    spine.set_color('white')
+
+                # Prediction spatial plot
+                ax3 = plt.subplot(2, 3, 5)
+                ax3.set_facecolor('black')
+                sc = ax3.scatter(pos_data[:, 0], pos_data[:, 1], c=pred_norm, s=3, cmap=cmap_name, vmin=vmin, vmax=vmax)
+                plt.colorbar(sc, ax=ax3, fraction=0.046, pad=0.04)
+                ax3.set_title(f'Pred {field_name} (frame {frame_idx})', color='white', fontsize=12)
+                ax3.set_xlim([0, 1])
+                ax3.set_ylim([0, 1])
+                ax3.set_aspect('equal')
+                ax3.tick_params(colors='white', labelsize=10)
+                for spine in ax3.spines.values():
+                    spine.set_color('white')
+
+                # Scatter plot: pred vs gt
+                ax4 = plt.subplot(2, 3, 6)
+                ax4.set_facecolor('black')
+                ax4.scatter(gt_norm, pred_norm, c='white', s=1, alpha=0.5)
+
+                # Compute statistics
+                from scipy.stats import linregress
+                slope, intercept, r_value, p_value, std_err = linregress(gt_norm, pred_norm)
+                r2 = r_value ** 2
+                frame_mse = ((pred_norm - gt_norm) ** 2).mean()
+
+                # Add diagonal line (ideal)
+                lims = [min(gt_norm.min(), pred_norm.min()), max(gt_norm.max(), pred_norm.max())]
+                ax4.plot(lims, lims, 'r--', alpha=0.5, lw=1, label='ideal')
+
+                # Add regression line
+                x_line = np.array([gt_norm.min(), gt_norm.max()])
+                y_line = slope * x_line + intercept
+                ax4.plot(x_line, y_line, 'g-', alpha=0.7, lw=1, label=f'fit (slope={slope:.3f})')
+
+                # Recenter on data range with some padding
+                x_margin = (gt_norm.max() - gt_norm.min()) * 0.05
+                y_margin = (pred_norm.max() - pred_norm.min()) * 0.05
+                ax4.set_xlim([gt_norm.min() - x_margin, gt_norm.max() + x_margin])
+                ax4.set_ylim([pred_norm.min() - y_margin, pred_norm.max() + y_margin])
+
+                ax4.set_xlabel('Ground Truth', color='white', fontsize=11)
+                ax4.set_ylabel('Prediction', color='white', fontsize=11)
+                ax4.set_title(f'Pred vs GT (frame {frame_idx})', color='white', fontsize=12)
+                ax4.tick_params(colors='white', labelsize=10)
+                for spine in ax4.spines.values():
+                    spine.set_color('white')
+
+                # Add statistics text
+                stats_text = f'N: {n_particles}\n'
+                stats_text += f'R²: {r2:.4f}\n'
+                stats_text += f'slope: {slope:.4f}\n'
+                stats_text += f'MSE: {frame_mse:.6f}'
+                ax4.text(0.05, 0.95, stats_text,
+                        transform=ax4.transAxes, va='top', ha='left',
+                        fontsize=9, color='white', family='monospace')
+
+                # MSE text on top row
+                ax5 = plt.subplot(2, 3, 3)
+                ax5.set_facecolor('black')
+                ax5.set_axis_off()
+                info_text = f'Field: {field_name} ({field_desc})\n'
+                info_text += f'Step: {step}\n'
+                info_text += f'Components: {n_components}\n'
+                info_text += f'Particles: {n_particles}\n'
+                info_text += f'Frames: {n_frames}\n'
+                info_text += f'Overall MSE: {mse:.6f}\n'
+                info_text += f'Frame {frame_idx} MSE: {frame_mse:.6f}'
+                ax5.text(0.1, 0.5, info_text, transform=ax5.transAxes,
+                        va='center', ha='left', fontsize=11, color='white',
+                        family='monospace')
+
                 plt.tight_layout()
-                num = f"{idx:06}"
-                plt.savefig(f"{log_dir}/tmp_recons/Fig_{run}_{num}.png", dpi=80)
+                plt.savefig(f"{output_folder}/{inr_type}_{step}.png", dpi=150)
                 plt.close()
-            idx += 1
 
+    # save trained model
+    # save_path = f"{output_folder}/nnr_f_{inr_type}_pretrained.pt"
+    # torch.save(nnr_f.state_dict(), save_path)
+    # print(f"\nsaved pretrained nnr_f to: {save_path}")
 
+    # compute final MSE
+    with torch.no_grad():
+        if inr_type == 'siren_t':
+            pred_all = nnr_f(time_input)  # (n_frames, n_particles * n_components)
+            pred_all = pred_all.reshape(n_frames, n_particles, n_components)
+        elif inr_type == 'siren_id':
+            pred_list = []
+            for t_idx in range(n_frames):
+                t_val = torch.full((n_particles, 1), t_idx / n_frames, device=device)
+                input_t = torch.cat([t_val, neuron_ids_norm[:, None]], dim=1)
+                pred_t = nnr_f(input_t)  # (n_particles, n_components)
+                pred_list.append(pred_t)
+            pred_all = torch.stack(pred_list, dim=0)  # (n_frames, n_particles, n_components)
+        elif inr_type == 'siren_txy':
+            pred_list = []
+            for t_idx in range(n_frames):
+                t_val = torch.full((n_particles, 1), t_idx / n_frames, device=device)
+                pos_t = particle_pos[t_idx, :, :]  # (n_particles, 2) - positions at frame t_idx
+                input_t = torch.cat([t_val, pos_t], dim=1)
+                pred_t = nnr_f(input_t)  # (n_particles, n_components)
+                pred_list.append(pred_t)
+            pred_all = torch.stack(pred_list, dim=0)  # (n_frames, n_particles, n_components)
+        elif inr_type == 'ngp':
+            time_all = torch.arange(0, n_frames, dtype=torch.float32, device=device).unsqueeze(1) / n_frames
+            pred_all = nnr_f(time_all)  # (n_frames, n_particles * n_components)
+            pred_all = pred_all.reshape(n_frames, n_particles, n_components)
 
-        
+        final_mse = ((pred_all - ground_truth) ** 2).mean().item()
+        print(f"final MSE: {final_mse:.6f}")
+        if hasattr(nnr_f, 'get_omegas'):
+            print(f"final omegas: {nnr_f.get_omegas()}")
 
+    # Compute R² score for analysis
+    with torch.no_grad():
+        if inr_type == 'siren_t':
+            pred_all = nnr_f(time_input)
+            pred_all = pred_all.reshape(n_frames, n_particles, n_components)
+        elif inr_type == 'siren_id':
+            pred_list = []
+            for t_idx in range(n_frames):
+                t_val = torch.full((n_particles, 1), t_idx / n_frames, device=device)
+                input_t = torch.cat([t_val, neuron_ids_norm[:, None]], dim=1)
+                pred_t = nnr_f(input_t)
+                pred_list.append(pred_t)
+            pred_all = torch.stack(pred_list, dim=0)
+        elif inr_type == 'siren_txy':
+            pred_list = []
+            for t_idx in range(n_frames):
+                t_val = torch.full((n_particles, 1), t_idx / n_frames, device=device)
+                pos_t = particle_pos[t_idx, :, :]
+                input_t = torch.cat([t_val, pos_t], dim=1)
+                pred_t = nnr_f(input_t)
+                pred_list.append(pred_t)
+            pred_all = torch.stack(pred_list, dim=0)
+        elif inr_type == 'ngp':
+            time_all = torch.arange(0, n_frames, dtype=torch.float32, device=device).unsqueeze(1) / n_frames
+            pred_all = nnr_f(time_all)
+            pred_all = pred_all.reshape(n_frames, n_particles, n_components)
+
+        # Compute R² (coefficient of determination)
+        pred_flat = pred_all.reshape(-1).cpu().numpy()
+        gt_flat = ground_truth.reshape(-1).cpu().numpy()
+        from scipy.stats import linregress
+        slope, intercept, r_value, p_value, std_err = linregress(gt_flat, pred_flat)
+        final_r2 = r_value ** 2
+
+    # Calculate training time
+    training_time = time.time() - training_start_time
+    training_time_min = training_time / 60.0
+    print(f"training completed in {training_time_min:.1f} minutes")
+
+    # Write analysis.log if log_file provided
+    if log_file is not None:
+        log_file.write(f"field_name: {field_name}\n")
+        log_file.write(f"inr_type: {inr_type}\n")
+        log_file.write(f"final_mse: {final_mse:.6e}\n")
+        log_file.write(f"final_r2: {final_r2:.6f}\n")
+        log_file.write(f"slope: {slope:.6f}\n")
+        log_file.write(f"total_params: {total_params}\n")
+        log_file.write(f"n_particles: {n_particles}\n")
+        log_file.write(f"n_frames: {n_frames}\n")
+        log_file.write(f"n_components: {n_components}\n")
+        log_file.write(f"total_steps: {total_steps}\n")
+        log_file.write(f"batch_size: {batch_size}\n")
+        log_file.write(f"learning_rate_NNR_f: {learning_rate:.6e}\n")
+        log_file.write(f"hidden_dim_nnr_f: {hidden_dim_nnr_f}\n")
+        log_file.write(f"n_layers_nnr_f: {n_layers_nnr_f}\n")
+        log_file.write(f"omega_f: {omega_f}\n")
+        log_file.write(f"training_time_min: {training_time_min:.1f}\n")
+        if hasattr(nnr_f, 'get_omegas'):
+            omegas = nnr_f.get_omegas()
+            if omegas:
+                log_file.write(f"final_omega_f: {omegas[0]:.2f}\n")
+
+    return nnr_f, loss_list
