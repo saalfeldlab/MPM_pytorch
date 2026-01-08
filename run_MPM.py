@@ -37,7 +37,7 @@ from MPM_pytorch.models.exploration_tree import compute_ucb_scores, save_explora
 from MPM_pytorch.models.plot_exploration_tree import parse_ucb_scores, plot_ucb_tree
 
 # Import git tracking functionality
-from git_code_tracker import track_code_modifications, git_push, is_git_repo
+from MPM_pytorch.git_code_tracker import track_code_modifications, git_push, is_git_repo
 
 import warnings
 warnings.filterwarnings("ignore", message="pkg_resources is deprecated as an API")
@@ -301,11 +301,11 @@ if __name__ == "__main__":
                     process.wait()
 
                     if process.returncode != 0:
-                        print(f"\033[91mTraining subprocess failed with code {process.returncode}\033[0m")
-                        print(f"\033[93mThis may indicate a code modification error. Check the error above.\033[0m")
-                        raise RuntimeError(f"Training failed at iteration {iteration}")
+                        print(f"\033[91mtraining subprocess failed with code {process.returncode}\033[0m")
+                        print(f"\033[93mthis may indicate a code modification error. Check the error above.\033[0m")
+                        raise RuntimeError(f"training failed at iteration {iteration}")
 
-                    print(f"\033[92mTraining subprocess completed successfully\033[0m")
+                    print(f"\033[92mtraining subprocess completed successfully\033[0m")
                 else:
                     # For non-Claude tasks, run directly (no code modifications expected)
                     data_train_INR(
@@ -435,7 +435,7 @@ Current config: {config_path}"""
 
                 # Git tracking: commit any code modifications made by Claude
                 if is_git_repo(root_dir):
-                    print(f"\n\033[96m--- Checking for code modifications to commit ---\033[0m")
+                    print(f"\n\033[96mchecking for code modifications to commit\033[0m")
                     git_results = track_code_modifications(
                         root_dir=root_dir,
                         iteration=iteration,

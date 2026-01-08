@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat:*)",
+      "Bash(pip install:*)",
+      "Bash(git branch:*)",
+      "Bash(git filter-repo:*)",
+      "Bash(git gc:*)",
+      "Bash(git remote add:*)"
+    ]
+  }
+}

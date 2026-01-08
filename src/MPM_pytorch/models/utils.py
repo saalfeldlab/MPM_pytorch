@@ -5,7 +5,11 @@ from matplotlib.ticker import FormatStrFormatter
 from MPM_pytorch.models import *
 from MPM_pytorch.utils import *
 
-from run_MPM import *
+# Optional import - not needed for subprocess training
+try:
+    from run_MPM import *
+except ModuleNotFoundError:
+    pass  # run_MPM not available when running as subprocess
 import matplotlib as mpl
 import networkx as nx
 from torch_geometric.utils.convert import to_networkx

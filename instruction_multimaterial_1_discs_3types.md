@@ -131,6 +131,7 @@ Choose ONE:
 - **Step 5.1 (DEFAULT)**: Edit config file parameters only
 - **Step 5.2 (RARE)**: Modify Python code (only when config insufficient)
 
+
 ## Step 5.1: Edit Config File (default approach)
 
 Edit config file for next iteration according to Parent Selection Rule.

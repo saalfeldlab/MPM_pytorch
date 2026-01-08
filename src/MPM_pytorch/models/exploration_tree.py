@@ -59,7 +59,11 @@ def compute_ucb_scores(analysis_path, ucb_path, c=1.0, current_log_path=None, cu
             # Match Node line
             node_match = re.match(r'Node: id=(\d+), parent=(\d+|None|root)', line)
             if node_match and current_node is not None:
-                current_node['id'] = int(node_match.group(1))
+                parsed_id = int(node_match.group(1))
+                # Warning only - don't auto-correct as it breaks parent relationships
+                if parsed_id != current_iter:
+                    print(f"Warning: Node ID mismatch at iteration {current_iter}: found id={parsed_id} (expected id={current_iter})")
+                current_node['id'] = parsed_id
                 parent_str = node_match.group(2)
                 # Treat parent=0, parent=None, or parent=root as root (no parent)
                 if parent_str in ('None', '0', 'root'):

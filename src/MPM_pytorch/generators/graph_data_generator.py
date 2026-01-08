@@ -5,8 +5,11 @@ import torch
 from MPM_pytorch.generators.utils import *
 from MPM_pytorch.models.utils import *
 
-
-from run_MPM import *
+# Optional import - not needed for subprocess training
+try:
+    from run_MPM import *
+except ModuleNotFoundError:
+    pass  # run_MPM not available when running as subprocess
 from MPM_pytorch.utils import set_size
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score

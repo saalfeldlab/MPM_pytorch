@@ -1,3 +1,3 @@
 === UCB Scores (Block 0, iters 1-12, N=1, c=1.414) ===
 
-Node 1: UCB=1.189, parent=root, visits=1, R2=0.482, slope=0.060, time=2.5min
+Node 2: UCB=1.191, parent=root, visits=1, R2=0.484, slope=0.061, time=2.8min
