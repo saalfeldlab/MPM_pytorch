@@ -35,10 +35,6 @@ def main():
     # Load config
     config = MPM_pytorchConfig.from_yaml(args.config)
 
-    # Debug: Print config path and dataset name
-    print(f"DEBUG: Config path: {args.config}")
-    print(f"DEBUG: Dataset name from config: {config.dataset}")
-
     # Set device
     device = set_device(args.device)
 

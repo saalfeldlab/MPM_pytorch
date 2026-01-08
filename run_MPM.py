@@ -282,6 +282,7 @@ if __name__ == "__main__":
                     # Set environment to force tqdm to work in non-interactive mode
                     env = os.environ.copy()
                     env['PYTHONUNBUFFERED'] = '1'
+                    env['TQDM_MININTERVAL'] = '1.0'  # Force tqdm to update less frequently
 
                     process = subprocess.Popen(
                         train_cmd,

@@ -1,4 +1,5 @@
 import os
+import sys
 from subprocess import run
 import time
 import glob
@@ -120,7 +121,7 @@ def data_train_material(config, erase, best_model, device):
     time.sleep(0.5)
     n_particles_max = 0
 
-    for run in trange(n_runs, ncols=50):
+    for run in trange(n_runs, ncols=50, mininterval=1.0, file=sys.stdout, ascii=True):
         x = np.load(f'graphs_data/{dataset_name}/x_list_{run}.npy')
         if np.isnan(x).any():
             print('Pb isnan')
@@ -213,7 +214,7 @@ def data_train_material(config, erase, best_model, device):
         run = 0
         data_id = torch.ones((n_particles,1), dtype = torch.float32, device=device) * run
 
-        for N in trange(Niter, ncols=150):
+        for N in trange(Niter, ncols=150, mininterval=1.0, file=sys.stdout, ascii=True):
 
             loss = 0
             optimizer.zero_grad()
@@ -434,16 +435,6 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
     dataset_name = config.dataset
     data_folder = f"graphs_data/{dataset_name}/"
 
-    # Debug: Print paths and check existence
-    print(f"DEBUG: dataset_name = {dataset_name}")
-    print(f"DEBUG: data_folder = {data_folder}")
-    print(f"DEBUG: Looking for file: {data_folder}generated_data_0.npy")
-    print(f"DEBUG: File exists: {os.path.exists(f'{data_folder}generated_data_0.npy')}")
-    if os.path.exists(data_folder):
-        print(f"DEBUG: Files in {data_folder}: {os.listdir(data_folder)}")
-    else:
-        print(f"DEBUG: Directory {data_folder} does NOT exist")
-
     x_list = np.load(f"{data_folder}generated_data_0.npy")
     print(f"x_list shape: {x_list.shape}")  # (n_frames, n_particles, n_features)
 
@@ -620,7 +611,8 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
     training_start_time = time.time()
 
     loss_list = []
-    pbar = trange(total_steps+1, ncols=150)
+    # Configure tqdm for better subprocess output: update less frequently and force line mode
+    pbar = trange(total_steps+1, ncols=150, mininterval=1.0, file=sys.stdout, leave=True, position=0, ascii=True)
     for step in pbar:
 
         if inr_type == 'siren_t':
