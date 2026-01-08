@@ -260,7 +260,7 @@ if __name__ == "__main__":
                 # This ensures that any changes to Siren_Network.py or graph_trainer.py
                 # made by Claude in previous iterations are picked up
                 if 'Claude' in task:
-                    print(f"\033[93mRunning INR training in subprocess (to reload code modifications)...\033[0m")
+                    print(f"\033[93mR\running INR training in subprocess...\033[0m")
 
                     # Construct subprocess command
                     train_script = os.path.join(root_dir, 'train_INR_subprocess.py')
@@ -273,7 +273,8 @@ if __name__ == "__main__":
                         '--config', config_path,
                         '--field_name', field_name,
                         '--device', str(device),
-                        '--log_file', analysis_log_path
+                        '--log_file', analysis_log_path,
+                        '--config_file', config.config_file  # Pass config_file for proper log directory
                     ]
                     if 'Claude' in task:
                         train_cmd.append('--erase')

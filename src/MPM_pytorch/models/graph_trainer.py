@@ -611,9 +611,12 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
     training_start_time = time.time()
 
     loss_list = []
-    # Configure tqdm for better subprocess output: update less frequently and force line mode
-    pbar = trange(total_steps+1, ncols=150, mininterval=1.0, file=sys.stdout, leave=True, position=0, ascii=True)
-    for step in pbar:
+    # Calculate reporting interval (report 10 times during training)
+    report_interval = total_steps // 10
+    if report_interval == 0:
+        report_interval = 1
+
+    for step in range(total_steps+1):
 
         if inr_type == 'siren_t':
             # sample batch_size time frames
@@ -675,7 +678,14 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
         optim.step()
 
         loss_list.append(loss.item())
-        pbar.set_postfix(loss=f"{loss.item():.2f}")
+
+        # Report progress 10 times during training
+        if step > 0 and step % report_interval == 0:
+            elapsed = time.time() - training_start_time
+            progress_pct = (step / total_steps) * 100
+            steps_per_sec = step / elapsed if elapsed > 0 else 0
+            eta_seconds = (total_steps - step) / steps_per_sec if steps_per_sec > 0 else 0
+            print(f"  {progress_pct:5.1f}% | step {step:6d}/{total_steps} | loss: {loss.item():.2f} | {steps_per_sec:.1f} it/s | eta: {eta_seconds/60:.1f}m", flush=True)
 
         if step % steps_til_summary == 0:
             with torch.no_grad():

@@ -29,11 +29,16 @@ def main():
     parser.add_argument('--device', type=str, default='cuda:0', help='Device to use')
     parser.add_argument('--erase', action='store_true', help='Erase existing log files')
     parser.add_argument('--log_file', type=str, default=None, help='Path to analysis log file')
+    parser.add_argument('--config_file', type=str, default=None, help='Config file name for log directory (e.g., multimaterial/config_name)')
 
     args = parser.parse_args()
 
     # Load config
     config = MPM_pytorchConfig.from_yaml(args.config)
+
+    # Set config_file if provided (needed for proper log directory path)
+    if args.config_file:
+        config.config_file = args.config_file
 
     # Set device
     device = set_device(args.device)
