@@ -78,12 +78,12 @@ if __name__ == "__main__":
         # out of memory: diminish n_particles
 
     # resume support: start_iteration parameter (default 1)
-    start_iteration = 38
+    start_iteration = 1
 
     # Claude task configuration
     n_iterations = task_params.get('iterations', 5)
     base_config_name = config_list[0] if config_list else 'multimaterial'
-    experiment_name = task_params.get('experiment', f'experiment_{base_config_name}')
+    instruction_name = task_params.get('instruction', f'instruction_{base_config_name}')
     llm_task_name = task_params.get('llm_task', f'{base_config_name}_Claude')
 
     # Claude task: duplicate and modify config files
@@ -144,14 +144,14 @@ if __name__ == "__main__":
 
         if 'Claude' in task:
             root_dir = os.path.dirname(os.path.abspath(__file__))
-            experiment_path = f"{root_dir}/{experiment_name}.md"
+            instruction_path = f"{root_dir}/{instruction_name}.md"
             analysis_path = f"{root_dir}/{llm_task_name}_analysis.md"
             memory_path = f"{root_dir}/{llm_task_name}_memory.md"
 
-            # check experiment file exists
-            if not os.path.exists(experiment_path):
-                print(f"\033[91merror: experiment file not found: {experiment_path}\033[0m")
-                print(f"\033[93mavailable experiment files:\033[0m")
+            # check instruction file exists
+            if not os.path.exists(instruction_path):
+                print(f"\033[91merror: instruction file not found: {instruction_path}\033[0m")
+                print(f"\033[93mavailable instruction files:\033[0m")
                 for f in os.listdir(root_dir):
                     if f.endswith('.md') and not f.startswith('analysis_') and not f.startswith('README'):
                         print(f"  - {f[:-3]}")
@@ -187,7 +187,7 @@ if __name__ == "__main__":
             else:
                 print(f"\033[93mpreserving {analysis_path} (resuming from iter {start_iteration})\033[0m")
                 print(f"\033[93mpreserving {memory_path} (resuming from iter {start_iteration})\033[0m")
-            print(f"\033[93m{experiment_name} ({n_iterations} iterations, starting at {start_iteration})\033[0m")
+            print(f"\033[93m{instruction_name} ({n_iterations} iterations, starting at {start_iteration})\033[0m")
         else:
             iteration_range = range(1, 2)
             
@@ -268,7 +268,7 @@ if __name__ == "__main__":
                 iter_in_block = (iteration - 1) % n_iter_block + 1
                 is_block_end = iter_in_block == n_iter_block
 
-                exploration_dir = f"{root_dir}/log/Claude_exploration/{experiment_name}"
+                exploration_dir = f"{root_dir}/log/Claude_exploration/{instruction_name}"
                 artifact_paths = save_exploration_artifacts(
                     root_dir, exploration_dir, config, config_file_, pre_folder, iteration,
                     iter_in_block=iter_in_block, block_number=block_number
@@ -321,7 +321,7 @@ if __name__ == "__main__":
 Block info: block {block_number}, iteration {iter_in_block}/{n_iter_block} within block
 {">>> BLOCK END <<<" if is_block_end else ""}
 
-Protocol (follow all instructions): {experiment_path}
+Instructions (follow all instructions): {instruction_path}
 Working memory: {memory_path}
 Full log (append only): {analysis_path}
 Metrics log: {analysis_log_path}
@@ -375,12 +375,12 @@ Current config: {config_path}"""
                         f.write(output_text.strip())
                         f.write("\n\n")
 
-                # save protocol file at first iteration of each block
+                # save instruction file at first iteration of each block
                 if iter_in_block == 1:
-                    protocol_save_dir = artifact_paths['protocol_save_dir']
-                    dst_protocol = f"{protocol_save_dir}/block_{block_number:03d}.md"
-                    if os.path.exists(experiment_path):
-                        shutil.copy2(experiment_path, dst_protocol)
+                    instruction_save_dir = artifact_paths['protocol_save_dir']
+                    dst_instruction = f"{instruction_save_dir}/block_{block_number:03d}.md"
+                    if os.path.exists(instruction_path):
+                        shutil.copy2(instruction_path, dst_instruction)
 
                 # save config snapshot for each iteration
                 config_save_dir = f"{exploration_dir}/configs"

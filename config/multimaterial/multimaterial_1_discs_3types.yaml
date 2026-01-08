@@ -58,6 +58,9 @@ plotting:
   ylim: [-0.001, 0]
 
 training:
+
+  device: 'cuda:1'
+
   n_epochs: 6
   batch_size: 1
   small_init_batch_size: False
@@ -75,7 +78,7 @@ training:
   translation_augmentation: True
   data_augmentation_loop: 100
   fix_cluster_embedding: True
-  device: 'auto'
+ 
 
   learning_rate_start: 1E-5
   learning_rate_embedding_start: 1E-2
