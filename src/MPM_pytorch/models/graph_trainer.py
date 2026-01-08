@@ -9,7 +9,11 @@ import torch
 import torch.nn.functional as F
 import random
 
-from run_MPM import *
+# Optional import - not needed for subprocess training
+try:
+    from run_MPM import *
+except ModuleNotFoundError:
+    pass  # run_MPM not available when running as subprocess
 from MPM_pytorch.models.utils import *
 from MPM_pytorch.utils import *
 from MPM_pytorch.models.Siren_Network import *
