@@ -46,9 +46,22 @@ Testing if optimal config (512×4, lr=2E-5, omega=30, 100k steps) generalizes to
 
 ### Iterations This Block
 
-(Block 4 starts - no iterations yet)
+## Iter 37: poor
+Node: id=37, parent=root
+Mode/Strategy: exploit (new block start)
+Config: lr_NNR_f=2E-5, total_steps=100000, hidden_dim_nnr_f=512, n_layers_nnr_f=4, omega_f=30.0, batch_size=1
+Metrics: final_r2=0.339, final_mse=9.76E-8, total_params=1054724, slope=0.393, training_time=49.7min
+Field: field_name=S, inr_type=siren_txy, n_training_frames=100
+Mutation: field_name: F -> S (new block)
+Parent rule: New block start, testing if optimal config generalizes to S field
+Observation: CRITICAL FAILURE! R²=0.339 despite optimal config achieving R²=0.999 on F and R²=0.964 on Jp. S field has fundamentally different characteristics requiring different approach.
+Next: parent=37
 
 ### Emerging Observations
-- Block 4 begins: Testing S field to complete field generalization study (Jp✓, F✓, S?, C?)
-- Starting with same optimal config from F field (100k steps) to test direct transfer
+- **S field failure**: R²=0.339 is dramatically poor despite using optimal config from F/Jp fields
+- **MSE is very low (9.76E-8)** suggesting S field values have small variance - model fits mean but not variations
+- S field typical range (~0-0.01) is 2 orders smaller than F (~1.0-2.0)
+- **Architecture is NOT field-agnostic** - S field needs different treatment
+- **Hypothesis for next**: S field may need higher omega_f to capture small-scale variations, or higher lr due to smaller gradient magnitudes
+- Alternative hypothesis: S field may have near-zero values everywhere, making regression inherently difficult
 

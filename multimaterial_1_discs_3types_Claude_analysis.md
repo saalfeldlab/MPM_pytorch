@@ -468,3 +468,16 @@ Mutation: total_steps: 100000 -> 50000
 Parent rule: Node 16 highest UCB (1.997); testing reduced steps for faster training
 Observation: Halving steps reduced time (48.3→24.3min) but R² dropped (0.943→0.895). 50k steps insufficient for 512×4 with 100 frames.
 Next: parent=17
+
+## Block 4: siren_txy, S field, n_frames=100
+
+## Iter 37: poor
+Node: id=37, parent=root
+Mode/Strategy: exploit (new block start)
+Config: lr_NNR_f=2E-5, total_steps=100000, hidden_dim_nnr_f=512, n_layers_nnr_f=4, omega_f=30.0, batch_size=1
+Metrics: final_r2=0.339, final_mse=9.76E-8, total_params=1054724, slope=0.393, training_time=49.7min
+Field: field_name=S, inr_type=siren_txy, n_training_frames=100
+Mutation: field_name: F -> S (new block)
+Parent rule: New block start, testing if F/Jp optimal config (512×4, lr=2E-5, omega=30, 100k steps) generalizes to S field
+Observation: CRITICAL FAILURE! R²=0.339 is dramatically poor despite using optimal config from F (R²=0.999) and Jp (R²=0.964). S field (stress tensor) has fundamentally different characteristics. The very low MSE (9.76E-8) with low R² suggests S field values have very small variance - the model is fitting the mean but not capturing variations. S field typical range (~0-0.01) is 2 orders of magnitude smaller than F (~1.0-2.0). Architecture is NOT field-agnostic for S.
+Next: parent=37 (explore different approach for S field)

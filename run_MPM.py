@@ -71,14 +71,14 @@ if __name__ == "__main__":
         task = 'train_INR_Claude'  # 'generate', 'train', 'test', 'train_INR', 'Claude'
         best_model = ''
         config_list = ['multimaterial_1_discs_3types']
-        task_params = {'iterations': 128} 
+        task_params = {'iterations': 1024} 
 
         # ouput in MPM/graphs_data/multimaterial/
         # other config files to be found in ./config/*.yaml
         # out of memory: diminish n_particles
 
     # resume support: start_iteration parameter (default 1)
-    start_iteration = task_params.get('start_iteration', 1)
+    start_iteration = 38
 
     # Claude task configuration
     n_iterations = task_params.get('iterations', 5)
