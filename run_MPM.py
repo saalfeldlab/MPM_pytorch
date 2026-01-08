@@ -36,6 +36,9 @@ from MPM_pytorch.models.utils import *
 from MPM_pytorch.models.exploration_tree import compute_ucb_scores, save_exploration_artifacts
 from MPM_pytorch.models.plot_exploration_tree import parse_ucb_scores, plot_ucb_tree
 
+# Import git tracking functionality
+from git_code_tracker import track_code_modifications, git_push, is_git_repo
+
 import warnings
 warnings.filterwarnings("ignore", message="pkg_resources is deprecated as an API")
 
@@ -418,6 +421,28 @@ Current config: {config_path}"""
                         f.write(f"{'='*60}\n")
                         f.write(output_text.strip())
                         f.write("\n\n")
+
+                # Git tracking: commit any code modifications made by Claude
+                if is_git_repo(root_dir):
+                    print(f"\n\033[96m--- Checking for code modifications to commit ---\033[0m")
+                    git_results = track_code_modifications(
+                        root_dir=root_dir,
+                        iteration=iteration,
+                        analysis_path=analysis_path,
+                        reasoning_path=reasoning_log_path
+                    )
+
+                    if git_results:
+                        for file_path, success, message in git_results:
+                            if success:
+                                print(f"\033[92m✓ Git: {message}\033[0m")
+                            else:
+                                print(f"\033[93m⚠ Git: {message}\033[0m")
+                    else:
+                        print(f"\033[90m  No code modifications detected\033[0m")
+                else:
+                    if iteration == 1:
+                        print(f"\033[90m  Not a git repository - code modifications will not be version controlled\033[0m")
 
                 # save instruction file at first iteration of each block
                 if iter_in_block == 1:

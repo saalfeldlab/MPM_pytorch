@@ -179,6 +179,13 @@ claude:
 - Code changes are immediately effective in the next iteration
 - If the subprocess crashes due to syntax errors, the iteration fails and you'll see the error
 
+**Automatic git version control:**
+- After each iteration, the system checks if code files were modified
+- Modified files are automatically committed to git with descriptive messages
+- Commit messages include: iteration number, description extracted from logs, hypothesis
+- This provides full version history and easy rollback capability
+- If not in a git repository, modifications are still logged but not version-controlled
+
 **Safety rules (CRITICAL):**
 1. **Make minimal changes** - edit only what's necessary
 2. **Test in isolation first** - don't combine code + config changes
@@ -249,19 +256,45 @@ loss = torch.nn.functional.huber_loss(model_output, ground_truth_batch, delta=0.
 
 ### C. Versioning and Rollback
 
-**Before modifying code:**
-1. The system automatically saves config snapshots at `log/Claude_exploration/{instruction}/configs/iter_{N:03d}_config.yaml`
-2. You should similarly version code changes in the log
+**Automatic version control:**
+1. Config snapshots: `log/Claude_exploration/{instruction}/configs/iter_{N:03d}_config.yaml`
+2. Code modifications: Automatically committed to git after each iteration
+3. Git commit format:
+   ```
+   [Iter N] Description from your log
+
+   File: path/to/file.py
+   Changes: +X lines, -Y lines
+   Hypothesis: Your stated hypothesis
+
+   [Automated commit by Claude Code Modification System]
+   ```
 
 **After modifying code:**
 1. State clearly in mutation log: `"CODE MODIFIED: {file}:{function} - {one-line description}"`
-2. In memory.md "Emerging Observations", track: "Code mod iter X: {result}"
-3. If modification fails (syntax error, crash), immediately revert and document failure
+2. Include hypothesis in the CODE MODIFICATION section (automatically extracted for git commit)
+3. In memory.md "Emerging Observations", track: "Code mod iter X: {result}"
+4. System will automatically commit to git with extracted description
 
-**Rollback procedure:**
+**Rollback procedures:**
+
+**Option A: Git revert (recommended)**
+```bash
+# Human can revert the specific commit
+git log --oneline  # Find commit hash
+git revert <commit-hash>
+```
+
+**Option B: Manual revert**
 - If code change causes crash/error, state in observation: "Code modification failed, reverting"
-- Human will manually revert the code change
+- Human will manually revert the code change via git
 - Continue with config-only mutations
+
+**Viewing modification history:**
+```bash
+git log --grep="Claude Code Modification" --oneline
+git show <commit-hash>  # See full diff
+```
 
 ### D. Code Modification Decision Tree
 
