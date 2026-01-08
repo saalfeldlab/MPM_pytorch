@@ -481,3 +481,14 @@ Mutation: field_name: F -> S (new block)
 Parent rule: New block start, testing if F/Jp optimal config (512×4, lr=2E-5, omega=30, 100k steps) generalizes to S field
 Observation: CRITICAL FAILURE! R²=0.339 is dramatically poor despite using optimal config from F (R²=0.999) and Jp (R²=0.964). S field (stress tensor) has fundamentally different characteristics. The very low MSE (9.76E-8) with low R² suggests S field values have very small variance - the model is fitting the mean but not capturing variations. S field typical range (~0-0.01) is 2 orders of magnitude smaller than F (~1.0-2.0). Architecture is NOT field-agnostic for S.
 Next: parent=37 (explore different approach for S field)
+
+## Iter 38: poor
+Node: id=38, parent=37
+Mode/Strategy: exploit
+Config: lr_NNR_f=2E-5, total_steps=100000, hidden_dim_nnr_f=512, n_layers_nnr_f=4, omega_f=60.0, batch_size=1
+Metrics: final_r2=0.516, final_mse=7.11E-8, total_params=1054724, slope=0.547, training_time=49.5min
+Field: field_name=S, inr_type=siren_txy, n_training_frames=100
+Mutation: omega_f: 30.0 -> 60.0
+Parent rule: Highest UCB (node 37 at block start), testing omega_f increase hypothesis
+Observation: SIGNIFICANT IMPROVEMENT! R² jumped from 0.339 → 0.516 (+52% relative). Higher omega_f helps S field. Still poor but clear positive direction.
+Next: parent=38

@@ -1,3 +1,4 @@
-=== UCB Scores (Block 3, iters 37-48, N=1, c=1.414) ===
+=== UCB Scores (Block 3, iters 37-48, N=2, c=1.414) ===
 
-Node 37: UCB=1.046, parent=root, visits=1, R2=0.339, slope=0.393, time=49.7min, Mutation=field_name: F -> S (new block)
+Node 38: UCB=1.516, parent=37, visits=1, R2=0.516, slope=0.547, time=49.5min, Mutation=omega_f: 30.0 -> 60.0
+Node 37: UCB=1.006, parent=root, visits=2, R2=0.339, slope=0.393, time=49.7min, Mutation=field_name: F -> S (new block)

@@ -57,11 +57,22 @@ Parent rule: New block start, testing if optimal config generalizes to S field
 Observation: CRITICAL FAILURE! R²=0.339 despite optimal config achieving R²=0.999 on F and R²=0.964 on Jp. S field has fundamentally different characteristics requiring different approach.
 Next: parent=37
 
+## Iter 38: poor
+Node: id=38, parent=37
+Mode/Strategy: exploit
+Config: lr_NNR_f=2E-5, total_steps=100000, hidden_dim_nnr_f=512, n_layers_nnr_f=4, omega_f=60.0, batch_size=1
+Metrics: final_r2=0.516, final_mse=7.11E-8, total_params=1054724, slope=0.547, training_time=49.5min
+Field: field_name=S, inr_type=siren_txy, n_training_frames=100
+Mutation: omega_f: 30.0 -> 60.0
+Parent rule: Highest UCB (node 37 at block start), testing omega_f increase hypothesis
+Observation: SIGNIFICANT IMPROVEMENT! R² jumped from 0.339 → 0.516 (+52% relative). Higher omega_f helps S field. Still poor but clear positive direction.
+Next: parent=38
+
 ### Emerging Observations
-- **S field failure**: R²=0.339 is dramatically poor despite using optimal config from F/Jp fields
-- **MSE is very low (9.76E-8)** suggesting S field values have small variance - model fits mean but not variations
-- S field typical range (~0-0.01) is 2 orders smaller than F (~1.0-2.0)
-- **Architecture is NOT field-agnostic** - S field needs different treatment
-- **Hypothesis for next**: S field may need higher omega_f to capture small-scale variations, or higher lr due to smaller gradient magnitudes
-- Alternative hypothesis: S field may have near-zero values everywhere, making regression inherently difficult
+- **S field requires high omega_f**: omega_f=30 gave R²=0.339, omega_f=60 gave R²=0.516 (+52% relative improvement)
+- **MSE is very low** (7-10E-8) suggesting S field values have small variance - model fits mean but not variations
+- S field typical range (~0-0.01) is 2 orders smaller than F (~1.0-2.0), requires higher frequency to capture small-scale structure
+- **Architecture is NOT fully field-agnostic** - S field needs omega_f tuning
+- **Next hypothesis**: Continue increasing omega_f (try 90-100) to see if R² continues improving
+- Alternative: If omega_f saturates, try increasing lr to help with small gradient magnitudes
 

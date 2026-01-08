@@ -53,7 +53,7 @@ graph_model:
   hidden_dim_nnr_f: 512
   output_size_nnr_f: 4
   outermost_linear_nnr_f: true
-  omega_f: 60.0
+  omega_f: 90.0
   omega_f_learning: false
   nnr_f_xy_period: 1.0
 plotting:
