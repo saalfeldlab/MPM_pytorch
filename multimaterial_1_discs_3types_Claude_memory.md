@@ -75,11 +75,23 @@ Parent rule: Highest UCB node (1.707), test if fewer steps maintain quality
 Observation: SUCCESS! 100k steps achieves R²=0.9987 (vs 150k→0.9998). Slight decrease but still excellent, 25% faster.
 Next: parent=50 (UCB=1.999, testing 80k steps for speed-accuracy tradeoff)
 
+## Iter 51: excellent
+Node: id=51, parent=50
+Mode/Strategy: exploit
+Config: lr_NNR_f=3E-5, total_steps=80000, hidden_dim_nnr_f=256, n_layers_nnr_f=4, omega_f=25.0, batch_size=1
+Metrics: final_r2=0.983, final_mse=8.2E-3, total_params=265220, slope=0.981, training_time=5.2min
+Field: field_name=F, inr_type=siren_txy, n_frames=100
+Mutation: total_steps: 100000 -> 80000
+Parent rule: Highest UCB node (1.999), testing minimum steps for speed
+Observation: 80k steps (800/frame) hits lower bound - R²=0.983 drops below 0.99. 100k steps (1000/frame) is minimum for R²>0.99.
+Next: parent=51 (UCB=2.208, explore architecture variation)
+
 ### Emerging Observations
 
 1. **Data scaling SUCCESS**: F field R²=0.9998 with 100 frames > R²=0.9995 with 48 frames. More training data HELPS.
-2. **Steps/frame ratio**: 150k→1500/frame, 100k→1000/frame. Both work! 1000 steps/frame sufficient for F field.
-3. **Training time reasonable**: 6.4 min at 100k steps, 8.5 min at 150k steps. 100k is 25% faster with minimal R² drop.
-4. **Hypothesis validated**: F-optimal config (256×4, omega_f=25, lr=3E-5) generalizes well to more data.
-5. **Steps efficiency**: Testing if 80k steps (800/frame) maintains R²>0.99 - finding minimum for speed.
+2. **Steps/frame ratio**: 150k→1500/frame (R²=0.9998), 100k→1000/frame (R²=0.9987), 80k→800/frame (R²=0.983). Sweet spot: 1000 steps/frame.
+3. **Training time scaling**: 8.5min (150k) → 6.4min (100k) → 5.2min (80k). Linear with steps.
+4. **Hypothesis validated**: F-optimal config (256×4, omega_f=25, lr=3E-5) generalizes to 100 frames.
+5. **Step minimum found**: 80k steps (R²=0.983) below 0.99 threshold. 100k steps is minimum for R²>0.99 with 100 frames.
+6. **Next direction**: Testing architecture variation (hidden_dim or n_layers) from 80k/100k configs.
 

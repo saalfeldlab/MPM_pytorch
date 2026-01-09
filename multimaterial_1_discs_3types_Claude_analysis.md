@@ -643,3 +643,14 @@ Mutation: total_steps: 150000 -> 100000
 Parent rule: Highest UCB node (1.707), test if fewer steps maintain quality
 Observation: SUCCESS! 100k steps achieves R²=0.9987 (vs 150k→0.9998). Slight decrease but still excellent, 25% faster.
 Next: parent=50 (UCB=1.999, testing 80k steps for speed-accuracy tradeoff)
+
+## Iter 51: excellent
+Node: id=51, parent=50
+Mode/Strategy: exploit
+Config: lr_NNR_f=3E-5, total_steps=80000, hidden_dim_nnr_f=256, n_layers_nnr_f=4, omega_f=25.0, batch_size=1
+Metrics: final_r2=0.983, final_mse=8.2E-3, total_params=265220, slope=0.981, training_time=5.2min
+Field: field_name=F, inr_type=siren_txy, n_frames=100
+Mutation: total_steps: 100000 -> 80000
+Parent rule: Highest UCB node (1.999), testing minimum steps for speed
+Observation: 80k steps (800/frame) hits lower bound - R²=0.983 drops below 0.99. 100k steps (1000/frame) is minimum for R²>0.99.
+Next: parent=51 (UCB=2.208, explore architecture variation)

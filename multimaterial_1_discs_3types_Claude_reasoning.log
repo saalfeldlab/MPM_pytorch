@@ -1109,3 +1109,24 @@ Configuration updated for iteration 51. Summary:
 Config changes applied:
 - total_steps: 100000 → 80000
 
+
+============================================================
+=== Iteration 51 ===
+============================================================
+Configuration is now set for iteration 52:
+- **Parent**: Node 51 (UCB=2.208)
+- **Mutation**: n_layers_nnr_f: 4 → 3, total_steps: 80k → 100k
+- **Strategy**: Testing if 3 layers + 100k steps can match 4 layers + 100k steps (Node 50, R²=0.999)
+
+This tests depth efficiency for F field with 100 frames. Block 2 found 256×4 optimal for F field at 48 frames, but C field worked best with 3 layers. Let's see if F at 100 frames also works with 3 layers.
+
+**Summary for Iteration 51:**
+- Result: R²=0.983 (excellent), 80k steps (800/frame) is lower bound
+- 100k steps (1000/frame) confirmed as minimum for R²>0.99 with 100 frames
+- Training time: 5.2 min (linear scaling with steps confirmed)
+
+**Setup for Iteration 52:**
+- Config: lr=3E-5, total_steps=100k, hidden_dim=256, **n_layers=3**, omega_f=25
+- Parent: Node 51 (UCB=2.208)
+- Hypothesis: Testing if 3 layers at 100k steps matches 4 layers at 100k steps for efficiency
+

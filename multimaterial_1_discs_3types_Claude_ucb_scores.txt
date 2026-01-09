@@ -1,5 +1,5 @@
 === UCB Scores (Block 4, iters 49-60, N=3, c=1.414) ===
 
-Node 51: UCB=2.222, parent=50, visits=1, R2=0.998, slope=0.997, time=4.7min
+Node 51: UCB=2.208, parent=50, visits=1, R2=0.983, slope=0.981, time=5.2min, Mutation=total_steps: 100000 -> 80000
 Node 50: UCB=1.815, parent=49, visits=2, R2=0.999, slope=0.999, time=6.4min, Mutation=total_steps: 150000 -> 100000
 Node 49: UCB=1.612, parent=root, visits=3, R2=1.000, slope=1.000, time=8.5min, Mutation=n_frames: 48 -> 100 (2× data scaling test), total_steps: 100k -> 150k
