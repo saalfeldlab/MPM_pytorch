@@ -137,6 +137,16 @@ Choose ONE:
 Edit config file for next iteration according to Parent Selection Rule.
 (The config path is provided in the prompt as "Current config")
 
+**CRITICAL: Config Parameter Constraints**
+
+**DO NOT add new parameters to the `claude:` section.** Only these fields are allowed:
+- `field_name`: Jp, F, S, C
+- `ucb_c`: float value (0.5-3.0)
+
+Any other parameters (like `n_epochs`, `data_augmentation_loop`, `total_steps`, `n_iter_block`, etc.) belong in the `training:` or `graph_model:` sections, NOT in `claude:`.
+
+Adding invalid parameters to `claude:` will cause a validation error and crash the experiment.
+
 **Training Parameters (change within block):**
 
 Mutate ONE parameter at a time for better causal understanding.
@@ -573,6 +583,7 @@ Three variants:
 - Low (1-10): smooth, low-frequency signals
 - Medium (20-50): typical for MPM fields
 - High (>50): high-frequency detail, unstable training
+- **Field-specific optimal omega_f (Block 2 finding)**: F field optimal at omega_f=25, Jp optimal at 35. Different fields prefer different frequencies. F frequency mapping: 20(0.995)<25(0.999)>30(0.997)>35(0.996)>50(0.985)
 
 **Compression ratio**:
 - Data size / model parameters
@@ -614,7 +625,18 @@ Three variants:
 4. **Overfitting to noise**: batch_size too small
 5. **Memory OOM**: hidden_dim or n_particles too large
 6. **Training time explosion**: batch_size > 1 causes 7× slowdown (Block 1 finding) - use batch_size=1
-7. **omega_f sensitivity**: For siren_txy, omega_f=30 is optimal. omega_f=20 underperforms, omega_f≥40 causes severe regression (Block 1 finding)
+7. **omega_f sensitivity**: For siren_txy, omega_f=30-35 is optimal. omega_f=20 underperforms, omega_f≥40 causes slope regression (Block 1 finding)
+8. **hidden_dim ceiling**: hidden_dim=512 is optimal for siren_txy. hidden_dim=768 causes regression (R²=0.968→0.885) and 2× training time (Block 1 finding)
+9. **lr upper bound**: lr_NNR_f=4E-5 causes training instability (R²=0.964→0.806). Optimal zone is 2E-5→3E-5 (Block 1 finding)
+10. **F field efficiency (Block 2 finding)**: hidden_dim=256 sufficient for F field (R²=0.996), 256×4 achieves R²=0.9995 in 6.3min
+11. **Depth > width (Block 2 finding)**: 512×2 (R²=0.977) < 256×3 (R²=0.996). Extra layer beats doubled width for SIREN.
+12. **Field difficulty ranking (Block 2 finding)**: F field (4 components) achieves R²=0.9995 > Jp (1 component) at R²=0.968. F has more regular structure.
+13. **S field (stress tensor) is HARD (Block 3 finding)**: Best R²=0.618 despite exhaustive optimization. omega_f=50 SHARP PEAK (both 45 and 60 regress). S values ~0-0.01 may need loss scaling or normalization code modification.
+14. **Field-specific omega_f (Block 4 confirmed)**: Jp→35, F→25, C→30, S→50. Each field has distinct optimal frequency.
+15. **Local optimum detection (Block 3 finding)**: When 5+ mutations from best node all regress, config-level is exhausted. Consider code modification or field change.
+16. **C field optimal config (Block 4 finding)**: hidden_dim=384, n_layers=3, omega_f=30, lr=3E-5, 100k steps → R²=0.993. C behaves like F (easy), not S (hard).
+17. **Overfitting via excess steps (Block 4 finding)**: 150k steps WORSE than 100k for C field (R²=0.979 vs 0.990). More training can hurt.
+18. **Width ceiling field-dependent (Block 4 finding)**: hidden_dim=384 optimal for C field. 256→384 improves, 384→512 regresses. Optimal width varies by field.
 
 ---
 
@@ -624,7 +646,7 @@ Three variants:
 - total_steps=10000, hidden_dim=256, n_layers=2
 
 **Production quality**:
-- total_steps=50000-100000, hidden_dim=512-1024, n_layers=3-4
+- total_steps=50000-200000, hidden_dim=512-1024, n_layers=3-4
 
 **Parameter mutation magnitude**:
 - Learning rates: ×2 or ÷2

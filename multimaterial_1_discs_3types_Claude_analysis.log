@@ -1,0 +1,17 @@
+field_name: F
+inr_type: siren_txy
+final_mse: 1.153378e-03
+final_r2: 0.997599
+slope: 0.997327
+total_params: 265220
+n_particles: 9000
+n_frames: 100
+n_components: 4
+total_steps: 80000
+batch_size: 1
+learning_rate_NNR_f: 3.000000e-05
+hidden_dim_nnr_f: 256
+n_layers_nnr_f: 4
+omega_f: 25.0
+training_time_min: 4.7
+final_omega_f: 25.00

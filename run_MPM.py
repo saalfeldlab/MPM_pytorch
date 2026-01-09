@@ -82,7 +82,7 @@ if __name__ == "__main__":
         # out of memory: diminish n_particles
 
     # resume support: start_iteration parameter (default 1)
-    start_iteration = 1
+    start_iteration = 51
 
     # Claude task configuration
     n_iterations = task_params.get('iterations', 5)
@@ -114,7 +114,6 @@ if __name__ == "__main__":
                     claude_cfg = config_data.get('claude', {})
                     claude_n_epochs = claude_cfg.get('n_epochs', 1)
                     claude_data_augmentation_loop = claude_cfg.get('data_augmentation_loop', 100)
-                    claude_total_steps = claude_cfg.get('total_steps', 100000)
 
                     # Modify config for Claude task
                     # Add folder prefix to dataset name (same as done at runtime in line 150)
@@ -130,7 +129,7 @@ if __name__ == "__main__":
                     with open(target_config, 'w') as f:
                         yaml.dump(config_data, f, default_flow_style=False, sort_keys=False)
 
-                    print(f"\033[93mmodified {target_config}: dataset='{llm_task_name}', n_epochs={claude_n_epochs}, data_augmentation_loop={claude_data_augmentation_loop}, total_steps={claude_total_steps}\033[0m")
+                    print(f"\033[93mmodified {target_config}: dataset='{llm_task_name}', n_epochs={claude_n_epochs}, data_augmentation_loop={claude_data_augmentation_loop}\033[0m")
             else:
                 print(f"\033[93mpreserving {target_config} (resuming from iter {start_iteration})\033[0m")
 
@@ -266,6 +265,12 @@ if __name__ == "__main__":
                     train_script = os.path.join(root_dir, 'train_INR_subprocess.py')
                     config_path = f"{config_root}/{config_file}.yaml"
 
+                    # Create log directory and error log paths (overwrite for each iteration to only keep latest)
+                    log_dir = f"{root_dir}/log/Claude_exploration/{instruction_name}"
+                    os.makedirs(log_dir, exist_ok=True)
+                    error_log_path = f"{log_dir}/training_output_latest.log"
+                    error_details_path = f"{log_dir}/training_error_latest.log"
+
                     train_cmd = [
                         sys.executable,  # Use same Python interpreter
                         '-u',  # Force unbuffered output for real-time streaming
@@ -274,7 +279,8 @@ if __name__ == "__main__":
                         '--field_name', field_name,
                         '--device', str(device),
                         '--log_file', analysis_log_path,
-                        '--config_file', config.config_file  # Pass config_file for proper log directory
+                        '--config_file', config.config_file,  # Pass config_file for proper log directory
+                        '--error_log', error_details_path  # Pass error log path for detailed error capture
                     ]
                     if 'Claude' in task:
                         train_cmd.append('--erase')
@@ -294,15 +300,42 @@ if __name__ == "__main__":
                         env=env
                     )
 
-                    # Stream output in real-time
-                    for line in process.stdout:
-                        print(line, end='', flush=True)
+                    # Capture all output for logging while also streaming to console
+                    output_lines = []
+                    with open(error_log_path, 'w') as output_file:
+                        for line in process.stdout:
+                            print(line, end='', flush=True)
+                            output_file.write(line)
+                            output_file.flush()
+                            output_lines.append(line.rstrip())
 
                     process.wait()
 
                     if process.returncode != 0:
-                        print(f"\033[91mtraining subprocess failed with code {process.returncode}\033[0m")
-                        print(f"\033[93mthis may indicate a code modification error. Check the error above.\033[0m")
+                        print(f"\033[91m\ntraining subprocess failed with code {process.returncode}\033[0m")
+                        print(f"\033[93mthis may indicate a code modification error.\033[0m\n")
+
+                        # Show last 20 lines of output for context
+                        print(f"\033[93mLast 20 lines of output:\033[0m")
+                        print("-" * 80)
+                        for line in output_lines[-20:]:
+                            print(line)
+                        print("-" * 80)
+
+                        # Show paths to log files
+                        print(f"\nFull output logged to: {error_log_path}")
+                        if os.path.exists(error_details_path):
+                            print(f"Error details logged to: {error_details_path}")
+                            # Show error details if available
+                            try:
+                                with open(error_details_path, 'r') as f:
+                                    error_details = f.read()
+                                if error_details.strip():
+                                    print(f"\n\033[91mDetailed error information:\033[0m")
+                                    print(error_details)
+                            except Exception as e:
+                                print(f"Could not read error details: {e}")
+
                         raise RuntimeError(f"training failed at iteration {iteration}")
 
                     print(f"\033[92mtraining subprocess completed successfully\033[0m")
@@ -390,7 +423,7 @@ Current config: {config_path}"""
                     'claude',
                     '-p', claude_prompt,
                     '--output-format', 'text',
-                    '--max-turns', '40',
+                    '--max-turns', '100',
                     '--allowedTools', 'Read', 'Edit'
                 ]
 

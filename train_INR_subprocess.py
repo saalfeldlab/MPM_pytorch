@@ -12,6 +12,7 @@ Usage:
 import argparse
 import sys
 import os
+import traceback
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -30,36 +31,72 @@ def main():
     parser.add_argument('--erase', action='store_true', help='Erase existing log files')
     parser.add_argument('--log_file', type=str, default=None, help='Path to analysis log file')
     parser.add_argument('--config_file', type=str, default=None, help='Config file name for log directory (e.g., multimaterial/config_name)')
+    parser.add_argument('--error_log', type=str, default=None, help='Path to error log file')
 
     args = parser.parse_args()
 
-    # Load config
-    config = MPM_pytorchConfig.from_yaml(args.config)
-
-    # Set config_file if provided (needed for proper log directory path)
-    if args.config_file:
-        config.config_file = args.config_file
-
-    # Set device
-    device = set_device(args.device)
-
-    # Open log file if specified
-    log_file = None
-    if args.log_file:
-        log_file = open(args.log_file, 'w')
+    # Open error log file if specified
+    error_log = None
+    if args.error_log:
+        try:
+            error_log = open(args.error_log, 'w')
+        except Exception as e:
+            print(f"Warning: Could not open error log file: {e}", file=sys.stderr)
 
     try:
-        # Run training - this will reload any modified code
-        data_train_INR(
-            config=config,
-            device=device,
-            field_name=args.field_name,
-            erase=args.erase,
-            log_file=log_file
-        )
+        # Load config
+        config = MPM_pytorchConfig.from_yaml(args.config)
+
+        # Set config_file if provided (needed for proper log directory path)
+        if args.config_file:
+            config.config_file = args.config_file
+
+        # Set device
+        device = set_device(args.device)
+
+        # Open log file if specified
+        log_file = None
+        if args.log_file:
+            log_file = open(args.log_file, 'w')
+
+        try:
+            # Run training - this will reload any modified code
+            data_train_INR(
+                config=config,
+                device=device,
+                field_name=args.field_name,
+                erase=args.erase,
+                log_file=log_file
+            )
+        finally:
+            if log_file:
+                log_file.close()
+
+    except Exception as e:
+        # Capture full traceback for debugging
+        error_msg = f"\n{'='*80}\n"
+        error_msg += f"TRAINING SUBPROCESS ERROR\n"
+        error_msg += f"{'='*80}\n\n"
+        error_msg += f"Error Type: {type(e).__name__}\n"
+        error_msg += f"Error Message: {str(e)}\n\n"
+        error_msg += f"Full Traceback:\n"
+        error_msg += traceback.format_exc()
+        error_msg += f"\n{'='*80}\n"
+
+        # Print to stderr
+        print(error_msg, file=sys.stderr, flush=True)
+
+        # Write to error log if available
+        if error_log:
+            error_log.write(error_msg)
+            error_log.flush()
+
+        # Exit with non-zero code
+        sys.exit(1)
+
     finally:
-        if log_file:
-            log_file.close()
+        if error_log:
+            error_log.close()
 
 
 if __name__ == '__main__':

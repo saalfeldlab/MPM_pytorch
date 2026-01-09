@@ -1,0 +1,6 @@
+log/
+graphs_data/
+.git/
+__pycache__/
+*.log
+*.pyc
