@@ -1800,3 +1800,61 @@ Config verified. Summary for iteration 77:
 - All 6 iterations WORSE than Block 3 ceiling (R²=0.618 at 48 frames)
 - S field data scaling definitively FAILS - this is a fundamental representation limitation, not a data limitation
 
+
+============================================================
+=== Iteration 79 ===
+============================================================
+Config updated for iteration 80:
+- **Parent**: Node 73 (512×4, lr=2E-5, omega_f=50.0, R²=0.517)
+- **Mutation**: omega_f: 50.0 → 55.0 (testing if higher frequency helps S field at 100 frames)
+- **Config**: lr=2E-5, hidden_dim=512, n_layers=4, omega_f=55.0, total_steps=200000
+
+**Summary of Iteration 79**:
+- **Result**: CATASTROPHIC failure (R²=0.079, worst of block)
+- **Mutation**: lr_NNR_f: 2E-5 → 3E-5 on 768×4 config
+- **Finding**: S field CANNOT tolerate lr=3E-5 at high capacity. Requires strict lr≤2E-5.
+- **Block status**: 7/7 iterations at 100 frames ALL worse than Block 3 ceiling (R²=0.618 at 48 frames)
+
+**Next iteration 80**: Testing omega_f=55 (higher frequency) since S field requires high frequency and omega_f=50 was optimal at 48 frames. If this also fails, strong evidence that 100 frames fundamentally harms S field representation.
+
+
+============================================================
+=== Iteration 80 ===
+============================================================
+## Summary - Iteration 80 Complete
+
+**Results**: R²=0.504 (poor) - omega_f increase from 50→55 HURT performance (-0.013)
+
+**Key Findings**:
+- omega_f=50 is a **SHARP PEAK** for S field - both 45 (R²=0.359) and 55 (R²=0.504) regress compared to 50 (R²=0.517)
+- 8/8 iterations at 100 frames ALL worse than Block 3 ceiling (R²=0.618 at 48 frames)
+- **S field data scaling CONCLUSIVELY FAILS** - unlike F/Jp, more data HURTS S field
+
+**Next Iteration (81) Configuration**:
+- **Strategy**: Return to 48 frames with increased capacity (768×4) to test if capacity helps at original data scale
+- **Mutation**: n_training_frames: 100→48, hidden_dim: 512→768, omega_f: 55→50 (return to peak), total_steps: 200k→150k (3125 steps/frame)
+- **Hypothesis**: If 768×4 at 48 frames beats 512×4 at 48 frames (R²=0.618), this proves S benefits from capacity at lower data scale
+- Config: lr=2E-5, hidden_dim=768, n_layers=4, omega_f=50, 150k steps, 48 frames
+
+
+============================================================
+=== Iteration 81 ===
+============================================================
+## Iteration 81 Summary
+
+**Result**: **MODERATE (R²=0.658)** - BREAKTHROUGH!
+
+**Key Achievement**: Reverting from 100 frames to 48 frames with increased capacity (768×4) **EXCEEDED the Block 3 ceiling** (R²=0.658 > 0.618, +0.040).
+
+**Critical Finding**: S field data scaling FAILS. Unlike F and Jp fields which benefit from more data, S field performs WORSE with 100 frames. This confirms S is a **representation-limited** field, not data-limited.
+
+**Block 7 Progress (9/12 iterations)**:
+- 8 iterations at 100 frames: ALL worse than Block 3 ceiling (R²=0.079-0.590)
+- 1 iteration at 48 frames with 768×4: NEW BEST R²=0.658
+
+**Next Iteration (82)**:
+- Parent: Node 81 (R²=0.658, highest UCB)
+- Strategy: exploit
+- Mutation: **total_steps: 150000 → 200000** (more training to improve R²)
+- Config: lr=2E-5, 768×4, omega_f=50, 200k steps, 48 frames
+

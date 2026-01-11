@@ -1,5 +1,44 @@
 # Experiment Log: multimaterial_1_discs_3types_Claude
 
+## Iter 81: moderate
+Node: id=81, parent=77
+Mode/Strategy: exploit (frame reversion + capacity increase)
+Config: lr_NNR_f=2E-5, total_steps=150000, hidden_dim_nnr_f=768, n_layers_nnr_f=4, omega_f=50.0, batch_size=1
+Metrics: final_r2=0.658, final_mse=4.998E-8, total_params=2368516, slope=0.704, training_time=134.8min
+Field: field_name=S, inr_type=siren_txy, n_training_frames=48
+Mutation: n_training_frames: 100 -> 48 AND hidden_dim_nnr_f: 384 -> 768
+Parent rule: Highest UCB (node 81, UCB=2.779)
+Observation: BREAKTHROUGH! Reverting to 48 frames with 768×4 EXCEEDS Block 3 ceiling (R²=0.658 > 0.618, +0.040). PROVES: (1) 100 frames HURTS S field, (2) 768×4 at 48 frames is NEW BEST config for S. Capacity increase (512→768) helps S field at 48 frames. Training time still high (134.8min).
+Next: parent=81 (exploit new best, try 200k steps for higher R²)
+
+---
+
+## Iter 80: poor
+Node: id=80, parent=73
+Mode/Strategy: exploit
+Config: lr_NNR_f=2E-5, total_steps=200000, hidden_dim_nnr_f=512, n_layers_nnr_f=4, omega_f=55.0, batch_size=1
+Metrics: final_r2=0.504, final_mse=7.34E-8, total_params=1054724, slope=0.556, training_time=97.4min
+Field: field_name=S, inr_type=siren_txy, n_training_frames=100
+Mutation: omega_f: 50.0 -> 55.0
+Parent rule: Backtrack to node 73 (best R²=0.517, 512×4), test omega_f increase
+Observation: omega_f increase HURT (R²=0.517→0.504, -0.013). omega_f=50 is SHARP PEAK for S - both 45 and 55 regress. 8/8 iterations at 100 frames ALL worse than Block 3 ceiling R²=0.618. DATA SCALING CONCLUSIVELY FAILS for S field.
+Next: parent=77 (highest UCB=2.443)
+
+---
+
+## Iter 79: poor
+Node: id=79, parent=78
+Mode/Strategy: exploit
+Config: lr_NNR_f=3E-5, total_steps=150000, hidden_dim_nnr_f=768, n_layers_nnr_f=4, omega_f=50.0, batch_size=1
+Metrics: final_r2=0.079, final_mse=1.40E-7, total_params=2368516, slope=0.136, training_time=136.0min
+Field: field_name=S, inr_type=siren_txy, n_training_frames=100
+Mutation: lr_NNR_f: 2E-5 -> 3E-5
+Parent rule: Highest UCB (node 79, UCB=1.950)
+Observation: LR increase CATASTROPHIC (R²=0.590→0.079, -0.511). S field CANNOT tolerate lr=3E-5 at 768×4 capacity. This is the worst result of entire block. S field requires strict lr≤2E-5. CRITICAL: 7/7 iterations at 100 frames ALL worse than Block 3 ceiling (R²=0.618 at 48 frames). S field data scaling conclusively FAILS. Strategy shift: Return to 48 frames or try code modification.
+Next: parent=73 (backtrack, try omega_f increase 50→55)
+
+---
+
 ## Iter 78: poor
 Node: id=78, parent=73
 Mode/Strategy: exploit

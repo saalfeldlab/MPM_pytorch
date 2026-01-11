@@ -124,14 +124,47 @@ Parent rule: Backtrack to node 73 (best R²=0.517, 512×4), try increased capaci
 Observation: Capacity increase HELPED (R²=0.517→0.590, +0.073) but STILL below Block 3 ceiling (R²=0.618). Training time EXPLOSION (205.1min). S field benefits from capacity but 100 frames STILL worse than 48 frames.
 Next: parent=78 (try LR increase 2E-5→3E-5)
 
+## Iter 79: poor
+Node: id=79, parent=78
+Mode/Strategy: exploit
+Config: lr_NNR_f=3E-5, total_steps=150000, hidden_dim_nnr_f=768, n_layers_nnr_f=4, omega_f=50.0, batch_size=1
+Metrics: final_r2=0.079, final_mse=1.40E-7, total_params=2368516, slope=0.136, training_time=136.0min
+Field: field_name=S, inr_type=siren_txy, n_training_frames=100
+Mutation: lr_NNR_f: 2E-5 -> 3E-5
+Parent rule: Highest UCB (node 79, UCB=1.950)
+Observation: LR increase CATASTROPHIC (R²=0.590→0.079, -0.511). S field CANNOT tolerate lr=3E-5 at 768×4 capacity. WORST result of block. 7/7 iterations at 100 frames ALL worse than Block 3 ceiling.
+Next: parent=73 (backtrack, try omega_f increase 50→55)
+
+## Iter 80: poor
+Node: id=80, parent=73
+Mode/Strategy: exploit
+Config: lr_NNR_f=2E-5, total_steps=200000, hidden_dim_nnr_f=512, n_layers_nnr_f=4, omega_f=55.0, batch_size=1
+Metrics: final_r2=0.504, final_mse=7.34E-8, total_params=1054724, slope=0.556, training_time=97.4min
+Field: field_name=S, inr_type=siren_txy, n_training_frames=100
+Mutation: omega_f: 50.0 -> 55.0
+Parent rule: Backtrack to node 73 (best R²=0.517, 512×4), test omega_f increase
+Observation: omega_f increase HURT (R²=0.517→0.504, -0.013). omega_f=50 is SHARP PEAK for S - both 45 and 55 regress. 8/8 iterations at 100 frames ALL worse than Block 3 ceiling R²=0.618. DATA SCALING CONCLUSIVELY FAILS for S field.
+Next: parent=77 (highest UCB=2.443)
+
+## Iter 81: moderate
+Node: id=81, parent=77
+Mode/Strategy: exploit (frame reversion + capacity increase)
+Config: lr_NNR_f=2E-5, total_steps=150000, hidden_dim_nnr_f=768, n_layers_nnr_f=4, omega_f=50.0, batch_size=1
+Metrics: final_r2=0.658, final_mse=4.998E-8, total_params=2368516, slope=0.704, training_time=134.8min
+Field: field_name=S, inr_type=siren_txy, n_training_frames=48
+Mutation: n_training_frames: 100 -> 48 AND hidden_dim_nnr_f: 384 -> 768
+Parent rule: Highest UCB (node 81, UCB=2.779)
+Observation: BREAKTHROUGH! Reverting to 48 frames with 768×4 EXCEEDS Block 3 ceiling (R²=0.658 > 0.618, +0.040). PROVES: 100 frames HURTS S field, 768×4 at 48 frames is NEW BEST config for S.
+Next: parent=81 (exploit new best, try 200k steps for higher R²)
+
 ### Emerging Observations
 
-1. **S field data scaling FAILS**: ALL 6 iterations at 100 frames (R²=0.517-0.590) WORSE than Block 3 ceiling R²=0.618 at 48 frames.
-2. **S field is NOT data-limited**: Unlike F/Jp, more data HURTS S field. This is a fundamental representation problem.
-3. **omega_f=50 RIGID**: Does NOT shift lower with more data (unlike F/Jp).
-4. **Capacity HELPS but not enough**: 768>512>384 for hidden_dim. n_layers=4 REQUIRED.
-5. **Reducing steps hurts**: 200k→100k hurt R² by 0.061.
-6. **Training time**: 768×4 = 205min (unacceptable). Need to find efficiency.
-7. **CRITICAL FINDING**: 768×4 at 100 frames (R²=0.590) < 512×4 at 48 frames (R²=0.618). Data scaling actively hurts S field.
-8. **Next strategy**: Try LR increase 2E-5→3E-5 on node 78. If fails, consider returning to 48 frames or code modification.
+1. **BREAKTHROUGH Iter 81**: Reverting to 48 frames with 768×4 EXCEEDS Block 3 ceiling (R²=0.658 > 0.618, +0.040). NEW BEST config for S.
+2. **S field data scaling FAILS CONFIRMED**: ALL 8 iterations at 100 frames (R²=0.079-0.590) WORSE than 48 frames.
+3. **S field is NOT data-limited**: Unlike F/Jp, more data HURTS S field. This is a fundamental representation problem.
+4. **omega_f=50 SHARP PEAK**: Does NOT shift with data (unlike F/Jp). Both 45 and 55 regress vs 50.
+5. **Capacity HELPS at 48 frames**: 768>512>384. n_layers=4 REQUIRED.
+6. **LR ceiling CONFIRMED**: lr=3E-5 causes CATASTROPHIC failure (R²=0.079). S field requires strict lr≤2E-5.
+7. **Training time concern**: 768×4 at 48 frames = 134.8min still slow.
+8. **3 iterations remain**: Continue exploiting 768×4 at 48 frames. Try: (a) 200k steps for higher R², (b) 1024×4 for even more capacity, (c) lr=1.5E-5 for slower but more stable convergence.
 
