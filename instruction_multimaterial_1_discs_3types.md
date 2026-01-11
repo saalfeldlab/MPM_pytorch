@@ -175,7 +175,7 @@ claude:
 ## Step 5.2: Modify code (OPTIONAL - use sparingly)
 
 **When to modify code:**
-- ONLY when config-level parameters are insufficient
+- When config-level parameters are insufficient OR when a failure mode indicates a fundamental limitation
 - When you have a specific architectural hypothesis to test
 - When 3+ iterations suggest a code-level change would help
 - NEVER modify code in first 4 iterations of a block
@@ -574,10 +574,11 @@ Three variants:
 - **lr-depth relationship (Block 1 finding)**: Deeper networks require lower lr. Scaling: n_layers=3-4 tolerates lr=2E-5, n_layers=5 needs lr≤2E-5, n_layers=5 + lr=3E-5 fails catastrophically
 - **5-layer ceiling (Block 2 finding)**: n_layers=5 degrades R² regardless of lr (tested 2E-5, 1.5E-5, 1E-5). 4 layers is the optimal depth for siren_txy.
 
-**Training data scaling (Block 2 finding)**:
+**Training data scaling (Block 2 finding, updated Block 5)**:
 - total_steps should scale with n_training_frames
-- Approximate rule: steps_per_frame ≈ 1000-1500 for R²>0.95
-- 48 frames → 50k steps OK; 100 frames → 150k steps needed
+- Approximate rule: steps_per_frame ≈ 1000 for R²>0.99 (Block 5 refinement)
+- 48 frames → 50k steps OK; 100 frames → 100k steps sufficient (F field R²=0.999)
+- **DATA SCALING BENEFIT (Block 5)**: More training frames IMPROVES accuracy (100 frames R²=0.9998 > 48 frames R²=0.9995 for F)
 
 **SIREN frequency (omega_f)**:
 - Low (1-10): smooth, low-frequency signals
@@ -637,6 +638,13 @@ Three variants:
 16. **C field optimal config (Block 4 finding)**: hidden_dim=384, n_layers=3, omega_f=30, lr=3E-5, 100k steps → R²=0.993. C behaves like F (easy), not S (hard).
 17. **Overfitting via excess steps (Block 4 finding)**: 150k steps WORSE than 100k for C field (R²=0.979 vs 0.990). More training can hurt.
 18. **Width ceiling field-dependent (Block 4 finding)**: hidden_dim=384 optimal for C field. 256→384 improves, 384→512 regresses. Optimal width varies by field.
+19. **omega_f range for F (Block 5 refined)**: 15≤omega_f≤25 (plateau at 15-25, sharp dropoff at 30). Lower omega_f (15) slightly better than 25.
+20. **LR-omega_f interaction (Block 5 finding)**: lr tolerance widens at lower omega_f. F field: lr=3E-5→4E-5 both work at omega_f=15, but lr=4E-5 fails at omega_f=30+ (Block 1).
+21. **256×4 Pareto-optimal for F (Block 5 confirmed)**: 256×4 (R²=0.999, 6.4min) dominates 512×4 (R²=0.999, 12.5min). Same quality, 2× speed.
+22. **Jp data scaling SUCCESS (Block 6 finding)**: 100 frames R²=0.982 > 48 frames R²=0.968 (+0.014). Requires 2000 steps/frame (vs F's 1000).
+23. **Jp hidden_dim=384 optimal (Block 6 finding)**: 384 > 512 > 256 for Jp at 100 frames. Similar to C field, unlike F (256 optimal).
+24. **Jp depth-sensitive (Block 6 finding)**: n_layers=4 causes major regression (R²=0.982→0.838) for Jp. 3 layers strictly optimal. Unlike F field (4 layers optimal).
+25. **omega_f shifts with data scaling (Block 6 finding)**: Jp optimal omega_f: 35 (48 frames) → 30 (100 frames). More data → lower optimal frequency.
 
 ---
 

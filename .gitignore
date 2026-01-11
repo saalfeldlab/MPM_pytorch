@@ -1,3 +1,9 @@
+# Files in root folder (Claude experiment logs)
+/*.md
+/*.log
+/*.txt
+!README.md
+
 /graphs_data/
 /log/
 *.png

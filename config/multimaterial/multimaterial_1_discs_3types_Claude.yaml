@@ -49,11 +49,11 @@ graph_model:
   output_size_update: 2
   inr_type: siren_txy
   input_size_nnr_f: 3
-  n_layers_nnr_f: 3
-  hidden_dim_nnr_f: 256
-  output_size_nnr_f: 4
+  n_layers_nnr_f: 4
+  hidden_dim_nnr_f: 768
+  output_size_nnr_f: 1
   outermost_linear_nnr_f: true
-  omega_f: 25.0
+  omega_f: 50.0
   omega_f_learning: false
   nnr_f_xy_period: 1.0
 plotting:
@@ -63,10 +63,10 @@ plotting:
   - -0.001
   - 0
 training:
-  device: cuda:1
+  device: 'auto'
   n_epochs: 1
   batch_size: 1
-  total_steps: 100000
+  total_steps: 150000
   small_init_batch_size: false
   n_runs: 1
   n_training_frames: 100
@@ -82,5 +82,5 @@ training:
   learning_rate_embedding_start: 1E-2
   learning_rate_NNR_f: 3E-5
 claude:
-  field_name: F
+  field_name: S
   ucb_c: 1.414
