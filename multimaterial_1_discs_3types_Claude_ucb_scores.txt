@@ -1,11 +1,11 @@
-=== UCB Scores (Block 6, iters 73-84, N=9, c=1.414) ===
+=== UCB Scores (Block 7, iters 85-96, N=9, c=1.414) ===
 
-Node 81: UCB=2.779, parent=77, visits=1, R2=0.658, slope=0.704, time=134.8min, Mutation=n_training_frames: 100 -> 48 AND hidden_dim_nnr_f: 384 -> 768
-Node 80: UCB=2.625, parent=73, visits=1, R2=0.504, slope=0.556, time=97.4min, Mutation=omega_f: 50.0 -> 55.0
-Node 75: UCB=2.480, parent=74, visits=1, R2=0.359, slope=0.440, time=55.6min, Mutation=omega_f: 50.0 -> 45.0
-Node 79: UCB=2.200, parent=78, visits=1, R2=0.079, slope=0.136, time=136.0min, Mutation=lr_NNR_f: 2E-5 -> 3E-5
-Node 78: UCB=2.004, parent=73, visits=2, R2=0.590, slope=0.612, time=205.1min, Mutation=hidden_dim_nnr_f: 512 -> 768
-Node 74: UCB=1.870, parent=73, visits=2, R2=0.456, slope=0.522, time=55.7min, Mutation=total_steps: 200000 -> 100000
-Node 77: UCB=1.857, parent=76, visits=2, R2=0.443, slope=0.493, time=52.8min, Mutation=n_layers_nnr_f: 4 -> 3
-Node 76: UCB=1.547, parent=73, visits=3, R2=0.487, slope=0.495, time=64.9min, Mutation=hidden_dim_nnr_f: 512 -> 384
-Node 73: UCB=0.941, parent=root, visits=9, R2=0.517, slope=0.559, time=116.3min, Mutation=n_training_frames: 48 -> 100 (data scaling test)
+Node 93: UCB=3.114, parent=92, visits=1, R2=0.993, slope=0.987, time=43.4min, Mutation=lr_NNR_f: 5E-5 -> 6E-5
+Node 88: UCB=3.112, parent=86, visits=1, R2=0.991, slope=0.985, time=74.7min, Mutation=hidden_dim_nnr_f: 384 -> 512
+Node 92: UCB=2.410, parent=91, visits=2, R2=0.996, slope=0.989, time=43.4min, Mutation=lr_NNR_f: 4E-5 -> 5E-5, n_layers_nnr_f: 4 -> 3 (revert)
+Node 91: UCB=2.053, parent=90, visits=3, R2=0.992, slope=0.990, time=55.9min, Mutation=n_layers_nnr_f: 3 -> 4
+Node 90: UCB=1.844, parent=89, visits=4, R2=0.996, slope=0.991, time=43.4min, Mutation=lr_NNR_f: 3E-5 -> 4E-5, omega_f: 35.0 -> 30.0
+Node 89: UCB=1.703, parent=87, visits=5, R2=0.996, slope=0.987, time=43.4min, Mutation=omega_f: 25.0 -> 35.0
+Node 87: UCB=1.601, parent=86, visits=6, R2=0.995, slope=0.991, time=43.4min, Mutation=omega_f: 30.0 -> 25.0
+Node 86: UCB=1.467, parent=85, visits=8, R2=0.996, slope=0.990, time=43.4min, Mutation=total_steps: 100000 -> 200000
+Node 85: UCB=1.396, parent=root, visits=9, R2=0.972, slope=0.965, time=21.9min, Mutation=New block - C field with 100 frames (data scaling test)

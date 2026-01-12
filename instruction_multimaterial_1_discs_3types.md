@@ -645,6 +645,10 @@ Three variants:
 23. **Jp hidden_dim=384 optimal (Block 6 finding)**: 384 > 512 > 256 for Jp at 100 frames. Similar to C field, unlike F (256 optimal).
 24. **Jp depth-sensitive (Block 6 finding)**: n_layers=4 causes major regression (R²=0.982→0.838) for Jp. 3 layers strictly optimal. Unlike F field (4 layers optimal).
 25. **omega_f shifts with data scaling (Block 6 finding)**: Jp optimal omega_f: 35 (48 frames) → 30 (100 frames). More data → lower optimal frequency.
+26. **S field data scaling FAILS (Block 7 finding)**: 100 frames WORSE than 48 frames (R²=0.590 vs 0.618 at same config). S is NOT data-limited, unlike F/Jp.
+27. **S field capacity scaling WORKS (Block 7 finding)**: 768×4 >> 512×4 for S field at 48 frames (R²=0.708 vs 0.618, +0.090). S benefits from higher capacity unlike other fields.
+28. **S field NEW RECORD (Block 7)**: R²=0.708 with 768×4, lr=2E-5, omega_f=50, 250k steps, 48 frames. Training time ~225min.
+29. **S field LR narrow zone (Block 7 finding)**: lr=2E-5 strictly optimal for S. lr=1.5E-5 regresses -0.033, lr=3E-5 catastrophic (R²=0.079 at 768×4).
 
 ---
 

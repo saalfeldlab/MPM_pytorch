@@ -82,7 +82,7 @@ if __name__ == "__main__":
         # out of memory: diminish n_particles
 
     # resume support: start_iteration parameter (default 1)
-    start_iteration = 65
+    start_iteration = 93
 
     # Claude task configuration
     n_iterations = task_params.get('iterations', 5)

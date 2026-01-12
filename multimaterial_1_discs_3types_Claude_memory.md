@@ -11,160 +11,153 @@
 | 4     | siren_txy | C    | 48       | 0.993   | 0.981      | 3E-5             | 384                | 3                  | 30.0            | 100000              | 7.1                 | omega_f=30, C like F (easy), 384 optimal |
 | 5     | siren_txy | F    | 100      | 0.9998  | 0.9999     | 3E-5             | 256                | 4                  | 15-25           | 100-150k            | 6.4                 | Data scaling SUCCESS, omega_f 15-25 plateau |
 | 6     | siren_txy | Jp   | 100      | 0.982   | 0.938      | 3E-5             | 384                | 3                  | 30.0            | 200000              | 43.5                | Data scaling SUCCESS for Jp (+0.014 vs 48 frames), 384>512>256, 2000 steps/frame needed |
+| 7     | siren_txy | S    | 48→100   | 0.708   | 0.735      | 2E-5             | 768                | 4                  | 50.0            | 250000              | 224.9               | Data scaling FAILS for S. Capacity scaling WORKS (768>512). NEW RECORD R²=0.708 at 48 frames |
 
 ### Established Principles
-1. **omega_f sensitivity**: Field-specific optimal frequencies - Jp→30-35, F→15-25, C→30, S→50. More frames → lower optimal omega_f.
-2. **lr optimal zone**: lr_NNR_f in [2E-5, 4E-5]; F→3E-5-4E-5 at low omega_f, Jp/C→3E-5, S→2E-5
-3. **hidden_dim field-dependent**: F needs 256, Jp/C need 384, S needs 512. Capacity ceiling exists per field.
-4. **n_layers optimal**: F→4 layers, Jp/C/S→3 layers. Jp is depth-sensitive (4 layers degrades severely).
+1. **omega_f sensitivity**: Field-specific optimal frequencies - Jp→30-35, F→15-25, C→30, S→50. More frames → lower optimal omega_f (except S).
+2. **lr optimal zone**: lr_NNR_f in [2E-5, 4E-5]; F→3E-5-4E-5 at low omega_f, Jp/C→3E-5, S→2E-5 (strict)
+3. **hidden_dim field-dependent**: F needs 256, Jp/C need 384, S needs 768. Capacity ceiling varies by field.
+4. **n_layers optimal**: F→4 layers, Jp/C/S→3-4 layers. Jp is depth-sensitive (4 layers degrades severely).
 5. **Depth > width for F**: Adding depth more efficient than width for F field. Other fields prefer width.
-6. **total_steps**: Field-dependent steps/frame ratio. F~1000, Jp~2000 steps/frame for R²>0.98.
+6. **total_steps**: Field-dependent steps/frame ratio. F~1000, Jp~2000, S~3000+ steps/frame.
 7. **batch_size**: Use batch_size=1 to avoid training time explosion
-8. **Field difficulty ranking**: F (R²=0.9998) > C (R²=0.993) >> Jp (R²=0.982) >> S (R²=0.618). Stress tensor fundamentally harder.
+8. **Field difficulty ranking**: F (R²=0.9998) > C (R²=0.993) >> Jp (R²=0.982) >> S (R²=0.708). Stress tensor fundamentally harder.
 9. **Local optimum detection**: When 5+ mutations from best node all regress, config-level is exhausted
-10. **Data scaling benefit CONFIRMED**: Both F and Jp improve with more frames. F: 48→100 frames = R²+0.0003, Jp: 48→100 = R²+0.014
+10. **Data scaling benefit**: F and Jp improve with more frames. S does NOT (data scaling FAILS for S).
 11. **LR-omega_f interaction**: LR tolerance widens at lower omega_f values
-12. **256×4 Pareto-optimal for F, 384×3 Pareto-optimal for Jp/C**
+12. **Pareto-optimal configs**: F→256×4, Jp/C→384×3, S→768×4
+13. **S field unique**: Higher capacity needed (768 vs 512), data scaling hurts, lr zone narrower (2E-5 only)
 
 ### Open Questions
-1. Does S field benefit from data scaling (48→100 frames), or is it fundamentally limited?
-2. Can C field improve beyond R²=0.993 with 100 frames?
-3. What is the optimal omega_f for S field at 100 frames?
+1. Can C field improve beyond R²=0.993 with 100 frames? (Testing in Block 8)
+2. Can S field improve beyond R²=0.708 with even more capacity (1024×4)?
+3. Is there a code modification that could help S field? (Loss scaling, normalization)
 
 ---
 
-## Previous Block Summary (Block 6)
+## Previous Block Summary (Block 7)
 
-**Field**: Jp (plastic deformation), **INR Type**: siren_txy, **n_frames**: 100
-Best config: lr=3E-5, hidden_dim=384, n_layers=3, omega_f=30, 200k steps → R²=0.982, slope=0.938
-Key findings: Data scaling SUCCESS (+0.014 R² vs 48 frames). hidden_dim=384 optimal (>512>256). omega_f shifted 35→30 with more data. n_layers=3 strictly required (4 layers regresses to R²=0.838).
-Block stats: 8/12 excellent (67%), branching rate 17%.
+**Field**: S (stress tensor), **INR Type**: siren_txy, **n_frames**: 48→100
+Best config: lr=2E-5, hidden_dim=768, n_layers=4, omega_f=50, 250k steps, 48 frames → R²=0.708, slope=0.735
+Key findings: Data scaling FAILS for S (100 frames worse than 48). Capacity scaling WORKS (768>>512, +0.090 R²). NEW S RECORD R²=0.708.
+Block stats: 4/12 moderate (33%), 8/12 poor (67%). Branching rate: 42%.
 
 ---
 
-## Current Block (Block 7)
+## Current Block (Block 8)
 
 ### Block Info
-Field: field_name=S, inr_type=siren_txy
-Iterations: 73-84
-n_training_frames: 100 (testing data scaling on HARD field)
+Field: field_name=C, inr_type=siren_txy
+Iterations: 85-96
+n_training_frames: 100 (testing data scaling on C field)
 
 ### Hypothesis
-Testing if data scaling helps the HARD field S (stress tensor). Block 3 found R²=0.618 ceiling at 48 frames.
-- Using S-optimal config from Block 3: lr=2E-5, hidden_dim=512, n_layers=4, omega_f=50
-- total_steps=200k (2000 steps/frame, following Jp pattern)
-- If S field is fundamentally limited (not data-limited), R² will plateau near 0.618 regardless of frames.
-- If data-limited like F/Jp, expect R² improvement toward 0.70+
+Testing if data scaling helps C field (APIC matrix). Block 4 found R²=0.993 at 48 frames with 384×3.
+- Using C-optimal config from Block 4: lr=3E-5, hidden_dim=384, n_layers=3, omega_f=30
+- total_steps=100k initially (1000 steps/frame like F)
+- Expect: If C behaves like F (easy field), data scaling should help. If like S, it will regress.
+- Prediction: C is similar to F, so expect R² improvement toward 0.995+
 
 ### Iterations This Block
 
-## Iter 73: poor
-Node: id=73, parent=root
-Mode/Strategy: exploit (block start)
-Config: lr_NNR_f=2E-5, total_steps=200000, hidden_dim_nnr_f=512, n_layers_nnr_f=4, omega_f=50.0, batch_size=1
-Metrics: final_r2=0.517, final_mse=7.09E-8, total_params=1054724, slope=0.559, training_time=116.3min
-Field: field_name=S, inr_type=siren_txy, n_training_frames=100
-Mutation: n_training_frames: 48 -> 100 (data scaling test)
-Parent rule: root (new block)
-Observation: S field WORSE than Block 3 ceiling (R²=0.517 vs 0.618). Training time EXPLOSION (116 min). Data scaling NOT immediately helping. CRITICAL: Need to reduce training time first.
-Next: parent=73 (reduce steps for faster iteration)
-
-## Iter 74: poor
-Node: id=74, parent=73
+## Iter 85: good
+Node: id=85, parent=root
 Mode/Strategy: exploit
-Config: lr_NNR_f=2E-5, total_steps=100000, hidden_dim_nnr_f=512, n_layers_nnr_f=4, omega_f=50.0, batch_size=1
-Metrics: final_r2=0.456, final_mse=8.12E-8, total_params=1054724, slope=0.522, training_time=55.7min
-Field: field_name=S, inr_type=siren_txy, n_training_frames=100
-Mutation: total_steps: 200000 -> 100000
-Parent rule: Highest UCB (node 73, UCB=1.184)
-Observation: Reducing steps HURT S field (R²=0.517→0.456). S field at 100 frames now WORSE than Block 3 ceiling. Training time acceptable (55.7min). Try omega_f reduction (following data scaling→lower freq pattern).
-Next: parent=74 (omega_f reduction)
+Config: lr_NNR_f=3E-5, total_steps=100000, hidden_dim_nnr_f=384, n_layers_nnr_f=3, omega_f=30.0, batch_size=1
+Metrics: final_r2=0.972, final_mse=5.34E+00, slope=0.965, training_time=21.9min
+Field: field_name=C, inr_type=siren_txy, n_training_frames=100
+Mutation: New block - C field with 100 frames (data scaling test)
+Observation: SURPRISING REGRESSION! 100 frames (R²=0.972) < 48 frames (R²=0.993). Data scaling FAILED for C.
+Next: parent=85, test total_steps=200k (2000 steps/frame like Jp)
 
-## Iter 75: poor
-Node: id=75, parent=74
+## Iter 86: excellent
+Node: id=86, parent=85
 Mode/Strategy: exploit
-Config: lr_NNR_f=2E-5, total_steps=100000, hidden_dim_nnr_f=512, n_layers_nnr_f=4, omega_f=45.0, batch_size=1
-Metrics: final_r2=0.359, final_mse=1.05E-7, total_params=1054724, slope=0.440, training_time=55.6min
-Field: field_name=S, inr_type=siren_txy, n_training_frames=100
-Mutation: omega_f: 50.0 -> 45.0
-Parent rule: Highest UCB (node 75, UCB=1.583)
-Observation: omega_f reduction CATASTROPHIC (R²=0.456→0.359, -0.097). CONFIRMS omega_f=50 is SHARP PEAK for S. Data scaling does NOT shift S's optimal omega_f (unlike F/Jp). Backtracking.
-Next: parent=73 (backtrack, try hidden_dim reduction)
+Config: lr_NNR_f=3E-5, total_steps=200000, hidden_dim_nnr_f=384, n_layers_nnr_f=3, omega_f=30.0, batch_size=1
+Metrics: final_r2=0.996, final_mse=7.33E-01, slope=0.990, training_time=43.4min
+Field: field_name=C, inr_type=siren_txy, n_training_frames=100
+Mutation: total_steps: 100000 -> 200000
+Observation: MAJOR RECOVERY! 200k steps (R²=0.996) >> 100k steps (R²=0.972). C data scaling WORKS with 2000 steps/frame. EXCEEDS 48-frame best.
+Next: parent=86, test omega_f=25
 
-## Iter 76: poor
-Node: id=76, parent=73
+## Iter 87: excellent
+Node: id=87, parent=86
 Mode/Strategy: exploit
-Config: lr_NNR_f=2E-5, total_steps=200000, hidden_dim_nnr_f=384, n_layers_nnr_f=4, omega_f=50.0, batch_size=1
-Metrics: final_r2=0.487, final_mse=7.47E-8, total_params=594436, slope=0.495, training_time=64.9min
-Field: field_name=S, inr_type=siren_txy, n_training_frames=100
-Mutation: hidden_dim_nnr_f: 512 -> 384
-Parent rule: Backtrack to node 73 (best R²=0.517)
-Observation: hidden_dim reduction WORSE (R²=0.517→0.487, -0.030). S needs higher capacity. 4/4 iterations ALL worse than Block 3 ceiling (R²=0.618). DATA SCALING FAILS for S field.
-Next: parent=76 (try n_layers reduction 4→3)
+Config: lr_NNR_f=3E-5, total_steps=200000, hidden_dim_nnr_f=384, n_layers_nnr_f=3, omega_f=25.0, batch_size=1
+Metrics: final_r2=0.995, final_mse=9.76E-01, slope=0.991, training_time=43.4min
+Field: field_name=C, inr_type=siren_txy, n_training_frames=100
+Mutation: omega_f: 30.0 -> 25.0
+Observation: omega_f=25 slightly worse than omega_f=30 (R²=0.995 vs 0.996, -0.001). C optimal omega_f stays ~30 even with 100 frames.
+Next: parent=86, test hidden_dim=512
 
-## Iter 77: poor
-Node: id=77, parent=76
+## Iter 88: excellent
+Node: id=88, parent=86
 Mode/Strategy: exploit
-Config: lr_NNR_f=2E-5, total_steps=200000, hidden_dim_nnr_f=384, n_layers_nnr_f=3, omega_f=50.0, batch_size=1
-Metrics: final_r2=0.443, final_mse=8.52E-8, total_params=446596, slope=0.493, training_time=52.8min
-Field: field_name=S, inr_type=siren_txy, n_training_frames=100
-Mutation: n_layers_nnr_f: 4 -> 3
-Parent rule: Highest UCB (node 77, UCB=2.024)
-Observation: n_layers reduction HURT (R²=0.487→0.443, -0.044). S field prefers 4 layers. 5/5 iterations at 100 frames ALL worse than Block 3 ceiling (R²=0.618). DATA SCALING FUNDAMENTALLY FAILS for S field.
-Next: parent=73 (backtrack to best R²=0.517, try increased capacity 512→768)
+Config: lr_NNR_f=3E-5, total_steps=200000, hidden_dim_nnr_f=512, n_layers_nnr_f=3, omega_f=30.0, batch_size=1
+Metrics: final_r2=0.991, final_mse=1.67E+00, slope=0.985, training_time=74.7min
+Field: field_name=C, inr_type=siren_txy, n_training_frames=100
+Mutation: hidden_dim_nnr_f: 384 -> 512
+Observation: hidden_dim=512 REGRESSED from 384 (R²=0.991 vs 0.996, -0.005). Confirms 384 optimal for C. Over-capacity, 1.7× slower.
+Next: parent=87, test omega_f=35
 
-## Iter 78: poor
-Node: id=78, parent=73
+## Iter 89: excellent
+Node: id=89, parent=87
 Mode/Strategy: exploit
-Config: lr_NNR_f=2E-5, total_steps=200000, hidden_dim_nnr_f=768, n_layers_nnr_f=4, omega_f=50.0, batch_size=1
-Metrics: final_r2=0.590, final_mse=5.99E-8, total_params=2368516, slope=0.612, training_time=205.1min
-Field: field_name=S, inr_type=siren_txy, n_training_frames=100
-Mutation: hidden_dim_nnr_f: 512 -> 768
-Parent rule: Backtrack to node 73 (best R²=0.517, 512×4), try increased capacity
-Observation: Capacity increase HELPED (R²=0.517→0.590, +0.073) but STILL below Block 3 ceiling (R²=0.618). Training time EXPLOSION (205.1min). S field benefits from capacity but 100 frames STILL worse than 48 frames.
-Next: parent=78 (try LR increase 2E-5→3E-5)
+Config: lr_NNR_f=3E-5, total_steps=200000, hidden_dim_nnr_f=384, n_layers_nnr_f=3, omega_f=35.0, batch_size=1
+Metrics: final_r2=0.996, final_mse=8.51E-01, slope=0.987, training_time=43.4min
+Field: field_name=C, inr_type=siren_txy, n_training_frames=100
+Mutation: omega_f: 25.0 -> 35.0
+Observation: omega_f=35 MATCHES omega_f=30 (both R²=0.996). C field omega_f range [25-35] is a plateau. omega_f=30 remains optimal (slightly better slope).
+Next: parent=89, test lr=4E-5
 
-## Iter 79: poor
-Node: id=79, parent=78
+## Iter 90: excellent
+Node: id=90, parent=89
 Mode/Strategy: exploit
-Config: lr_NNR_f=3E-5, total_steps=150000, hidden_dim_nnr_f=768, n_layers_nnr_f=4, omega_f=50.0, batch_size=1
-Metrics: final_r2=0.079, final_mse=1.40E-7, total_params=2368516, slope=0.136, training_time=136.0min
-Field: field_name=S, inr_type=siren_txy, n_training_frames=100
-Mutation: lr_NNR_f: 2E-5 -> 3E-5
-Parent rule: Highest UCB (node 79, UCB=1.950)
-Observation: LR increase CATASTROPHIC (R²=0.590→0.079, -0.511). S field CANNOT tolerate lr=3E-5 at 768×4 capacity. WORST result of block. 7/7 iterations at 100 frames ALL worse than Block 3 ceiling.
-Next: parent=73 (backtrack, try omega_f increase 50→55)
+Config: lr_NNR_f=4E-5, total_steps=200000, hidden_dim_nnr_f=384, n_layers_nnr_f=3, omega_f=30.0, batch_size=1
+Metrics: final_r2=0.996, final_mse=7.28E-01, slope=0.991, training_time=43.4min
+Field: field_name=C, inr_type=siren_txy, n_training_frames=100
+Mutation: lr_NNR_f: 3E-5 -> 4E-5, omega_f: 35.0 -> 30.0
+Observation: lr=4E-5 MATCHES lr=3E-5 (both R²=0.996). C field has WIDE lr tolerance [3E-5, 4E-5] at omega_f=30. Confirms LR-omega_f interaction.
+Next: parent=90, test n_layers=4
 
-## Iter 80: poor
-Node: id=80, parent=73
+## Iter 91: excellent
+Node: id=91, parent=90
 Mode/Strategy: exploit
-Config: lr_NNR_f=2E-5, total_steps=200000, hidden_dim_nnr_f=512, n_layers_nnr_f=4, omega_f=55.0, batch_size=1
-Metrics: final_r2=0.504, final_mse=7.34E-8, total_params=1054724, slope=0.556, training_time=97.4min
-Field: field_name=S, inr_type=siren_txy, n_training_frames=100
-Mutation: omega_f: 50.0 -> 55.0
-Parent rule: Backtrack to node 73 (best R²=0.517, 512×4), test omega_f increase
-Observation: omega_f increase HURT (R²=0.517→0.504, -0.013). omega_f=50 is SHARP PEAK for S - both 45 and 55 regress. 8/8 iterations at 100 frames ALL worse than Block 3 ceiling R²=0.618. DATA SCALING CONCLUSIVELY FAILS for S field.
-Next: parent=77 (highest UCB=2.443)
+Config: lr_NNR_f=4E-5, total_steps=200000, hidden_dim_nnr_f=384, n_layers_nnr_f=4, omega_f=30.0, batch_size=1
+Metrics: final_r2=0.992, final_mse=1.48E+00, slope=0.990, training_time=55.9min
+Field: field_name=C, inr_type=siren_txy, n_training_frames=100
+Mutation: n_layers_nnr_f: 3 -> 4
+Observation: n_layers=4 REGRESSED (R²=0.992 vs 0.996, -0.004). CONFIRMS C optimal depth=3 (like Jp). Extra layer 33% more params, 29% slower, worse R².
+Next: parent=91 (UCB=2.863), test lr=5E-5 (lr upper boundary) with n_layers=3 revert
 
-## Iter 81: moderate
-Node: id=81, parent=77
-Mode/Strategy: exploit (frame reversion + capacity increase)
-Config: lr_NNR_f=2E-5, total_steps=150000, hidden_dim_nnr_f=768, n_layers_nnr_f=4, omega_f=50.0, batch_size=1
-Metrics: final_r2=0.658, final_mse=4.998E-8, total_params=2368516, slope=0.704, training_time=134.8min
-Field: field_name=S, inr_type=siren_txy, n_training_frames=48
-Mutation: n_training_frames: 100 -> 48 AND hidden_dim_nnr_f: 384 -> 768
-Parent rule: Highest UCB (node 81, UCB=2.779)
-Observation: BREAKTHROUGH! Reverting to 48 frames with 768×4 EXCEEDS Block 3 ceiling (R²=0.658 > 0.618, +0.040). PROVES: 100 frames HURTS S field, 768×4 at 48 frames is NEW BEST config for S.
-Next: parent=81 (exploit new best, try 200k steps for higher R²)
+## Iter 92: excellent
+Node: id=92, parent=91
+Mode/Strategy: failure-probe (7 consecutive excellent)
+Config: lr_NNR_f=5E-5, total_steps=200000, hidden_dim_nnr_f=384, n_layers_nnr_f=3, omega_f=30.0, batch_size=1
+Metrics: final_r2=0.996, final_mse=8.48E-01, slope=0.989, training_time=43.4min
+Field: field_name=C, inr_type=siren_txy, n_training_frames=100
+Mutation: lr_NNR_f: 4E-5 -> 5E-5, n_layers_nnr_f: 4 -> 3 (revert)
+Observation: lr=5E-5 STILL WORKS (R²=0.996). C field lr tolerance [3E-5, 5E-5] widest of all fields.
+Next: parent=92 (UCB=2.995), test lr=6E-5 (extreme lr boundary probe)
+
+## Iter 93: excellent
+Node: id=93, parent=92
+Mode/Strategy: failure-probe (8 consecutive excellent/good)
+Config: lr_NNR_f=6E-5, total_steps=200000, hidden_dim_nnr_f=384, n_layers_nnr_f=3, omega_f=30.0, batch_size=1
+Metrics: final_r2=0.993, final_mse=1.42E+00, slope=0.987, training_time=43.4min
+Field: field_name=C, inr_type=siren_txy, n_training_frames=100
+Mutation: lr_NNR_f: 5E-5 -> 6E-5
+Observation: lr=6E-5 slight regression (R²=0.993 vs 0.996). LR UPPER BOUNDARY FOUND: C field lr tolerance [3E-5, 5E-5].
+Next: parent=93 (UCB=3.114), test omega_f=40 (omega_f upper boundary probe) with lr=5E-5 revert
 
 ### Emerging Observations
 
-1. **BREAKTHROUGH Iter 81**: Reverting to 48 frames with 768×4 EXCEEDS Block 3 ceiling (R²=0.658 > 0.618, +0.040). NEW BEST config for S.
-2. **S field data scaling FAILS CONFIRMED**: ALL 8 iterations at 100 frames (R²=0.079-0.590) WORSE than 48 frames.
-3. **S field is NOT data-limited**: Unlike F/Jp, more data HURTS S field. This is a fundamental representation problem.
-4. **omega_f=50 SHARP PEAK**: Does NOT shift with data (unlike F/Jp). Both 45 and 55 regress vs 50.
-5. **Capacity HELPS at 48 frames**: 768>512>384. n_layers=4 REQUIRED.
-6. **LR ceiling CONFIRMED**: lr=3E-5 causes CATASTROPHIC failure (R²=0.079). S field requires strict lr≤2E-5.
-7. **Training time concern**: 768×4 at 48 frames = 134.8min still slow.
-8. **3 iterations remain**: Continue exploiting 768×4 at 48 frames. Try: (a) 200k steps for higher R², (b) 1024×4 for even more capacity, (c) lr=1.5E-5 for slower but more stable convergence.
+- **C field data scaling WORKS with sufficient steps**: 200k steps (R²=0.996) > 48 frames best (R²=0.993). C needs 2000 steps/frame like Jp.
+- **Field steps/frame requirements confirmed**: F~1000, Jp~2000, C~2000. S unclear (data scaling fails regardless).
+- **C omega_f plateau [25-35]**: omega_f=25/30/35 all yield R²=0.995-0.996 (plateau). 30 marginally best for slope (0.990-0.991).
+- **hidden_dim=384 CONFIRMED optimal for C**: 512 causes regression (0.991 vs 0.996) and 1.7× slower. Consistent with Block 4.
+- **C field lr tolerance BOUNDED**: lr=3E-5, 4E-5, 5E-5 yield R²=0.996. lr=6E-5 regresses to R²=0.993. C field lr range: [3E-5, 5E-5].
+- **n_layers=3 CONFIRMED optimal for C**: 4 layers regresses (R²=0.992 vs 0.996) with 33% more params & 29% slower. Same pattern as Jp (depth-sensitive).
+- **Current block progress**: 8 excellent (iter 86-93), 1 good. 89% excellent rate. Best=R²=0.996 at nodes 86, 89, 90, 92.
+- **LR UPPER BOUNDARY FOUND**: lr=5E-5 works, lr=6E-5 regresses. Next: test omega_f=40 (upper boundary probe).
 
