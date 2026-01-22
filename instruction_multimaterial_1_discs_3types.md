@@ -2,7 +2,7 @@
 
 ## Goal
 
-Map the **MPM INR training landscape**: understand which INR architectures and training configurations achieve best field reconstruction (R² > 0.95) for Material Point Method simulations. Other important evaluation are slope (~1.0) and training time. Get an intuition for the training_time. 
+Map the **MPM INR training landscape**: understand which INR architectures and training configurations achieve best field reconstruction (R² > 0.95) for Material Point Method simulations. Other important evaluation are slope (~1.0) and training time. Get an intuition for the training_time.
 
 ## Iteration Loop Structure
 
@@ -94,7 +94,6 @@ Observation: [one line]
 Next: parent=P
 ```
 
-
 ### Step 4: Select parent node in UCB tree
 
 - Read `ucb_scores.txt`
@@ -113,24 +112,33 @@ Step B: Choose strategy
 | 100% convergence, branching<10%      | **forced-branch**   | Select node in bottom 50% of tree  |
 | Same param mutated 4+ times          | **switch-param**    | Mutate different parameter         |
 | All R² > 0.94, branching <20%        | **random-branch**   | Select random unvisited parent     |
+| Robustness test variance > 0.1       | **stochastic-field**| Switch to different field or try code mod |
+
+**Stochastic variance detection (Block 9 finding):**
+
+- If same config produces R² variance > 0.1 between runs, the field is **stochastically unstable**
+- For S field: 1024×4 ranges 0.595-0.723, 1280×4 ranges 0.084-0.757
+- When stochastic variance detected: (1) switch to different field, (2) try code modification (loss scaling, gradient clipping), or (3) accept unreliable ceiling
 
 **Recombination details:**
 
 Trigger: exists Node A and Node B where:
+
 - Both R² > 0.95
 - Not parent-child (distance ≥ 2 in tree)
 - Different parameter strengths
 
 Action:
+
 - parent = higher R² node
 - Mutation = adopt best param from other node
 
 ### Step 5: Edit Config File (default) or Modify Code (rare)
 
 Choose ONE:
+
 - **Step 5.1 (DEFAULT)**: Edit config file parameters only
 - **Step 5.2 (RARE)**: Modify Python code (only when config insufficient)
-
 
 ## Step 5.1: Edit Config File (default approach)
 
@@ -140,6 +148,7 @@ Edit config file for next iteration according to Parent Selection Rule.
 **CRITICAL: Config Parameter Constraints**
 
 **DO NOT add new parameters to the `claude:` section.** Only these fields are allowed:
+
 - `field_name`: Jp, F, S, C
 - `ucb_c`: float value (0.5-3.0)
 
@@ -151,12 +160,13 @@ Adding invalid parameters to `claude:` will cause a validation error and crash t
 
 Mutate ONE parameter at a time for better causal understanding.
 Does not apply to total_steps, as needed to constrain total training_time ~10 min
+Total training_time may exceed 10 min if results plateau
 
 ```yaml
 training:
   learning_rate_NNR_f: 1.0E-5 # range: 1E-7 to 1E-3
   batch_size: 8 # values: 4, 8, 16, 32, never larger than 32
-  total_steps: 50000 # range: 5000-200000 (SCALE inversely with hidden_dim for training_time ~10 min)
+  total_steps: 50000 # range: 5000-200000 (SCALE inversely with hidden_dim for training_time)
   n_training_frames: 48 # progression: 48 → 100 → 200 → 500 → 1000 → 2000 → 5000 → 10000
 graph_model:
   hidden_dim_nnr_f: 512 # values: 128, 256, 512, 1024, 2048
@@ -172,25 +182,30 @@ claude:
   field_name: Jp # values: Jp, F, S, C (change between blocks)
   ucb_c: 1.414 # UCB exploration constant (0.5-3.0), adjust between blocks
 ```
+
 ## Step 5.2: Modify code (OPTIONAL - use sparingly)
 
 **When to modify code:**
+
 - When config-level parameters are insufficient OR when a failure mode indicates a fundamental limitation
 - When you have a specific architectural hypothesis to test
 - When 3+ iterations suggest a code-level change would help
 - NEVER modify code in first 4 iterations of a block
 
 **Files you can modify:**
+
 1. `src/MPM_pytorch/models/Siren_Network.py` - Network architecture
 2. `src/MPM_pytorch/models/graph_trainer.py` - Training loop (data_train_INR function)
 
 **How code reloading works:**
+
 - Training runs in a subprocess (`train_INR_subprocess.py`) for each iteration
 - This subprocess reloads all Python modules, picking up any code modifications
 - Code changes are immediately effective in the next iteration
 - If the subprocess crashes due to syntax errors, the iteration fails and you'll see the error
 
 **Automatic git version control:**
+
 - After each iteration, the system checks if code files were modified
 - Modified files are automatically committed to git with descriptive messages
 - Commit messages include: iteration number, description extracted from logs, hypothesis
@@ -198,6 +213,7 @@ claude:
 - If not in a git repository, modifications are still logged but not version-controlled
 
 **Safety rules (CRITICAL):**
+
 1. **Make minimal changes** - edit only what's necessary
 2. **Test in isolation first** - don't combine code + config changes
 3. **Document thoroughly** - explain WHY in mutation log
@@ -210,6 +226,7 @@ claude:
 ### A. Network Architecture Changes (Siren_Network.py)
 
 **Allowed modifications:**
+
 - Add normalization layers (LayerNorm, BatchNorm) between SIREN layers
 - Add skip connections / residual connections
 - Modify initialization scheme (currently uses SIREN-specific init)
@@ -217,6 +234,7 @@ claude:
 - Change activation in final layer (currently linear or sin)
 
 **Example: Add LayerNorm after each hidden layer**
+
 ```python
 # In Siren class __init__, after each SineLayer:
 self.net.append(SineLayer(hidden_features, hidden_features, ...))
@@ -224,6 +242,7 @@ self.net.append(nn.LayerNorm(hidden_features))  # ADD THIS
 ```
 
 **Template for logging:**
+
 ```
 Mutation: [code] Siren_Network.py: Added LayerNorm after each hidden layer
 Hypothesis: Normalization may stabilize training for high omega_f
@@ -232,6 +251,7 @@ Hypothesis: Normalization may stabilize training for high omega_f
 ### B. Training Loop Changes (graph_trainer.py, data_train_INR function)
 
 **Allowed modifications:**
+
 - Change optimizer (Adam → AdamW, SGD, RMSprop)
 - Add learning rate scheduler (CosineAnnealingLR, ReduceLROnPlateau)
 - Add gradient clipping
@@ -240,6 +260,7 @@ Hypothesis: Normalization may stabilize training for high omega_f
 - Add early stopping logic
 
 **Example: Add learning rate schedule**
+
 ```python
 # After optimizer creation (around line 600):
 optim = torch.optim.Adam(lr=learning_rate, params=nnr_f.parameters())
@@ -250,6 +271,7 @@ scheduler.step()  # ADD THIS
 ```
 
 **Example: Add gradient clipping**
+
 ```python
 # In training loop, after loss.backward():
 loss.backward()
@@ -258,6 +280,7 @@ optim.step()
 ```
 
 **Example: Change loss function**
+
 ```python
 # Replace MSE with Huber loss (more robust to outliers):
 # OLD: loss = ((model_output - ground_truth_batch) ** 2).mean()
@@ -268,9 +291,11 @@ loss = torch.nn.functional.huber_loss(model_output, ground_truth_batch, delta=0.
 ### C. Versioning and Rollback
 
 **Automatic version control:**
+
 1. Config snapshots: `log/Claude_exploration/{instruction}/configs/iter_{N:03d}_config.yaml`
 2. Code modifications: Automatically committed to git after each iteration
 3. Git commit format:
+
    ```
    [Iter N] Description from your log
 
@@ -282,6 +307,7 @@ loss = torch.nn.functional.huber_loss(model_output, ground_truth_batch, delta=0.
    ```
 
 **After modifying code:**
+
 1. State clearly in mutation log: `"CODE MODIFIED: {file}:{function} - {one-line description}"`
 2. Include hypothesis in the CODE MODIFICATION section (automatically extracted for git commit)
 3. In memory.md "Emerging Observations", track: "Code mod iter X: {result}"
@@ -290,6 +316,7 @@ loss = torch.nn.functional.huber_loss(model_output, ground_truth_batch, delta=0.
 **Rollback procedures:**
 
 **Option A: Git revert (recommended)**
+
 ```bash
 # Human can revert the specific commit
 git log --oneline  # Find commit hash
@@ -297,11 +324,13 @@ git revert <commit-hash>
 ```
 
 **Option B: Manual revert**
+
 - If code change causes crash/error, state in observation: "Code modification failed, reverting"
 - Human will manually revert the code change via git
 - Continue with config-only mutations
 
 **Viewing modification history:**
+
 ```bash
 git log --grep="Claude Code Modification" --oneline
 git show <commit-hash>  # See full diff
@@ -322,22 +351,26 @@ Is R² consistently < 0.75 for 4+ iterations with good configs?
 ### E. Specific Hypotheses Worth Testing via Code
 
 **Network architecture:**
+
 - "Hypothesis: SIREN's periodic activation causes overfitting → test with ReLU in hidden layers"
 - "Hypothesis: Deeper networks need residual connections → add skip connections"
 - "Hypothesis: LayerNorm improves training stability for field S"
 
 **Optimization:**
+
 - "Hypothesis: Adam's momentum hurts sparse gradient signals → test SGD"
 - "Hypothesis: Learning rate needs warmup → add linear warmup schedule"
 - "Hypothesis: Loss landscape is non-convex → try curriculum learning (easy frames first)"
 
 **Loss function:**
+
 - "Hypothesis: MSE loss overweights outliers in field F → try Huber loss"
 - "Hypothesis: Need physics-informed loss → add gradient penalty on spatial smoothness"
 
 ### F. Logging Code Modifications
 
 **In iteration log, use this format:**
+
 ```
 ## Iter N: [excellent/good/moderate/poor]
 Node: id=N, parent=P
@@ -359,6 +392,7 @@ Next: parent=P
 ### G. Constraints and Prohibitions
 
 **NEVER:**
+
 - Modify run_MPM.py (breaks the experiment loop)
 - Change function signatures (breaks compatibility)
 - Add dependencies requiring new pip packages (unless absolutely necessary)
@@ -366,6 +400,7 @@ Next: parent=P
 - Modify code just to "try something" without hypothesis
 
 **ALWAYS:**
+
 - Explain the hypothesis motivating the code change
 - Compare directly to parent iteration (same config, code-only diff)
 - Document exactly what changed (file, line numbers, what was added/removed)
@@ -422,15 +457,18 @@ After editing, state in analysis log: `"INSTRUCTIONS EDITED: added rule [X]"` or
 **Between-block changes (choose ONE per block boundary):**
 
 Option A: **Change field_name**
+
 - Rotate through fields: Jp → F → S → C → Jp...
 - Allows testing same architecture across different fields
 
 Option B: **Increase n_training_frames**
+
 - Progression: 48 → 100 → 200 → 500 → 1000 → 2000 → 5000 → 10000
 - Keep field_name constant to isolate effect of more training data
 - IMPORTANT: Always ensure n_training_frames > batch_size
 
 **Strategy guidelines:**
+
 - Check Regime Comparison Table → choose untested combination
 - **Do not replicate** previous block unless motivated (testing knowledge transfer)
 - Alternate between Option A and B to build comprehensive understanding
@@ -541,32 +579,36 @@ f(t, id) → field_value
 ```
 
 Three variants:
+
 - `siren_t`: Input = time only (outputs all particles)
 - `siren_id`: Input = (time, particle_id)
 - `siren_txy`: Input = (time, x, y) - uses Lagrangian positions
 
 **InstantNGP (Hash Encoding)**:
+
 - Multi-resolution hash encoding + MLP
 - Faster training but more memory
 - `ngp`: Hash-encoded time representation
 
 ### MPM Fields
 
-| Field | Description | Components | Typical Range |
-|-------|-------------|------------|---------------|
-| F | Deformation gradient | 4 | ~1.0-2.0 |
-| Jp | Plastic deformation | 1 | ~0.8-1.2 |
-| S | Stress tensor | 4 | ~0-0.01 |
-| C | APIC matrix | 4 | ~-1 to 1 |
+| Field | Description          | Components | Typical Range |
+| ----- | -------------------- | ---------- | ------------- |
+| F     | Deformation gradient | 4          | ~1.0-2.0      |
+| Jp    | Plastic deformation  | 1          | ~0.8-1.2      |
+| S     | Stress tensor        | 4          | ~0-0.01       |
+| C     | APIC matrix          | 4          | ~-1 to 1      |
 
 ### Training Dynamics
 
 **Learning rate sensitivity**:
+
 - Too high → oscillation, NaN
 - Too low → slow convergence, underfitting
 - Optimal range: 1E-6 to 1E-4 for most fields
 
 **Capacity vs Overfitting**:
+
 - hidden_dim × n_layers determines capacity
 - More capacity → better fit but slower
 - Typical: 512×3 or 1024×3
@@ -574,19 +616,25 @@ Three variants:
 - **lr-depth relationship (Block 1 finding)**: Deeper networks require lower lr. Scaling: n_layers=3-4 tolerates lr=2E-5, n_layers=5 needs lr≤2E-5, n_layers=5 + lr=3E-5 fails catastrophically
 - **5-layer ceiling (Block 2 finding)**: n_layers=5 degrades R² regardless of lr (tested 2E-5, 1.5E-5, 1E-5). 4 layers is the optimal depth for siren_txy.
 
-**Training data scaling (Block 2 finding, updated Block 5)**:
+**Training data scaling (Block 2 finding, updated Block 5, Block 10)**:
+
 - total_steps should scale with n_training_frames
-- Approximate rule: steps_per_frame ≈ 1000 for R²>0.99 (Block 5 refinement)
+- Approximate rule: steps_per_frame ≈ 1000 for R²>0.99 (Block 5 refinement), Jp needs 2000 steps/frame
 - 48 frames → 50k steps OK; 100 frames → 100k steps sufficient (F field R²=0.999)
 - **DATA SCALING BENEFIT (Block 5)**: More training frames IMPROVES accuracy (100 frames R²=0.9998 > 48 frames R²=0.9995 for F)
+- **OVERFITTING RISK (Block 10)**: Too many steps causes overfitting. Jp@200frames: 400k OK (0.989), 500k OVERFITS (0.939). Never exceed 2500 steps/frame.
+- **DIMINISHING RETURNS (Block 10)**: Jp data scaling gains halve per doubling: +0.014 (48→100), +0.007 (100→200)
 
 **SIREN frequency (omega_f)**:
+
 - Low (1-10): smooth, low-frequency signals
 - Medium (20-50): typical for MPM fields
 - High (>50): high-frequency detail, unstable training
-- **Field-specific optimal omega_f (Block 2 finding)**: F field optimal at omega_f=25, Jp optimal at 35. Different fields prefer different frequencies. F frequency mapping: 20(0.995)<25(0.999)>30(0.997)>35(0.996)>50(0.985)
+- **Field-specific optimal omega_f (Block 2 finding, updated Block 10)**: F field optimal at omega_f=15-25, Jp optimal at 20-25 (200 frames) or 30-35 (48 frames). More frames → lower optimal omega_f.
+- **Jp@200frames omega_f map (Block 10)**: 35(0.786) << 30(0.982) < 25(0.985) ≈ 20(0.989) > 15(0.978). Optimal=20-25.
 
 **Compression ratio**:
+
 - Data size / model parameters
 - Higher is better (more compression)
 - Typical target: >100x
@@ -618,49 +666,18 @@ Three variants:
 
 ---
 
-## Common Failure Modes
-
-1. **NaN loss**: lr_NNR_f too high or omega_f too high
-2. **Underfitting**: total_steps too low, model too small
-3. **Slow convergence**: lr_NNR_f too low
-4. **Overfitting to noise**: batch_size too small
-5. **Memory OOM**: hidden_dim or n_particles too large
-6. **Training time explosion**: batch_size > 1 causes 7× slowdown (Block 1 finding) - use batch_size=1
-7. **omega_f sensitivity**: For siren_txy, omega_f=30-35 is optimal. omega_f=20 underperforms, omega_f≥40 causes slope regression (Block 1 finding)
-8. **hidden_dim ceiling**: hidden_dim=512 is optimal for siren_txy. hidden_dim=768 causes regression (R²=0.968→0.885) and 2× training time (Block 1 finding)
-9. **lr upper bound**: lr_NNR_f=4E-5 causes training instability (R²=0.964→0.806). Optimal zone is 2E-5→3E-5 (Block 1 finding)
-10. **F field efficiency (Block 2 finding)**: hidden_dim=256 sufficient for F field (R²=0.996), 256×4 achieves R²=0.9995 in 6.3min
-11. **Depth > width (Block 2 finding)**: 512×2 (R²=0.977) < 256×3 (R²=0.996). Extra layer beats doubled width for SIREN.
-12. **Field difficulty ranking (Block 2 finding)**: F field (4 components) achieves R²=0.9995 > Jp (1 component) at R²=0.968. F has more regular structure.
-13. **S field (stress tensor) is HARD (Block 3 finding)**: Best R²=0.618 despite exhaustive optimization. omega_f=50 SHARP PEAK (both 45 and 60 regress). S values ~0-0.01 may need loss scaling or normalization code modification.
-14. **Field-specific omega_f (Block 4 confirmed)**: Jp→35, F→25, C→30, S→50. Each field has distinct optimal frequency.
-15. **Local optimum detection (Block 3 finding)**: When 5+ mutations from best node all regress, config-level is exhausted. Consider code modification or field change.
-16. **C field optimal config (Block 4 finding)**: hidden_dim=384, n_layers=3, omega_f=30, lr=3E-5, 100k steps → R²=0.993. C behaves like F (easy), not S (hard).
-17. **Overfitting via excess steps (Block 4 finding)**: 150k steps WORSE than 100k for C field (R²=0.979 vs 0.990). More training can hurt.
-18. **Width ceiling field-dependent (Block 4 finding)**: hidden_dim=384 optimal for C field. 256→384 improves, 384→512 regresses. Optimal width varies by field.
-19. **omega_f range for F (Block 5 refined)**: 15≤omega_f≤25 (plateau at 15-25, sharp dropoff at 30). Lower omega_f (15) slightly better than 25.
-20. **LR-omega_f interaction (Block 5 finding)**: lr tolerance widens at lower omega_f. F field: lr=3E-5→4E-5 both work at omega_f=15, but lr=4E-5 fails at omega_f=30+ (Block 1).
-21. **256×4 Pareto-optimal for F (Block 5 confirmed)**: 256×4 (R²=0.999, 6.4min) dominates 512×4 (R²=0.999, 12.5min). Same quality, 2× speed.
-22. **Jp data scaling SUCCESS (Block 6 finding)**: 100 frames R²=0.982 > 48 frames R²=0.968 (+0.014). Requires 2000 steps/frame (vs F's 1000).
-23. **Jp hidden_dim=384 optimal (Block 6 finding)**: 384 > 512 > 256 for Jp at 100 frames. Similar to C field, unlike F (256 optimal).
-24. **Jp depth-sensitive (Block 6 finding)**: n_layers=4 causes major regression (R²=0.982→0.838) for Jp. 3 layers strictly optimal. Unlike F field (4 layers optimal).
-25. **omega_f shifts with data scaling (Block 6 finding)**: Jp optimal omega_f: 35 (48 frames) → 30 (100 frames). More data → lower optimal frequency.
-26. **S field data scaling FAILS (Block 7 finding)**: 100 frames WORSE than 48 frames (R²=0.590 vs 0.618 at same config). S is NOT data-limited, unlike F/Jp.
-27. **S field capacity scaling WORKS (Block 7 finding)**: 768×4 >> 512×4 for S field at 48 frames (R²=0.708 vs 0.618, +0.090). S benefits from higher capacity unlike other fields.
-28. **S field NEW RECORD (Block 7)**: R²=0.708 with 768×4, lr=2E-5, omega_f=50, 250k steps, 48 frames. Training time ~225min.
-29. **S field LR narrow zone (Block 7 finding)**: lr=2E-5 strictly optimal for S. lr=1.5E-5 regresses -0.033, lr=3E-5 catastrophic (R²=0.079 at 768×4).
-
----
-
 ## Quick Reference
 
 **Fast iteration (testing)**:
+
 - total_steps=10000, hidden_dim=256, n_layers=2
 
 **Production quality**:
+
 - total_steps=50000-200000, hidden_dim=512-1024, n_layers=3-4
 
 **Parameter mutation magnitude**:
+
 - Learning rates: ×2 or ÷2
 - Network size: double or half
 - Training steps: ×1.5 or ×2

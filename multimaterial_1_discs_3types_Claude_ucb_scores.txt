@@ -1,11 +1,6 @@
-=== UCB Scores (Block 7, iters 85-96, N=9, c=1.414) ===
+=== UCB Scores (Block 10, iters 121-132, N=4, c=1.414) ===
 
-Node 93: UCB=3.114, parent=92, visits=1, R2=0.993, slope=0.987, time=43.4min, Mutation=lr_NNR_f: 5E-5 -> 6E-5
-Node 88: UCB=3.112, parent=86, visits=1, R2=0.991, slope=0.985, time=74.7min, Mutation=hidden_dim_nnr_f: 384 -> 512
-Node 92: UCB=2.410, parent=91, visits=2, R2=0.996, slope=0.989, time=43.4min, Mutation=lr_NNR_f: 4E-5 -> 5E-5, n_layers_nnr_f: 4 -> 3 (revert)
-Node 91: UCB=2.053, parent=90, visits=3, R2=0.992, slope=0.990, time=55.9min, Mutation=n_layers_nnr_f: 3 -> 4
-Node 90: UCB=1.844, parent=89, visits=4, R2=0.996, slope=0.991, time=43.4min, Mutation=lr_NNR_f: 3E-5 -> 4E-5, omega_f: 35.0 -> 30.0
-Node 89: UCB=1.703, parent=87, visits=5, R2=0.996, slope=0.987, time=43.4min, Mutation=omega_f: 25.0 -> 35.0
-Node 87: UCB=1.601, parent=86, visits=6, R2=0.995, slope=0.991, time=43.4min, Mutation=omega_f: 30.0 -> 25.0
-Node 86: UCB=1.467, parent=85, visits=8, R2=0.996, slope=0.990, time=43.4min, Mutation=total_steps: 100000 -> 200000
-Node 85: UCB=1.396, parent=root, visits=9, R2=0.972, slope=0.965, time=21.9min, Mutation=New block - C field with 100 frames (data scaling test)
+Node 124: UCB=2.414, parent=123, visits=1, R2=1.000, slope=1.000, time=15.4min, Mutation=omega_f: 15.0 -> 25.0
+Node 123: UCB=1.942, parent=122, visits=2, R2=1.000, slope=1.000, time=15.7min, Mutation=omega_f: 20.0 -> 15.0
+Node 122: UCB=1.707, parent=121, visits=3, R2=1.000, slope=1.000, time=18.0min, Mutation=total_steps: 200000 -> 300000 (1500 steps/frame)
+Node 121: UCB=1.501, parent=root, visits=4, R2=0.935, slope=0.944, time=12.1min, Mutation=Block 5 optimal config (lr=3E-5, 256×4, omega_f=20) scaled to 200 frames (200k steps = 1000 steps/frame)
