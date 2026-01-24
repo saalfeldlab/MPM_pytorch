@@ -681,9 +681,9 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
         loss.backward()
         # Gradient clipping to stabilize training (especially for S field with high variance)
         # THRESHOLD FOUND: max_norm must be <=1.0. Values >1.0 cause catastrophic failure.
-        # Clipping map: 1.0->0.786, 1.5->0.075(FAIL), 2.0->0.118(FAIL), 5.0->0.128(FAIL)
-        # Testing max_norm=0.5 to see if tighter clipping improves R² above 0.786
-        torch.nn.utils.clip_grad_norm_(nnr_f.parameters(), max_norm=0.5)
+        # Clipping map: 0.5->0.828(NEW BEST), 1.0->0.786, 1.5->0.075(FAIL), 2.0->0.118(FAIL), 5.0->0.128(FAIL)
+        # Testing max_norm=0.25 to see if even tighter clipping improves R² above 0.828
+        torch.nn.utils.clip_grad_norm_(nnr_f.parameters(), max_norm=0.25)
         optim.step()
 
         loss_list.append(loss.item())
