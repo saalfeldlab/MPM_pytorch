@@ -544,6 +544,8 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
     elif inr_type in ['siren_t', 'siren_id', 'siren_txy']:
         # create SIREN model for nnr_f
         omega_f_learning = getattr(model_config, 'omega_f_learning', False)
+        # LayerNorm for S field stabilization - reduces stochastic variance
+        use_layer_norm = getattr(model_config, 'use_layer_norm', False)
         nnr_f = Siren(
             in_features=input_size_nnr_f,
             hidden_features=hidden_dim_nnr_f,
@@ -552,7 +554,8 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
             outermost_linear=outermost_linear_nnr_f,
             first_omega_0=omega_f,
             hidden_omega_0=omega_f,
-            learnable_omega=omega_f_learning
+            learnable_omega=omega_f_learning,
+            use_layer_norm=use_layer_norm
         )
         nnr_f = nnr_f.to(device)
 
@@ -562,6 +565,7 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
         print(f"using SIREN ({inr_type}):")
         print(f"  architecture: {input_size_nnr_f} → {hidden_dim_nnr_f} × {n_layers_nnr_f} hidden → {output_size_nnr_f}")
         print(f"  omega_f: {omega_f} (learnable: {omega_f_learning})")
+        print(f"  layer_norm: {use_layer_norm}")
         if omega_f_learning and hasattr(nnr_f, 'get_omegas'):
             print(f"  initial omegas: {nnr_f.get_omegas()}")
         print(f"  parameters: {total_params:,}")
