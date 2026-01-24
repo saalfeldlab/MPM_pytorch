@@ -51,17 +51,24 @@ class SineLayer(nn.Module):
 
 class Siren(nn.Module):
     def __init__(self, in_features, hidden_features, hidden_layers, out_features, outermost_linear=False,
-                 first_omega_0=30, hidden_omega_0=30., learnable_omega=False):
+                 first_omega_0=30, hidden_omega_0=30., learnable_omega=False, use_layer_norm=False):
         super().__init__()
 
         self.learnable_omega = learnable_omega
+        self.use_layer_norm = use_layer_norm
         self.net = []
         self.net.append(SineLayer(in_features, hidden_features,
                                   is_first=True, omega_0=first_omega_0, learnable_omega=learnable_omega))
+        # Add LayerNorm after first layer if enabled (for S field stabilization)
+        if use_layer_norm:
+            self.net.append(nn.LayerNorm(hidden_features))
 
         for i in range(hidden_layers):
             self.net.append(SineLayer(hidden_features, hidden_features,
                                       is_first=False, omega_0=hidden_omega_0, learnable_omega=learnable_omega))
+            # Add LayerNorm after each hidden layer if enabled
+            if use_layer_norm:
+                self.net.append(nn.LayerNorm(hidden_features))
 
         if outermost_linear:
             final_linear = nn.Linear(hidden_features, out_features)
