@@ -680,8 +680,9 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
         optim.zero_grad()
         loss.backward()
         # Gradient clipping to stabilize training (especially for S field with high variance)
-        # max_norm=5.0: less aggressive than 1.0, may allow higher R² ceiling while still preventing catastrophic failures
-        torch.nn.utils.clip_grad_norm_(nnr_f.parameters(), max_norm=5.0)
+        # max_norm=2.0: testing if smaller increment from 1.0 can raise R² ceiling while maintaining stability
+        # (iter 196: max_norm=5.0 FAILED catastrophically with R²=0.128)
+        torch.nn.utils.clip_grad_norm_(nnr_f.parameters(), max_norm=2.0)
         optim.step()
 
         loss_list.append(loss.item())
