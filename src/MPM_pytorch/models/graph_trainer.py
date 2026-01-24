@@ -679,6 +679,8 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
 
         optim.zero_grad()
         loss.backward()
+        # Gradient clipping to stabilize training (especially for S field with high variance)
+        torch.nn.utils.clip_grad_norm_(nnr_f.parameters(), max_norm=1.0)
         optim.step()
 
         loss_list.append(loss.item())
