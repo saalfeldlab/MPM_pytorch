@@ -902,20 +902,24 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
                 r2 = r_value ** 2
                 frame_mse = ((pred_all_flat - gt_all_flat) ** 2).mean()
 
+                # Use 98th percentile to handle hot spots/outliers, always start at 0
+                gt_p98 = np.percentile(gt_all_flat, 98)
+                pred_p98 = np.percentile(pred_all_flat, 98)
+                upper_bound = max(gt_p98, pred_p98) * 1.05  # 5% margin above 98th percentile
+                lims = [0, upper_bound]
+
                 # Add diagonal line (ideal)
-                lims = [min(gt_all_flat.min(), pred_all_flat.min()), max(gt_all_flat.max(), pred_all_flat.max())]
                 ax4.plot(lims, lims, 'r--', alpha=0.5, lw=1, label='ideal')
 
                 # Add regression line
-                x_line = np.array([gt_all_flat.min(), gt_all_flat.max()])
+                x_line = np.array([0, upper_bound])
                 y_line = slope * x_line + intercept
                 ax4.plot(x_line, y_line, 'g-', alpha=0.7, lw=1, label=f'fit (slope={slope:.3f})')
 
-                # Recenter on data range with some padding
-                x_margin = (gt_all_flat.max() - gt_all_flat.min()) * 0.05
-                y_margin = (pred_all_flat.max() - pred_all_flat.min()) * 0.05
-                ax4.set_xlim([gt_all_flat.min() - x_margin, gt_all_flat.max() + x_margin])
-                ax4.set_ylim([pred_all_flat.min() - y_margin, pred_all_flat.max() + y_margin])
+                # Set same limits for both axes (square aspect)
+                ax4.set_xlim(lims)
+                ax4.set_ylim(lims)
+                ax4.set_aspect('equal', adjustable='box')
 
                 ax4.set_xlabel('Ground Truth', color='white', fontsize=11)
                 ax4.set_ylabel('Prediction', color='white', fontsize=11)
