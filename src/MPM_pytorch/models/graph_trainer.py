@@ -802,58 +802,30 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
                 slope, intercept, r_value, p_value, std_err = linregress(gt_all_flat, pred_all_flat)
                 r2 = r_value ** 2
                 frame_mse = ((pred_all_flat - gt_all_flat) ** 2).mean()
+                mse = ((pred_np - gt_np) ** 2).mean()
 
-                # traces plot (10 particles, darkgreen=GT, white=pred with slope correction)
-                # For multi-component fields, plot first component only
+                # Compute per-frame MSE for temporal analysis
+                per_frame_mse = ((pred_np - gt_np) ** 2).mean(axis=(1, 2))  # (n_frames,)
+
+                # Per-frame MSE plot (top middle panel)
                 ax1 = plt.subplot(3, 4, 2) if n_components == 4 else plt.subplot(2, 3, 2)
                 ax1.set_facecolor('black')
-                ax1.set_axis_off()
-                n_traces = 10
-                trace_ids = np.linspace(0, n_particles - 1, n_traces, dtype=int)
-
-                # Extract first component for plotting if multi-component field
-                if n_components > 1:
-                    gt_plot = gt_np[:, :, 0]  # (n_frames, n_particles) - first component
-                    pred_plot = pred_np[:, :, 0]  # (n_frames, n_particles) - first component
-                else:
-                    gt_plot = gt_np[:, :, 0]  # (n_frames, n_particles)
-                    pred_plot = pred_np[:, :, 0]  # (n_frames, n_particles)
-
-                # Compute offset based on trace variance (not absolute values)
-                # so that variation within each trace is visible
-                trace_stds = [gt_plot[:, idx].std() for idx in trace_ids]
-                avg_std = np.mean(trace_stds) if trace_stds else 1.0
-                offset = max(avg_std * 4, 1e-6)  # 4 std spacing between traces
-                t = np.arange(n_frames)
-
-                for j, n_idx in enumerate(trace_ids):
-                    # Center each trace by subtracting its mean, then offset
-                    # Apply slope correction only if slope is reasonable (> 0.3)
-                    gt_trace = gt_plot[:, n_idx]
-                    pred_trace = pred_plot[:, n_idx]
-                    if slope > 0.3:
-                        # Apply slope correction: pred_corrected ≈ gt when model is good
-                        pred_trace_corrected = (pred_trace - intercept) / slope
-                        pred_centered = pred_trace_corrected - gt_trace.mean()
-                    else:
-                        # Slope too small - just center prediction by its own mean
-                        pred_centered = pred_trace - pred_trace.mean()
-                    gt_centered = gt_trace - gt_trace.mean()
-                    y0 = j * offset
-                    ax1.plot(t, gt_centered + y0, color='darkgreen', lw=2.0, alpha=0.95)
-                    ax1.plot(t, pred_centered + y0, color='white', lw=0.5, alpha=0.95)
-
-                ax1.set_xlim(0, min(20000, n_frames))
-                ax1.set_ylim(-offset * 1.5, offset * (n_traces + 0.5))
-                mse = ((pred_np - gt_np) ** 2).mean()
-                omega_str = ''
-                if hasattr(nnr_f, 'get_omegas'):
-                    omegas = nnr_f.get_omegas()
-                    if omegas:
-                        omega_str = f'  ω: {omegas[0]:.1f}'
-                ax1.text(0.02, 0.98, f'MSE: {mse:.6f}{omega_str}',
-                            transform=ax1.transAxes, va='top', ha='left',
-                            fontsize=12, color='white')
+                frame_indices = np.arange(n_frames)
+                ax1.plot(frame_indices, per_frame_mse, color='white', lw=0.5, alpha=0.7)
+                # Smoothed curve
+                if len(per_frame_mse) > 20:
+                    window = min(50, len(per_frame_mse) // 5)
+                    smoothed = np.convolve(per_frame_mse, np.ones(window)/window, mode='valid')
+                    x_smooth = np.arange(window//2, window//2 + len(smoothed))
+                    ax1.plot(x_smooth, smoothed, color='cyan', lw=1.5, alpha=0.9)
+                # Mark the frame shown in spatial plots
+                ax1.axvline(x=n_frames // 2, color='red', linestyle='--', lw=1, alpha=0.7)
+                ax1.set_xlabel('frame', color='white', fontsize=10)
+                ax1.set_ylabel('MSE', color='white', fontsize=10)
+                ax1.set_title('Per-frame MSE', color='white', fontsize=11)
+                ax1.tick_params(colors='white', labelsize=9)
+                for spine in ax1.spines.values():
+                    spine.set_color('white')
 
                 # Correct predictions with slope (pred_corrected ≈ gt when R² is good)
                 pred_np_corrected = (pred_np - intercept) / slope if slope != 0 else pred_np
@@ -918,9 +890,7 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
                         gt_c = gt_frame[:, c_idx]
                         vmin, vmax = vmin_vmax_per_comp[c_idx]
                         ax_gt.scatter(pos_data[:, 0], pos_data[:, 1], c=gt_c, s=1, cmap=cmap_name, vmin=vmin, vmax=vmax)
-                        ssim_c = compute_ssim_gridded(gt_c, pred_frame[:, c_idx], pos_data)
                         ax_gt.set_title(f'GT {comp_labels[c_idx]}', color='white', fontsize=9)
-                        ax_gt.text(0.02, 0.98, f'SSIM:{ssim_c:.3f}', transform=ax_gt.transAxes, va='top', ha='left', fontsize=8, color='yellow')
                         ax_gt.set_xlim([0, 1]); ax_gt.set_ylim([0, 1])
                         ax_gt.set_aspect('equal')
                         ax_gt.set_xticks([]); ax_gt.set_yticks([])
@@ -935,9 +905,7 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
                         pred_c = pred_frame[:, c_idx]
                         vmin, vmax = vmin_vmax_per_comp[c_idx]  # use GT range
                         ax_pred.scatter(pos_data[:, 0], pos_data[:, 1], c=pred_c, s=1, cmap=cmap_name, vmin=vmin, vmax=vmax)
-                        ssim_c = compute_ssim_gridded(gt_c, pred_c, pos_data)
                         ax_pred.set_title(f'Pred {comp_labels[c_idx]}', color='white', fontsize=9)
-                        ax_pred.text(0.02, 0.98, f'SSIM:{ssim_c:.3f}', transform=ax_pred.transAxes, va='top', ha='left', fontsize=8, color='white')
                         ax_pred.set_xlim([0, 1]); ax_pred.set_ylim([0, 1])
                         ax_pred.set_aspect('equal')
                         ax_pred.set_xticks([]); ax_pred.set_yticks([])
@@ -966,7 +934,6 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
                     ax3.set_facecolor('black')
                     ax3.scatter(pos_data[:, 0], pos_data[:, 1], c=pred_frame, s=3, cmap=cmap_name, vmin=vmin, vmax=vmax)
                     ax3.set_title(f'Pred {field_name} (corrected)', color='white', fontsize=12)
-                    ax3.text(0.02, 0.98, f'SSIM: {ssim_val:.3f}', transform=ax3.transAxes, va='top', ha='left', fontsize=10, color='white')
                     ax3.set_xlim([0, 1]); ax3.set_ylim([0, 1])
                     ax3.set_aspect('equal')
                     ax3.set_xticks([]); ax3.set_yticks([])
@@ -1119,6 +1086,182 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
             print(f"final field saved to: {dest_path}")
     except Exception as e:
         print(f"warning: could not copy final field: {e}")
+
+    # Generate MP4 video showing GT vs Pred for all training frames
+    print("generating field comparison video...")
+    video_frames_dir = os.path.join(output_folder, 'video_frames')
+    os.makedirs(video_frames_dir, exist_ok=True)
+
+    # Clear existing frames
+    for f in glob.glob(f"{video_frames_dir}/*.png"):
+        os.remove(f)
+
+    # Helper function to compute SSIM on gridded data
+    def compute_ssim_for_video(gt_vals, pred_vals, pos, grid_size=64):
+        """Grid scattered data and compute SSIM."""
+        from scipy.interpolate import griddata
+        xi = np.linspace(0, 1, grid_size)
+        yi = np.linspace(0, 1, grid_size)
+        xi, yi = np.meshgrid(xi, yi)
+        gt_grid = griddata(pos, gt_vals, (xi, yi), method='linear', fill_value=np.nan)
+        pred_grid = griddata(pos, pred_vals, (xi, yi), method='linear', fill_value=np.nan)
+        valid = ~(np.isnan(gt_grid) | np.isnan(pred_grid))
+        if valid.sum() < 100:
+            return np.nan
+        gt_min, gt_max = np.nanmin(gt_grid), np.nanmax(gt_grid)
+        if gt_max - gt_min > 1e-10:
+            gt_norm = (gt_grid - gt_min) / (gt_max - gt_min)
+            pred_norm = (pred_grid - gt_min) / (gt_max - gt_min)
+        else:
+            return np.nan
+        gt_norm = np.nan_to_num(gt_norm, nan=0.5)
+        pred_norm = np.nan_to_num(pred_norm, nan=0.5)
+        mu_x, mu_y = gt_norm.mean(), pred_norm.mean()
+        sig_x, sig_y = gt_norm.std(), pred_norm.std()
+        sig_xy = ((gt_norm - mu_x) * (pred_norm - mu_y)).mean()
+        C1, C2 = 0.01**2, 0.03**2
+        ssim = ((2*mu_x*mu_y + C1) * (2*sig_xy + C2)) / ((mu_x**2 + mu_y**2 + C1) * (sig_x**2 + sig_y**2 + C2))
+        return ssim
+
+    # Get predictions and ground truth
+    with torch.no_grad():
+        gt_np = ground_truth.cpu().numpy()
+        if inr_type == 'siren_t':
+            time_input_all = torch.arange(0, n_frames, dtype=torch.float32, device=device).unsqueeze(1) / n_frames
+            pred_all_video = nnr_f(time_input_all).reshape(n_frames, n_particles, n_components)
+        elif inr_type == 'siren_id':
+            neuron_ids_norm_v = torch.tensor(np.arange(n_particles) / n_particles, dtype=torch.float32, device=device)
+            pred_list_v = []
+            for t_idx in range(n_frames):
+                t_val = torch.full((n_particles, 1), t_idx / n_frames, device=device)
+                input_t = torch.cat([t_val, neuron_ids_norm_v[:, None]], dim=1)
+                pred_list_v.append(nnr_f(input_t))
+            pred_all_video = torch.stack(pred_list_v, dim=0)
+        elif inr_type == 'siren_txy':
+            pred_list_v = []
+            for t_idx in range(n_frames):
+                t_val = torch.full((n_particles, 1), t_idx / n_frames, device=device)
+                pos_t = particle_pos[t_idx, :, :]
+                input_t = torch.cat([t_val, pos_t], dim=1)
+                pred_list_v.append(nnr_f(input_t))
+            pred_all_video = torch.stack(pred_list_v, dim=0)
+        elif inr_type == 'ngp':
+            time_input_all = torch.arange(0, n_frames, dtype=torch.float32, device=device).unsqueeze(1) / n_frames
+            pred_all_video = nnr_f(time_input_all).reshape(n_frames, n_particles, n_components)
+        pred_np_video = pred_all_video.cpu().numpy()
+
+    # Compute global vmin/vmax from GT for consistent coloring
+    if n_components == 4:
+        vmin_vmax_global = [(np.percentile(gt_np[:, :, c], 2), np.percentile(gt_np[:, :, c], 98)) for c in range(4)]
+        cmap_name = 'coolwarm' if field_name in ['F', 'C'] else 'hot'
+    else:
+        vmin_global, vmax_global = np.percentile(gt_np[:, :, 0], 2), np.percentile(gt_np[:, :, 0], 98)
+        cmap_name = 'viridis'
+
+    # Generate frames
+    for frame_idx in range(n_frames):
+        pos_data = x_list[frame_idx, :, 1:3]
+
+        if n_components == 4:
+            fig, axes = plt.subplots(2, 4, figsize=(16, 8))
+            fig.patch.set_facecolor('black')
+            comp_labels = ['00', '01', '10', '11']
+
+            for c_idx in range(4):
+                gt_c = gt_np[frame_idx, :, c_idx]
+                pred_c = pred_np_video[frame_idx, :, c_idx]
+                vmin, vmax = vmin_vmax_global[c_idx]
+                ssim_c = compute_ssim_for_video(gt_c, pred_c, pos_data)
+
+                # GT
+                ax_gt = axes[0, c_idx]
+                ax_gt.set_facecolor('black')
+                ax_gt.scatter(pos_data[:, 0], pos_data[:, 1], c=gt_c, s=1, cmap=cmap_name, vmin=vmin, vmax=vmax)
+                ax_gt.set_title(f'GT {comp_labels[c_idx]}', color='white', fontsize=10)
+                ax_gt.set_xlim([0, 1]); ax_gt.set_ylim([0, 1])
+                ax_gt.set_aspect('equal')
+                ax_gt.set_xticks([]); ax_gt.set_yticks([])
+
+                # Pred
+                ax_pred = axes[1, c_idx]
+                ax_pred.set_facecolor('black')
+                ax_pred.scatter(pos_data[:, 0], pos_data[:, 1], c=pred_c, s=1, cmap=cmap_name, vmin=vmin, vmax=vmax)
+                ax_pred.set_title(f'Pred {comp_labels[c_idx]}  SSIM:{ssim_c:.3f}', color='white', fontsize=10)
+                ax_pred.set_xlim([0, 1]); ax_pred.set_ylim([0, 1])
+                ax_pred.set_aspect('equal')
+                ax_pred.set_xticks([]); ax_pred.set_yticks([])
+
+            fig.suptitle(f'Frame {frame_idx}/{n_frames}  Field: {field_name}', color='white', fontsize=14)
+        else:
+            fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+            fig.patch.set_facecolor('black')
+
+            gt_frame = gt_np[frame_idx, :, 0]
+            pred_frame = pred_np_video[frame_idx, :, 0]
+            ssim_val = compute_ssim_for_video(gt_frame, pred_frame, pos_data)
+
+            # GT
+            axes[0].set_facecolor('black')
+            axes[0].scatter(pos_data[:, 0], pos_data[:, 1], c=gt_frame, s=3, cmap=cmap_name, vmin=vmin_global, vmax=vmax_global)
+            axes[0].set_title(f'GT {field_name}', color='white', fontsize=12)
+            axes[0].set_xlim([0, 1]); axes[0].set_ylim([0, 1])
+            axes[0].set_aspect('equal')
+            axes[0].set_xticks([]); axes[0].set_yticks([])
+
+            # Pred
+            axes[1].set_facecolor('black')
+            axes[1].scatter(pos_data[:, 0], pos_data[:, 1], c=pred_frame, s=3, cmap=cmap_name, vmin=vmin_global, vmax=vmax_global)
+            axes[1].set_title(f'Pred {field_name}  SSIM:{ssim_val:.3f}', color='white', fontsize=12)
+            axes[1].set_xlim([0, 1]); axes[1].set_ylim([0, 1])
+            axes[1].set_aspect('equal')
+            axes[1].set_xticks([]); axes[1].set_yticks([])
+
+            fig.suptitle(f'Frame {frame_idx}/{n_frames}', color='white', fontsize=14)
+
+        plt.tight_layout()
+        plt.savefig(f"{video_frames_dir}/frame_{frame_idx:06d}.png", dpi=100, facecolor='black')
+        plt.close()
+
+        if frame_idx % 50 == 0:
+            print(f"  generated frame {frame_idx}/{n_frames}")
+
+    # Generate MP4 using ffmpeg
+    video_output_path = os.path.join(output_folder, f'field_comparison_{field_name}.mp4')
+    input_pattern = os.path.join(video_frames_dir, "frame_%06d.png")
+
+    ffmpeg_cmd = [
+        "ffmpeg", "-y",
+        "-loglevel", "error",
+        "-framerate", "30",
+        "-i", input_pattern,
+        "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+        "-c:v", "libx264",
+        "-crf", "23",
+        "-pix_fmt", "yuv420p",
+        video_output_path
+    ]
+
+    try:
+        import subprocess
+        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=300)
+        if result.returncode == 0:
+            print(f"generated video: {video_output_path}")
+
+            # Copy to destination folder
+            video_dest_dir = '/groups/saalfeld/home/allierc/Graph/MPM_pytorch/log/Claude_exploration/instruction_multimaterial_1_discs_3types/video'
+            os.makedirs(video_dest_dir, exist_ok=True)
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            video_dest_path = os.path.join(video_dest_dir, f'field_{field_name}_{timestamp}.mp4')
+            shutil.copy2(video_output_path, video_dest_path)
+            print(f"video copied to: {video_dest_path}")
+        else:
+            print(f"video generation failed: {result.stderr}")
+    except subprocess.TimeoutExpired:
+        print("video generation timeout")
+    except FileNotFoundError:
+        print("ffmpeg not found, skipping video generation")
+    except Exception as e:
+        print(f"video generation error: {e}")
 
     # Write analysis.log if log_file provided
     if log_file is not None:
