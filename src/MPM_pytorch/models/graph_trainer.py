@@ -426,7 +426,7 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
         total_steps = getattr(config.training, 'total_steps', 50000)
 
     log_dir, logger = create_log_dir(config, erase)
-    output_folder = os.path.join(log_dir, 'tmp_training', 'external_input')
+    output_folder = os.path.join(log_dir, 'tmp_training', 'field')
     os.makedirs(output_folder, exist_ok=True)
 
     # Empty output folder at the beginning
@@ -765,13 +765,18 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
                 gt_np = ground_truth.cpu().numpy()
                 pred_np = pred_all.cpu().numpy()
 
-                # Create 2-row figure: top row for time series, bottom row for spatial plots
-                fig = plt.figure(figsize=(18, 10))
-                fig.patch.set_facecolor('black')
+                # Create figure: 3x4 layout for 4-component fields, 2x3 for single component
+                if n_components == 4:
+                    fig = plt.figure(figsize=(20, 12))
+                    fig.patch.set_facecolor('black')
+                    # Top row uses 3x4 grid positions 1-4
+                    ax0 = plt.subplot(3, 4, 1)  # loss
+                else:
+                    fig = plt.figure(figsize=(18, 10))
+                    fig.patch.set_facecolor('black')
+                    ax0 = plt.subplot(2, 3, 1)  # loss
 
-                # ROW 1: Loss and time traces
-                # loss plot
-                ax0 = plt.subplot(2, 3, 1)
+                # ROW 1: Loss plot
                 ax0.set_facecolor('black')
                 ax0.plot(loss_list, color='white', lw=0.1, alpha=0.5)
                 # smoothed average window curve (red)
@@ -790,9 +795,17 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
                 for spine in ax0.spines.values():
                     spine.set_color('white')
 
-                # traces plot (10 particles, darkgreen=GT, white=pred)
+                # Compute statistics on ALL data first (need slope for correction in traces)
+                from scipy.stats import linregress
+                gt_all_flat = gt_np.reshape(-1)
+                pred_all_flat = pred_np.reshape(-1)
+                slope, intercept, r_value, p_value, std_err = linregress(gt_all_flat, pred_all_flat)
+                r2 = r_value ** 2
+                frame_mse = ((pred_all_flat - gt_all_flat) ** 2).mean()
+
+                # traces plot (10 particles, darkgreen=GT, white=pred with slope correction)
                 # For multi-component fields, plot first component only
-                ax1 = plt.subplot(2, 3, 2)
+                ax1 = plt.subplot(3, 4, 2) if n_components == 4 else plt.subplot(2, 3, 2)
                 ax1.set_facecolor('black')
                 ax1.set_axis_off()
                 n_traces = 10
@@ -806,16 +819,32 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
                     gt_plot = gt_np[:, :, 0]  # (n_frames, n_particles)
                     pred_plot = pred_np[:, :, 0]  # (n_frames, n_particles)
 
-                offset = np.abs(gt_plot).max() * 1.5
+                # Compute offset based on trace variance (not absolute values)
+                # so that variation within each trace is visible
+                trace_stds = [gt_plot[:, idx].std() for idx in trace_ids]
+                avg_std = np.mean(trace_stds) if trace_stds else 1.0
+                offset = max(avg_std * 4, 1e-6)  # 4 std spacing between traces
                 t = np.arange(n_frames)
 
                 for j, n_idx in enumerate(trace_ids):
+                    # Center each trace by subtracting its mean, then offset
+                    # Apply slope correction only if slope is reasonable (> 0.3)
+                    gt_trace = gt_plot[:, n_idx]
+                    pred_trace = pred_plot[:, n_idx]
+                    if slope > 0.3:
+                        # Apply slope correction: pred_corrected ≈ gt when model is good
+                        pred_trace_corrected = (pred_trace - intercept) / slope
+                        pred_centered = pred_trace_corrected - gt_trace.mean()
+                    else:
+                        # Slope too small - just center prediction by its own mean
+                        pred_centered = pred_trace - pred_trace.mean()
+                    gt_centered = gt_trace - gt_trace.mean()
                     y0 = j * offset
-                    ax1.plot(t, gt_plot[:, n_idx] + y0, color='darkgreen', lw=2.0, alpha=0.95)
-                    ax1.plot(t, pred_plot[:, n_idx] + y0, color='white', lw=0.5, alpha=0.95)
+                    ax1.plot(t, gt_centered + y0, color='darkgreen', lw=2.0, alpha=0.95)
+                    ax1.plot(t, pred_centered + y0, color='white', lw=0.5, alpha=0.95)
 
                 ax1.set_xlim(0, min(20000, n_frames))
-                ax1.set_ylim(-offset * 0.5, offset * (n_traces + 0.5))
+                ax1.set_ylim(-offset * 1.5, offset * (n_traces + 0.5))
                 mse = ((pred_np - gt_np) ** 2).mean()
                 omega_str = ''
                 if hasattr(nnr_f, 'get_omegas'):
@@ -826,120 +855,160 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
                             transform=ax1.transAxes, va='top', ha='left',
                             fontsize=12, color='white')
 
+                # Correct predictions with slope (pred_corrected ≈ gt when R² is good)
+                pred_np_corrected = (pred_np - intercept) / slope if slope != 0 else pred_np
+
                 # ROW 2: Spatial plots at fixed frame (n_frames // 2)
                 frame_idx = n_frames // 2
-
-                # Get positions at this frame
                 pos_data = x_list[frame_idx, :, 1:3]  # (n_particles, 2)
 
-                # Compute field norm for coloring
-                if n_components > 1:
-                    gt_frame = gt_np[frame_idx, :, :]  # (n_particles, n_components)
-                    pred_frame = pred_np[frame_idx, :, :]  # (n_particles, n_components)
-                    gt_norm = np.linalg.norm(gt_frame, axis=1)  # (n_particles,)
-                    pred_norm = np.linalg.norm(pred_frame, axis=1)  # (n_particles,)
+                # Helper function to compute SSIM on gridded data
+                def compute_ssim_gridded(gt_vals, pred_vals, pos, grid_size=64):
+                    """Grid scattered data and compute SSIM."""
+                    from scipy.interpolate import griddata
+                    # Create regular grid
+                    xi = np.linspace(0, 1, grid_size)
+                    yi = np.linspace(0, 1, grid_size)
+                    xi, yi = np.meshgrid(xi, yi)
+                    # Interpolate to grid
+                    gt_grid = griddata(pos, gt_vals, (xi, yi), method='linear', fill_value=np.nan)
+                    pred_grid = griddata(pos, pred_vals, (xi, yi), method='linear', fill_value=np.nan)
+                    # Mask NaN values
+                    valid = ~(np.isnan(gt_grid) | np.isnan(pred_grid))
+                    if valid.sum() < 100:
+                        return np.nan
+                    # Normalize to [0, 1] for SSIM
+                    gt_min, gt_max = np.nanmin(gt_grid), np.nanmax(gt_grid)
+                    if gt_max - gt_min > 1e-10:
+                        gt_norm = (gt_grid - gt_min) / (gt_max - gt_min)
+                        pred_norm = (pred_grid - gt_min) / (gt_max - gt_min)  # use gt range
+                    else:
+                        return np.nan
+                    # Simple SSIM computation (mean-based)
+                    gt_norm = np.nan_to_num(gt_norm, nan=0.5)
+                    pred_norm = np.nan_to_num(pred_norm, nan=0.5)
+                    # SSIM formula components
+                    mu_x, mu_y = gt_norm.mean(), pred_norm.mean()
+                    sig_x, sig_y = gt_norm.std(), pred_norm.std()
+                    sig_xy = ((gt_norm - mu_x) * (pred_norm - mu_y)).mean()
+                    C1, C2 = 0.01**2, 0.03**2
+                    ssim = ((2*mu_x*mu_y + C1) * (2*sig_xy + C2)) / ((mu_x**2 + mu_y**2 + C1) * (sig_x**2 + sig_y**2 + C2))
+                    return ssim
+
+                if n_components == 4:
+                    # 4-component field (F, S, C): show 2x2 panels for GT and Pred
+                    comp_labels = ['00', '01', '10', '11']
+                    gt_frame = gt_np[frame_idx, :, :]  # (n_particles, 4)
+                    pred_frame = pred_np_corrected[frame_idx, :, :]  # corrected predictions
+
+                    cmap_name = 'coolwarm' if field_name in ['F', 'C'] else 'hot'
+
+                    # Compute vmin/vmax from 98th percentile of GT values (per component)
+                    vmin_vmax_per_comp = []
+                    for c_idx in range(4):
+                        gt_c = gt_frame[:, c_idx]
+                        vmin_vmax_per_comp.append((np.percentile(gt_c, 2), np.percentile(gt_c, 98)))
+
+                    # GT panels (2x2)
+                    for c_idx in range(4):
+                        row = c_idx // 2
+                        col = c_idx % 2
+                        ax_gt = plt.subplot(3, 4, 5 + col + row * 4)
+                        ax_gt.set_facecolor('black')
+                        gt_c = gt_frame[:, c_idx]
+                        vmin, vmax = vmin_vmax_per_comp[c_idx]
+                        ax_gt.scatter(pos_data[:, 0], pos_data[:, 1], c=gt_c, s=1, cmap=cmap_name, vmin=vmin, vmax=vmax)
+                        ssim_c = compute_ssim_gridded(gt_c, pred_frame[:, c_idx], pos_data)
+                        ax_gt.set_title(f'GT {comp_labels[c_idx]}', color='white', fontsize=9)
+                        ax_gt.text(0.02, 0.98, f'SSIM:{ssim_c:.3f}', transform=ax_gt.transAxes, va='top', ha='left', fontsize=8, color='yellow')
+                        ax_gt.set_xlim([0, 1]); ax_gt.set_ylim([0, 1])
+                        ax_gt.set_aspect('equal')
+                        ax_gt.set_xticks([]); ax_gt.set_yticks([])
+
+                    # Pred panels (2x2) - use GT vmin/vmax
+                    for c_idx in range(4):
+                        row = c_idx // 2
+                        col = c_idx % 2
+                        ax_pred = plt.subplot(3, 4, 7 + col + row * 4)
+                        ax_pred.set_facecolor('black')
+                        gt_c = gt_frame[:, c_idx]
+                        pred_c = pred_frame[:, c_idx]
+                        vmin, vmax = vmin_vmax_per_comp[c_idx]  # use GT range
+                        ax_pred.scatter(pos_data[:, 0], pos_data[:, 1], c=pred_c, s=1, cmap=cmap_name, vmin=vmin, vmax=vmax)
+                        ssim_c = compute_ssim_gridded(gt_c, pred_c, pos_data)
+                        ax_pred.set_title(f'Pred {comp_labels[c_idx]}', color='white', fontsize=9)
+                        ax_pred.text(0.02, 0.98, f'SSIM:{ssim_c:.3f}', transform=ax_pred.transAxes, va='top', ha='left', fontsize=8, color='white')
+                        ax_pred.set_xlim([0, 1]); ax_pred.set_ylim([0, 1])
+                        ax_pred.set_aspect('equal')
+                        ax_pred.set_xticks([]); ax_pred.set_yticks([])
+
                 else:
-                    gt_frame = gt_np[frame_idx, :, 0]  # (n_particles,)
-                    pred_frame = pred_np[frame_idx, :, 0]  # (n_particles,)
-                    gt_norm = gt_frame
-                    pred_norm = pred_frame
+                    # Single component field (Jp): original layout
+                    gt_frame = gt_np[frame_idx, :, 0]
+                    pred_frame = pred_np_corrected[frame_idx, :, 0]
 
-                # Determine colormap and range based on field type
-                vmin, vmax = gt_norm.min(), gt_norm.max()
-                if field_name == 'F':
-                    cmap_name = 'coolwarm'
-                    vmin, vmax = 1.44 - 0.2, 1.44 + 0.2
-                elif field_name == 'S':
-                    cmap_name = 'hot'
-                    vmin, vmax = 0, max(6e-3, gt_norm.max())
-                elif field_name == 'Jp':
+                    # Use 98th percentile of GT values for vmin/vmax
                     cmap_name = 'viridis'
-                    vmin, vmax = 0.75, 1.25
-                else:
-                    cmap_name = 'viridis'
+                    vmin, vmax = np.percentile(gt_frame, 2), np.percentile(gt_frame, 98)
 
-                # Ground truth spatial plot
-                ax2 = plt.subplot(2, 3, 4)
-                ax2.set_facecolor('black')
-                sc = ax2.scatter(pos_data[:, 0], pos_data[:, 1], c=gt_norm, s=3, cmap=cmap_name, vmin=vmin, vmax=vmax)
-                plt.colorbar(sc, ax=ax2, fraction=0.046, pad=0.04)
-                ax2.set_title(f'GT {field_name} (frame {frame_idx})', color='white', fontsize=12)
-                ax2.set_xlim([0, 1])
-                ax2.set_ylim([0, 1])
-                ax2.set_aspect('equal')
-                ax2.tick_params(colors='white', labelsize=10)
-                for spine in ax2.spines.values():
-                    spine.set_color('white')
+                    # GT panel (no SSIM here - only on Pred panel)
+                    ax2 = plt.subplot(2, 3, 4)
+                    ax2.set_facecolor('black')
+                    ax2.scatter(pos_data[:, 0], pos_data[:, 1], c=gt_frame, s=3, cmap=cmap_name, vmin=vmin, vmax=vmax)
+                    ssim_val = compute_ssim_gridded(gt_frame, pred_frame, pos_data)
+                    ax2.set_title(f'GT {field_name} (frame {frame_idx})', color='white', fontsize=12)
+                    ax2.set_xlim([0, 1]); ax2.set_ylim([0, 1])
+                    ax2.set_aspect('equal')
+                    ax2.set_xticks([]); ax2.set_yticks([])
 
-                # Prediction spatial plot
-                ax3 = plt.subplot(2, 3, 5)
-                ax3.set_facecolor('black')
-                sc = ax3.scatter(pos_data[:, 0], pos_data[:, 1], c=pred_norm, s=3, cmap=cmap_name, vmin=vmin, vmax=vmax)
-                plt.colorbar(sc, ax=ax3, fraction=0.046, pad=0.04)
-                ax3.set_title(f'Pred {field_name} (frame {frame_idx})', color='white', fontsize=12)
-                ax3.set_xlim([0, 1])
-                ax3.set_ylim([0, 1])
-                ax3.set_aspect('equal')
-                ax3.tick_params(colors='white', labelsize=10)
-                for spine in ax3.spines.values():
-                    spine.set_color('white')
+                    # Pred panel (corrected) - use GT vmin/vmax
+                    ax3 = plt.subplot(2, 3, 5)
+                    ax3.set_facecolor('black')
+                    ax3.scatter(pos_data[:, 0], pos_data[:, 1], c=pred_frame, s=3, cmap=cmap_name, vmin=vmin, vmax=vmax)
+                    ax3.set_title(f'Pred {field_name} (corrected)', color='white', fontsize=12)
+                    ax3.text(0.02, 0.98, f'SSIM: {ssim_val:.3f}', transform=ax3.transAxes, va='top', ha='left', fontsize=10, color='white')
+                    ax3.set_xlim([0, 1]); ax3.set_ylim([0, 1])
+                    ax3.set_aspect('equal')
+                    ax3.set_xticks([]); ax3.set_yticks([])
 
-                # Scatter plot: pred vs gt (use ALL data, not just single frame norm)
-                ax4 = plt.subplot(2, 3, 6)
+                # Scatter plot: pred vs gt (use ALL data, uncorrected for honest R²)
+                ax4 = plt.subplot(2, 3, 6) if n_components != 4 else plt.subplot(3, 4, 4)
                 ax4.set_facecolor('black')
 
-                # Use ALL frames and ALL components for R² (consistent with final R²)
-                gt_all_flat = gt_np.reshape(-1)
-                pred_all_flat = pred_np.reshape(-1)
-                # Subsample for plotting (too many points otherwise)
+                # Subsample for plotting
                 n_plot_points = min(50000, len(gt_all_flat))
                 plot_indices = np.random.choice(len(gt_all_flat), n_plot_points, replace=False)
                 ax4.scatter(gt_all_flat[plot_indices], pred_all_flat[plot_indices], c='white', s=1, alpha=0.3)
 
-                # Compute statistics on ALL data (same as final R²)
-                from scipy.stats import linregress
-                slope, intercept, r_value, p_value, std_err = linregress(gt_all_flat, pred_all_flat)
-                r2 = r_value ** 2
-                frame_mse = ((pred_all_flat - gt_all_flat) ** 2).mean()
-
                 # Use 98th percentile to handle hot spots/outliers, always start at 0
                 gt_p98 = np.percentile(gt_all_flat, 98)
                 pred_p98 = np.percentile(pred_all_flat, 98)
-                upper_bound = max(gt_p98, pred_p98) * 1.05  # 5% margin above 98th percentile
+                upper_bound = max(gt_p98, pred_p98) * 1.05
                 lims = [0, upper_bound]
 
-                # Add diagonal line (ideal)
                 ax4.plot(lims, lims, 'r--', alpha=0.5, lw=1, label='ideal')
-
-                # Add regression line
                 x_line = np.array([0, upper_bound])
                 y_line = slope * x_line + intercept
-                ax4.plot(x_line, y_line, 'g-', alpha=0.7, lw=1, label=f'fit (slope={slope:.3f})')
+                ax4.plot(x_line, y_line, 'g-', alpha=0.7, lw=1, label=f'fit')
 
-                # Set same limits for both axes (square aspect)
-                ax4.set_xlim(lims)
-                ax4.set_ylim(lims)
+                ax4.set_xlim(lims); ax4.set_ylim(lims)
                 ax4.set_aspect('equal', adjustable='box')
-
-                ax4.set_xlabel('Ground Truth', color='white', fontsize=11)
-                ax4.set_ylabel('Prediction', color='white', fontsize=11)
-                ax4.set_title('Pred vs GT (all data)', color='white', fontsize=12)
-                ax4.tick_params(colors='white', labelsize=10)
+                ax4.set_xlabel('GT', color='white', fontsize=9)
+                ax4.set_ylabel('Pred', color='white', fontsize=9)
+                ax4.set_title('Pred vs GT', color='white', fontsize=10)
+                ax4.tick_params(colors='white', labelsize=8)
                 for spine in ax4.spines.values():
                     spine.set_color('white')
 
-                # Add statistics text
-                n_total_values = len(gt_all_flat)  # frames × particles × components
-                stats_text = f'N: {n_total_values:,}\n'  # total values with comma separator
+                n_total_values = len(gt_all_flat)
+                stats_text = f'N: {n_total_values:,}\n'
                 stats_text += f'R²: {r2:.4f}\n'
                 stats_text += f'slope: {slope:.4f}\n'
                 stats_text += f'MSE: {frame_mse:.6f}'
-                ax4.text(0.05, 0.95, stats_text,
-                        transform=ax4.transAxes, va='top', ha='left',
-                        fontsize=9, color='white', family='monospace')
+                ax4.text(0.05, 0.95, stats_text, transform=ax4.transAxes, va='top', ha='left', fontsize=7, color='white', family='monospace')
 
                 # MSE text on top row
-                ax5 = plt.subplot(2, 3, 3)
+                ax5 = plt.subplot(3, 4, 3) if n_components == 4 else plt.subplot(2, 3, 3)
                 ax5.set_facecolor('black')
                 ax5.set_axis_off()
                 info_text = f'Field: {field_name} ({field_desc})\n'
