@@ -2854,3 +2854,1630 @@ Iteration 123 complete. Summary:
 - **Mutation**: omega_f 25.0 → 40.0 (testing upper boundary)
 - **Hypothesis**: omega_f=40 will find where the plateau breaks down. At 100 frames Block 5 showed omega_f 15-25 as optimal; testing if this upper bound holds at 200 frames or if F field tolerates higher omega_f.
 
+
+============================================================
+=== Iteration 125 ===
+============================================================
+Configuration complete for iteration 126.
+
+**Iteration 125 Summary:**
+- **Result**: R²=0.9991 (excellent) - omega_f=40 high boundary test
+- **Finding**: omega_f=40 shows slight degradation from optimal (0.9998 @ omega_f=20), establishing upper boundary
+- **Omega_f map at 200 frames**: 15(0.9996) < 40(0.9991) < 25(0.9997) ≈ 20(0.9998)
+
+**Iteration 126 Configuration:**
+- **Strategy**: failure-probe (5 consecutive R² > 0.95)
+- **Mutation**: lr_NNR_f: 3E-5 → 1E-4 (3x increase), omega_f reset to optimal 20.0
+- **Parent**: Node 125 (highest UCB=2.580)
+- **Goal**: Test high lr boundary for F field at 200 frames
+
+
+============================================================
+=== Iteration 126 ===
+============================================================
+**Iteration 126 Summary:**
+- **Result**: excellent (R²=0.9996)
+- **Key finding**: lr=1E-4 works for F field at 200 frames (3.3x higher than optimal)
+- **Next (Iter 127)**: Testing lr=2E-4 to find true high lr boundary
+- **Strategy**: failure-probe (6 consecutive R² > 0.95)
+
+**Config for Iteration 127:**
+- lr_NNR_f: 2E-4 (2x increase from 1E-4)
+- All other params unchanged: total_steps=300000, hidden_dim=256, n_layers=4, omega_f=20.0
+
+
+============================================================
+=== Iteration 127 ===
+============================================================
+The config is now set for iteration 128:
+- lr_NNR_f: 3E-5 (restored to Node 122's optimal lr)
+- hidden_dim_nnr_f: 512 (increased from 256 to test capacity effect)
+- omega_f: 20.0 (already optimal)
+- total_steps: 300000 (unchanged)
+- n_layers_nnr_f: 4 (unchanged)
+
+**Iteration 127 Summary:**
+- **Result**: moderate (R²=0.860)
+- **Finding**: HIGH LR BOUNDARY FOUND - lr=2E-4 fails while lr=1E-4 works (R²=0.9996)
+- **F field lr tolerance at 200 frames**: 3E-5 to 1E-4 (about 3x range)
+
+**Next iteration (128):**
+- Parent: Node 122 (R²=0.9998, best in block)
+- Strategy: switch-param (switching from lr exploration to hidden_dim)
+- Mutation: hidden_dim_nnr_f: 256 → 512
+- Hypothesis: Testing if increased capacity can push F beyond R²=0.9998 at 200 frames
+
+
+============================================================
+=== Iteration 128 ===
+============================================================
+Iteration 128 complete.
+
+**Summary:**
+- **Iter 128 result**: R²=0.9999 with hidden_dim=512×4 (vs 0.9998 with 256×4) - marginal +0.0001 gain at 60% more training time (28.6min vs 18.0min)
+- **Key finding**: 256×4 is Pareto optimal for F field at 200 frames
+- **F field mapping complete**: omega_f=15-25 plateau, lr=3E-5-1E-4 tolerance, 256×4 optimal architecture
+
+**Next iteration (129)**: Testing n_layers=5 (depth increase) with parent=122 (best 256×4 config) to probe depth boundary. This tests if 5 layers helps or hurts F field at 200 frames (Block 2 found 5 layers degraded at 48 frames).
+
+
+============================================================
+=== Iteration 129 ===
+============================================================
+Configuration updated for iteration 130. Testing lr=1E-5 (low lr boundary test) with baseline config 256×4.
+
+**Summary of Iteration 129:**
+- **Result**: R²=0.9999 (excellent)
+- **n_layers=5 tested**: Works for F field, marginal gain (+0.0001 R²)
+- **Key finding**: F field tolerates 5 layers unlike Jp which degrades at 4+ layers
+- **Next iteration 130**: Testing lr=1E-5 (low lr boundary) to complete lr mapping
+
+
+============================================================
+=== Iteration 130 ===
+============================================================
+Iteration 130 complete.
+
+**Summary:**
+- **Iter 130 result**: R²=0.977 (good) - lr=1E-5 tested, **LOW LR BOUNDARY FOUND**
+- lr=1E-5 causes underfitting for F field (0.977 << 0.9999)
+- **F field lr boundaries now fully mapped**: 3E-5 to 1E-4 optimal, <1E-5 and >2E-4 both fail
+
+**Next iteration (131)**: 
+- Parent: Node 128 (hidden_dim=512, n_layers=4, lr=3E-5, R²=0.9999)
+- Mutation: n_layers=4→3 (testing width vs depth tradeoff at higher capacity)
+- Config: lr=3E-5, hidden_dim=512, n_layers=3, omega_f=20, 300k steps
+- Hypothesis: Testing if shallower but wider (512×3) matches deeper narrower (256×4/5)
+
+
+============================================================
+=== Iteration 131 ===
+============================================================
+**Iteration 131 Summary:**
+- **Result**: Excellent (R²=0.9999)
+- **Config**: 512×3, lr=3E-5, omega_f=20, 300k steps
+- **Finding**: 512×3 matches 512×4 accuracy but 20% faster (22.9min vs 28.6min) - **Pareto improvement!**
+
+**Next Iteration 132 Config:**
+- **Strategy**: failure-probe/boundary (testing minimum depth)
+- **Mutation**: n_layers_nnr_f: 4 → 2, hidden_dim: 512 → 256 (from parent 122)
+- **Parent**: Node 122 (256×4, R²=0.9998)
+- **Hypothesis**: n_layers=2 may be insufficient for F field at 200 frames, establishing lower depth boundary
+- **Config**: lr=3E-5, 300k steps, 256×2, omega_f=20
+
+This is the final iteration of Block 11. The block has comprehensively mapped F field at 200 frames:
+- **omega_f**: [15-40] plateau, optimal 20
+- **lr**: [3E-5 to 1E-4] tolerance, optimal 3E-5
+- **depth**: 3-5 all work, testing if 2 fails
+- **width**: 256-512 marginal gains, 256 sufficient
+- **Best Pareto config**: 256×4, lr=3E-5, omega_f=20, 300k steps → R²=0.9998 in 18min
+
+
+============================================================
+=== Iteration 132 ===
+============================================================
+Block 11 complete. Here's the summary:
+
+## Block 11 Summary (Iteration 132 - Final)
+
+**Iteration 132 Results (n_layers=2 minimum depth test)**:
+- R²=0.994 (excellent)
+- slope=0.996
+- training_time=9.5min (fastest yet!)
+- Config: 256×2, lr=3E-5, omega_f=20, 300k steps
+
+**Key Discovery**: n_layers=2 achieves R²=0.994 in only 9.5 minutes - **SPEED PARETO** discovered. This is 48% faster than the 256×4 accuracy Pareto (18min for R²=0.9998) with only 0.4% accuracy loss.
+
+## Block 11 Key Findings (F field @ 200 frames):
+1. **Data scaling SUCCESS** - F shows NO diminishing returns (R²=0.9999 matches 100 frames)
+2. **All boundaries mapped**: omega_f [15-40], lr [3E-5 to 1E-4], depth [2-5], width [256-512]
+3. **F tolerates depth** - 5 layers work (unlike Jp which degrades)
+4. **Pareto options**: 256×2 (speed: 9.5min, R²=0.994) vs 256×4 (accuracy: 18min, R²=0.9998)
+
+## Block 12 Configuration (Next):
+- **Field**: C (APIC matrix)
+- **n_frames**: 200 (testing data scaling for C)
+- **Config**: lr=3E-5, hidden_dim=384, n_layers=3, omega_f=30, total_steps=400000 (2000 steps/frame)
+- **Hypothesis**: Test if C field shows data scaling behavior similar to F (no diminishing returns) or Jp (diminishing returns)
+
+
+============================================================
+=== Iteration 133 ===
+============================================================
+**Summary of Iteration 133:**
+
+- **Block 12, Iteration 1/12** - Testing C field data scaling with 200 frames
+- **Result**: R²=0.989 (excellent but **below** Block 8's R²=0.996 with 100 frames)
+- **Key finding**: C field shows **unexpected negative scaling** - regression with more frames
+- **Next iteration**: Increasing total_steps from 400k to 500k (2500 steps/frame) to test if underfitting is the cause
+
+The C field is behaving differently than expected. F showed no diminishing returns, Jp showed diminishing returns, but C shows actual regression. This is an important finding about field-specific data scaling behavior.
+
+
+============================================================
+=== Iteration 134 ===
+============================================================
+**Iteration 134 Complete**
+
+**Results**: R²=0.989, slope=0.976, training_time=29.1min
+**Classification**: Excellent (R² > 0.95)
+
+**Analysis**: Increasing total_steps from 400k to 500k did not improve R² (both iterations achieved 0.989). This disproves the hypothesis that insufficient training was causing the regression from Block 8's C@100frames (R²=0.996).
+
+**Next iteration (135)**: Testing omega_f=25 (lowered from 30). Rationale: F field showed optimal omega_f shift from 25 to 20 when going from 100 to 200 frames. C may follow a similar pattern where optimal omega_f decreases with more training frames.
+
+
+============================================================
+=== Iteration 135 ===
+============================================================
+Configuration updated for iteration 136. Here's the summary:
+
+---
+
+## Iteration 135 Summary: excellent
+
+**Results:**
+- R² = 0.994 (improved from 0.989!)
+- MSE = 1.35 (halved from 2.28)
+- slope = 0.981
+- training_time = 28.9 min
+
+**Key Finding:** omega_f reduction from 30→25 significantly improved C field performance at 200 frames. This confirms the pattern observed with F field: more training frames benefits from lower omega_f values.
+
+**Interpretation:** The C field initial regression (0.989 vs baseline 0.996) was NOT due to data scaling failure, but rather using suboptimal omega_f. With omega_f=25, R²=0.994 approaches the 100-frame baseline. Lower omega_f may push further.
+
+**Next Iteration (136):**
+- Parent: Node 135 (highest UCB = 2.218)
+- Strategy: exploit (continue omega_f exploration)
+- Mutation: omega_f: 25.0 → 20.0 (testing if F field's optimal omega_f=20 also works for C)
+- Config: lr=3E-5, steps=500k, hidden_dim=384, n_layers=3, omega_f=20.0
+
+
+============================================================
+=== Iteration 136 ===
+============================================================
+The config is set for iteration 137:
+- **Parent**: Node 135 (R²=0.994)
+- **Mutation**: lr_NNR_f: 3E-5 → 4E-5
+- **omega_f**: 25.0 (restored to optimal)
+- **Strategy**: exploit (trying higher lr to close the gap to Block 8's R²=0.996)
+
+**Summary of Iteration 136:**
+- Tested omega_f=20 (down from 25)
+- Result: R²=0.990 (regression from 0.994)
+- Finding: omega_f=25 is optimal for C@200frames (not 20 like F field)
+- C field has higher optimal omega_f than F field
+
+**Next iteration (137):**
+- Testing lr=4E-5 (from 3E-5) with omega_f=25
+- Hypothesis: Higher lr may improve convergence and close the gap to 100-frame baseline
+
+
+============================================================
+=== Iteration 137 ===
+============================================================
+Configuration is ready for iteration 138:
+- **Parent**: Node 136 (UCB=2.571, R²=0.990, omega_f=20)
+- **Mutation**: hidden_dim: 384 → 512 (testing if more capacity helps at omega_f=20)
+- **Config**: lr=3E-5, omega_f=20.0, hidden_dim=512, n_layers=3, total_steps=500000
+
+**Summary of Iteration 137**:
+- Tested lr=4E-5 (from optimal Node 135 with lr=3E-5)
+- Result: R²=0.983 (regression from 0.994)
+- Finding: C field at 200 frames has **narrower lr tolerance** than at 100 frames - prefers lr=3E-5 strictly
+
+**Strategy for Iteration 138**:
+- Select Node 136 (highest UCB at 2.571)
+- Test hidden_dim=512 to see if more capacity can improve R² at omega_f=20
+- If capacity helps, this could provide an alternative path to beat the baseline
+
+
+============================================================
+=== Iteration 138 ===
+============================================================
+**Iteration 138 Summary:**
+
+**Results:** R²=0.989, slope=0.977, training_time=38.1min
+- Config: lr=3E-5, hidden_dim=512, n_layers=3, omega_f=20, total_steps=500k
+- Parent: Node 136 (omega_f=20, hidden_dim=384)
+- Mutation: hidden_dim 384→512
+
+**Analysis:**
+- Capacity increase from 384 to 512 did NOT improve R² at omega_f=20 (stayed at 0.989)
+- Training time increased by 31% (29.1→38.1min) for no accuracy gain
+- Confirms omega_f=20 is suboptimal for C field, regardless of capacity
+- Best remains Node 135 (omega_f=25): R²=0.994
+
+**Key Insight:** C field at 200 frames shows NEGATIVE data scaling behavior (like S field). Block 8 achieved R²=0.996 with 100 frames; current best is only R²=0.994 with 200 frames. Neither omega_f tuning nor capacity increase matches the 100-frame baseline.
+
+**Next Iteration (139):**
+- Parent: Node 135 (omega_f=25, R²=0.994)
+- Mutation: n_layers 3→4 (test if depth helps with more data)
+- Config: lr=3E-5, hidden_dim=384, n_layers=4, omega_f=25, total_steps=500k
+
+
+============================================================
+=== Iteration 139 ===
+============================================================
+Configuration updated. Let me provide a summary of iteration 139:
+
+---
+
+**Iteration 139 Complete**
+
+**Result:** R²=0.987 (excellent, but regression from 0.994)
+
+**Key Finding:** n_layers 3→4 with omega_f=25 REGRESSED R² from 0.994 to 0.987. C field is **depth-sensitive** like Jp (ceiling at 3 layers), unlike F which tolerates 5 layers.
+
+**Block 12 Summary (7 iterations):**
+- Best R²: 0.994 (Node 135, 384×3, omega_f=25, lr=3E-5)
+- Still BELOW Block 8's 100f baseline (R²=0.996)
+- C field shows NEGATIVE data scaling - more frames hurts performance
+- Optimal configs established: omega_f=25 (not 20 or 30), lr=3E-5 (narrow tolerance), depth=3 (not 4)
+
+**Next Iteration (140):** Testing omega_f=25 with hidden_dim=512 (parent=Node 138, highest UCB=2.860). Goal: test if larger capacity at optimal omega_f can recover to 0.996+ baseline.
+
+
+============================================================
+=== Iteration 140 ===
+============================================================
+**Iteration 140 complete.**
+
+**Summary:**
+- **Result**: R²=0.990, slope=0.979, training_time=38.1min (excellent but below current best)
+- **Config tested**: omega_f=25 with hidden_dim=512 (combining best omega_f from Node 135 with larger capacity)
+- **Finding**: Hidden_dim=512 does NOT help - R²=0.990 vs R²=0.994 at hidden_dim=384. Larger capacity is actually harmful for C field at 200 frames.
+
+**Key insight**: LOCAL OPTIMUM DETECTED. All 5 mutations from the best node (Node 135, R²=0.994) have regressed:
+- omega_f: 25→20 regressed to 0.990
+- lr: 3E-5→4E-5 regressed to 0.983
+- n_layers: 3→4 regressed to 0.987
+- hidden_dim: 384→512 regressed to 0.989-0.990
+
+**Data scaling verdict for C field**: DATA SCALING HURTS. Block 8's C@100frames achieved R²=0.996, while C@200frames peaks at R²=0.994. C joins S in the "data scaling hurts" category (unlike F and Jp which benefit).
+
+**Next iteration (141)**: Testing lr=2.5E-5 at the optimal config (384×3, omega_f=25) to probe the lower lr boundary. If this also regresses, the local optimum is confirmed and we may need to accept R²=0.994 as the ceiling for C@200frames.
+
+
+============================================================
+=== Iteration 141 ===
+============================================================
+The config is set for iteration 142:
+- lr_NNR_f: 3E-5 (restored to optimal)
+- omega_f: 27.0 (testing boundary between 25 and 30)
+- hidden_dim: 384, n_layers: 3 (optimal architecture)
+- total_steps: 500000, batch_size: 1
+
+**Summary of Iteration 141:**
+- **Result**: R²=0.993 (excellent but below Node 135's 0.994)
+- **Mutation**: lr_NNR_f 3E-5 → 2.5E-5
+- **Finding**: Lower learning rate doesn't help. lr=3E-5 is the optimal learning rate for C@200frames
+- **LR Zone Mapping**: lr=3E-5 optimal (0.994), lr=2.5E-5 too low (0.993), lr=4E-5 too high (0.983)
+- **Local optimum confirmed**: 7 mutations from Node 135 all regressed. 384×3@lr=3E-5@omega_f=25 is optimal for C@200frames
+
+**Next iteration 142**: Testing omega_f=27 to refine the omega_f boundary between 25 (optimal at 0.994) and 30 (baseline at 0.989).
+
+
+============================================================
+=== Iteration 142 ===
+============================================================
+**Iteration 142 Summary:**
+
+- **Results**: R²=0.992, slope=0.986, training_time=29.0min with omega_f=27
+- **Finding**: omega_f=27 yields R²=0.992, below omega_f=25's R²=0.994
+- **omega_f map complete**: 20(0.990) < 27(0.992) < 30(0.989) with **sharp peak at 25 (0.994)**
+- **Local optimum confirmed**: 8 mutations from Node 135 all regressed - 384×3@lr=3E-5@omega_f=25 is definitively optimal
+
+**Key block findings so far:**
+- C field data scaling **HURTS** (100f R²=0.996 > 200f R²=0.994)
+- C field omega_f optimal at 25 (not 20 like F)
+- C field is depth-sensitive like Jp (3 layers optimal)
+- lr tolerance is narrow (only lr=3E-5 works)
+
+**Next iteration (143)**: Testing omega_f=15 as failure-probe to map extreme low-frequency boundary. Expect regression.
+
+
+============================================================
+=== Iteration 143 ===
+============================================================
+The config is now set for a robustness-test of the optimal configuration (Node 135):
+- lr_NNR_f=3E-5
+- total_steps=500000
+- hidden_dim_nnr_f=384
+- n_layers_nnr_f=3  
+- omega_f=25.0
+- n_training_frames=200
+
+**Iteration 143 Summary:**
+- **R²=0.993** (excellent) with omega_f=15 - failure-probe confirming lower boundary
+- Complete omega_f map: 15(0.993) < 20(0.990) < 25(0.994) < 27(0.992) < 30(0.989)
+- Interesting finding: omega_f=15 outperforms omega_f=20 (non-monotonic pattern)
+- Local optimum at omega_f=25 with R²=0.994 is definitively confirmed
+
+**Next iteration (144, final of Block 12):**
+- **Strategy**: robustness-test
+- **Config**: Same as Node 135 (omega_f=25) to measure variance
+- **Goal**: Confirm reliability of C@200frames best config before block summary
+
+
+============================================================
+=== Iteration 144 ===
+============================================================
+Configuration is ready for Block 13:
+- **Field**: S (stress tensor)
+- **n_frames**: 48
+- **hidden_dim**: 256
+- **n_layers**: 4
+- **omega_f**: 50.0
+- **lr**: 2E-5
+- **total_steps**: 150000
+
+**BLOCK 12 COMPLETED. Summary**:
+
+## Iteration 144 Results
+- **Config**: lr=3E-5, omega_f=25, hidden_dim=384, n_layers=3, total_steps=500k (robustness test)
+- **Metrics**: R²=0.987, slope=0.981, training_time=28.7min
+- **Classification**: good (robustness test revealed ~0.007 R² variance)
+
+## Block 12 Summary (C Field @ 200 Frames)
+- **Best achieved**: R²=0.994 (Node 135)
+- **Key findings**:
+  1. **Data scaling HURTS C field**: 200f R²=0.994 < 100f R²=0.996
+  2. **omega_f optimal at 25** (non-monotonic: 15(0.993) < 20(0.990) < 25(0.994))
+  3. **C is depth-sensitive like Jp** (n_layers=4 regresses)
+  4. **Moderate stochastic variance** (~0.007 R²)
+
+## Block 13 Setup (S Field Variance Study)
+- **Hypothesis**: Smaller network (256×4) may reduce S field's extreme variance
+- **Config**: lr=2E-5, hidden_dim=256, n_layers=4, omega_f=50, total_steps=150k, n_frames=48
+
+
+============================================================
+=== Iteration 145 ===
+============================================================
+**Iteration 145 Summary:**
+
+- **Result**: POOR (R² = 0.389)
+- **Node 145**: parent=root, UCB=1.096
+- **Strategy**: exploit from Node 145
+
+**Analysis:**
+- S field with 256×4 achieved only R² = 0.389
+- Block 3's 512×4 achieved R² = 0.618, Block 9's 768×4 achieved R² = 0.708
+- 256 hidden_dim is insufficient capacity for S field
+- Result falls within Block 9's extreme variance range (0.08-0.76), so could be capacity or stochasticity
+
+**Next iteration (146):**
+- **Mutation**: hidden_dim: 256 → 384 (intermediate step)
+- **Parent**: Node 145 (only node available)
+- **Hypothesis**: 384 capacity should improve over 256, helping isolate capacity vs variance effects
+
+
+============================================================
+=== Iteration 146 ===
+============================================================
+Iteration 146 complete.
+
+**Summary:**
+- **Iteration 146**: R²=0.476 (poor) with S field, hidden_dim=384×4
+- **Improvement**: +22% from iteration 145 (0.389→0.476)
+- **Config**: lr=2E-5, hidden_dim=384, n_layers=4, omega_f=50, steps=150k
+- **Training time**: 10.7 min
+
+**For iteration 147**:
+- Parent: Node 146 (UCB=1.476, highest)
+- Strategy: exploit - continue capacity scaling
+- Mutation: hidden_dim 384→512
+- Rationale: Block 3's 512×4 achieved R²=0.618, so expecting similar improvement
+
+
+============================================================
+=== Iteration 147 ===
+============================================================
+**Iteration 147 Complete**
+
+**Summary:**
+- **Result**: poor (R²=0.638)
+- **Mutation**: hidden_dim 384→512
+- **Key finding**: 512×4 achieved R²=0.638, matching Block 3's benchmark (R²=0.618). Capacity scaling trend is confirmed with monotonic improvements: 256→0.389, 384→0.476, 512→0.638.
+
+**Next iteration (148):**
+- Parent: Node 147 (UCB=1.863, highest)
+- Strategy: exploit
+- Mutation: hidden_dim 512→768
+- Expected: R²~0.70+ (based on Block 9's 768×4 achieving R²=0.708)
+
+The capacity scaling experiment is progressing well, with each dimension increase showing consistent improvement. This systematic approach helps isolate the relationship between network capacity and S field performance despite the high stochastic variance.
+
+
+============================================================
+=== Iteration 148 ===
+============================================================
+Configuration is ready for iteration 149. 
+
+**Summary for Iteration 148:**
+- **Result**: R²=0.590 (poor), regressed from Node 147's R²=0.638
+- **Finding**: Increasing hidden_dim from 512→768 caused regression, confirming S field's stochastic variance
+- **Block 9's 768×4** achieved R²=0.708, but this run got 0.590 (variance ~0.12)
+- **Best config in this block**: Node 147 (512×4, R²=0.638)
+
+**Config for Iteration 149:**
+- Branching from Node 147 (best performer)
+- Mutation: total_steps 150000→200000 (try more training instead of more capacity)
+- hidden_dim=512, n_layers=4, omega_f=50, lr=2E-5, batch_size=1
+- This tests if S field benefits from extended training rather than larger network
+
+
+============================================================
+=== Iteration 149 ===
+============================================================
+Configuration is ready for iteration 150:
+- **Parent**: Node 147 (best R²=0.638)
+- **Mutation**: omega_f: 50 → 40 (reducing frequency to potentially reduce training instability)
+- **Config**: lr=2E-5, hidden_dim=512, n_layers=4, omega_f=40, steps=150k
+
+**Summary of iteration 149:**
+
+**Iter 149: poor** - S field testing step scaling on 512×4 config
+- **Result**: R²=0.456 (regression from 0.638)
+- **Key finding**: MORE training steps (200k vs 150k) produced WORSE results on S field
+- **Insight**: S field has extreme stochastic variance. Both capacity scaling (768→0.590) and step scaling (200k→0.456) regressed from Node 147's baseline (0.638)
+- **Next**: Testing lower omega_f (40 vs 50) to potentially reduce training instability
+
+
+============================================================
+=== Iteration 150 ===
+============================================================
+The config is set for iteration 151:
+- **Parent**: Node 148 (UCB=2.322, 768×4 with omega_f=50, R²=0.590)
+- **Mutation**: lr: 2E-5 → 3E-5
+- **Hypothesis**: Higher learning rate with larger capacity may improve convergence for S field
+
+**Iteration 150 Summary:**
+- R²=0.563 (poor) with omega_f=40, REGRESSED from Node 147's R²=0.638 (omega_f=50)
+- This confirms S field is unique: requires omega_f=50 while F/Jp/C prefer 15-30
+- 3 consecutive regressions from Node 147 confirm it's a local optimum
+- Best config for S remains: 512×4, lr=2E-5, omega_f=50, 150k steps (R²=0.638)
+
+**Next iteration (151):**
+- Config: 768×4, lr=3E-5, omega_f=50, 150k steps
+- Strategy: Exploit from Node 148 (UCB=2.322), testing higher lr on larger network
+- If this fails, will consider code modification (gradient clipping) per Open Question #1
+
+
+============================================================
+=== Iteration 151 ===
+============================================================
+Configuration is ready for iteration 152.
+
+**Summary - Iteration 151 Analysis:**
+
+**Result:** POOR (R²=0.101)
+- Node 151, parent=148 (768×4, R²=0.590)
+- Mutation: lr=2E-5→3E-5
+
+**Key Finding:** LR increase from 2E-5 to 3E-5 caused **catastrophic failure** (-83% regression). S field has the narrowest LR tolerance of all fields - only lr=2E-5 works. F/Jp/C fields tolerate 3E-5 to 5E-5, but S requires lr≤2E-5.
+
+**Next iteration 152:**
+- Parent: Node 150 (UCB=2.434, highest)
+- Config: lr=1.5E-5, hidden_dim=512, n_layers=4, omega_f=40, steps=150k
+- Mutation: lr=2E-5→1.5E-5 (testing if LOWER lr helps with omega_f=40)
+- Rationale: Since lr=3E-5 catastrophically failed, try the opposite direction with even lower lr to see if it can compensate for the lower omega_f=40 regime
+
+
+============================================================
+=== Iteration 152 ===
+============================================================
+**Summary - Iteration 152 Complete**
+
+**Results:**
+- R²=0.563 with lr=1.5E-5 on omega_f=40 path (identical to parent Node 150)
+- Lower LR does NOT improve the omega_f=40 path
+- **6 consecutive mutations from Node 147 have failed to improve**
+
+**Key findings:**
+- Local optimum CONFIRMED at Node 147: 512×4, lr=2E-5, omega_f=50, 150k steps (R²=0.638)
+- S field REQUIRES omega_f=50 (lower omega_f inherently limits performance)
+- LR tolerance extremely narrow: only lr=2E-5 works (3E-5 catastrophic, 1.5E-5 no improvement)
+
+**Next iteration (153) config:**
+- **Strategy**: failure-probe (n_layers is the ONLY untested dimension)
+- **Parent**: Node 147 (local optimum)
+- **Mutation**: n_layers: 4 → 3
+- Config: lr=2E-5, hidden_dim=512, n_layers=3, omega_f=50, steps=150k
+
+
+============================================================
+=== Iteration 153 ===
+============================================================
+**Iteration 153 Summary:**
+
+- **Result**: poor (R²=0.589, slope=0.624, 11.5min)
+- **Mutation**: n_layers_nnr_f: 4→3 
+- **Finding**: n_layers=3 REGRESSED from n_layers=4 (0.638→0.589, -7.7%). This is the 7th consecutive regression from Node 147's local optimum. S field prefers n_layers=4 (opposite to Jp/C which prefer 3).
+- **Key insight**: ALL parameter dimensions exhausted at 512 capacity - hidden_dim (768 worse), total_steps (200k worse), omega_f (40 worse), lr (3E-5 catastrophic, 1.5E-5 no change), n_layers (3 worse)
+
+**Next iteration 154 configuration:**
+- **Parent**: Node 153 (UCB=2.710, highest)
+- **Strategy**: Capacity scaling - try 1024×4 to match Block 9's larger capacity approach
+- **Mutation**: hidden_dim: 512→1024 (also restore n_layers: 3→4)
+- **Config**: lr=2E-5, hidden_dim=1024, n_layers=4, omega_f=50, steps=150k
+- **Rationale**: Block 9 achieved R²=0.708-0.757 with 1024×4/1280×4. Current local optimum at 512×4 (R²=0.638) may be broken with larger capacity.
+
+
+============================================================
+=== Iteration 154 ===
+============================================================
+Configuration is ready for iteration 155:
+- **Field**: S (stress tensor)
+- **Parent**: Node 154 (UCB=2.882)
+- **Mutation**: hidden_dim_nnr_f: 1024 → 1280
+- **Other params unchanged**: lr=2E-5, n_layers=4, omega_f=50, steps=150k, batch_size=1
+
+**Summary of Iteration 154:**
+- R²=0.646 (NEW LOCAL OPTIMUM, beats Node 147's 0.638)
+- 1024×4 achieved +9.7% improvement over parent 153's 512×3 (0.589)
+- Training time 40.9min (2.9x slower than 512×4 at 14.3min)
+- Block 9 variance confirmed: same 1024×4 config achieved R²=0.757 in Block 9, but only 0.646 now
+
+**Next iteration (155):**
+- Testing hidden_dim=1280 to approach Block 9's R²=0.757 (which used 1280×4)
+- 2 iterations remaining in Block 13 (10/12 done)
+
+
+============================================================
+=== Iteration 155 ===
+============================================================
+**Iteration 155 Summary:**
+
+**Result**: R²=0.801 - **NEW S FIELD RECORD** (exceeds Block 9's 0.757)
+
+| Metric | Value |
+|--------|-------|
+| R² | 0.801 (moderate) |
+| Slope | 0.846 |
+| MSE | 2.93E-08 |
+| Training time | 58.8 min |
+| Config | 1280×4, lr=2E-5, omega_f=50, 150k steps |
+
+**Key finding**: Capacity scaling continues to work for S field. The 1280×4 network achieved R²=0.801, a significant improvement over 1024×4 (0.646). S field requires LARGE networks - the capacity scaling path shows consistent improvement:
+- 256×4: 0.389
+- 384×4: 0.476  
+- 512×4: 0.638
+- 768×4: 0.590 (stochastic drop)
+- 1024×4: 0.646
+- 1280×4: **0.801** ← NEW RECORD
+
+**Next iteration (156)**: Testing hidden_dim=1536 to see if capacity scaling continues. This is the last iteration in Block 13.
+
+
+============================================================
+=== Iteration 156 ===
+============================================================
+**Block 13 Complete - Summary:**
+
+## Iteration 156 Results: poor
+- **Node**: id=156, parent=155
+- **Config**: lr=2E-5, hidden_dim=1536, n_layers=4, omega_f=50, steps=150k
+- **Metrics**: R²=0.145, slope=0.219, training_time=80.8min
+- **Observation**: CATASTROPHIC REGRESSION from R²=0.801 to R²=0.145 (-82%). Hidden_dim=1536 FAILS. S field capacity ceiling at 1280.
+
+## Block 13 Summary
+- **Field**: S (stress tensor)
+- **Best achieved**: R²=0.801 (Node 155) with 1280×4
+- **NEW S FIELD RECORD**: Exceeds Block 9's R²=0.757
+- **Key findings**:
+  1. Capacity is THE key lever for S field (256→0.389, 512→0.638, 1280→0.801, 1536→FAIL)
+  2. S field unique requirements: omega_f=50, lr=2E-5, n_layers=4 (all opposite to F/Jp/C)
+  3. Stochastic variance persists but capacity scaling works through the noise
+
+## Block 14 Setup
+- **Field**: F (deformation gradient)
+- **n_training_frames**: 500 (testing extreme data scaling)
+- **Starting config**: lr=3E-5, hidden_dim=256, n_layers=4, omega_f=20, total_steps=750000
+- **Hypothesis**: F field will maintain high R² at 500 frames (no diminishing returns observed up to 200 frames)
+
+**INSTRUCTIONS EDITED**: Added S field capacity ceiling finding (Block 13) to instructions.
+
+
+============================================================
+=== Iteration 157 ===
+============================================================
+The iteration has been processed. Here's the summary:
+
+## Iteration 157 Summary (Block 14, Iteration 1/12)
+
+**Result: EXCELLENT (R²=0.9997)**
+
+| Metric | Value |
+|--------|-------|
+| R² | 0.9997 |
+| Slope | 0.9998 |
+| Training time | 36.7 min |
+| Config | lr=3E-5, hidden_dim=256, n_layers=4, omega_f=20, steps=750k |
+
+**Key Finding**: F field data scaling SUCCESS at 500 frames! R²=0.9997 nearly matches the 200-frame quality (R²=0.9999). This confirms that F field has excellent scalability with no diminishing returns even at 5x the training data.
+
+**Next Iteration (158)**: 
+- **Strategy**: exploit from Node 157 (UCB=1.707)
+- **Mutation**: total_steps 750000 → 500000 (1000 steps/frame instead of 1500)
+- **Goal**: Test speed Pareto frontier - can we achieve similar quality in ~25 min instead of 37 min?
+
+
+============================================================
+=== Iteration 158 ===
+============================================================
+**Iteration 158 Summary (Block 14, iteration 2/12)**
+
+**Results**: EXCELLENT
+- R² = 0.9979, slope = 0.9978
+- Training time: 25.4 min (31% faster than iter 157)
+- Config: lr=3E-5, steps=500k, hidden_dim=256, n_layers=4, omega_f=20
+
+**Key Finding**: Steps reduction from 750k to 500k (1500 → 1000 steps/frame) maintains excellent R²=0.9979 while reducing training time by 11 minutes. Speed Pareto direction confirmed for F field at 500 frames.
+
+**Next Iteration (159)**: Continue probing the boundary by reducing to 400k steps (800 steps/frame) to find the minimum training budget for excellent results.
+
+
+============================================================
+=== Iteration 159 ===
+============================================================
+Configuration updated for iteration 160. Summary:
+
+**Iteration 159 Results:**
+- **R²=0.9998** (excellent) - matches baseline 750k steps
+- **Training time: 20.5 min** (44% faster than 750k baseline)
+- 800 steps/frame is sufficient for F@500 frames
+
+**Iteration 160 Setup:**
+- Parent: Node 159 (UCB=2.224, highest)
+- Strategy: exploit (boundary probe)
+- Mutation: total_steps 400000 → 300000 (800 → 600 steps/frame)
+- Goal: Find minimum steps for R² > 0.95
+
+**Key finding this iteration:** F field shows remarkable efficiency at 500 frames. 400k steps (800 steps/frame) achieves R²=0.9998 - same as 750k steps (1500 steps/frame). This is a 44% speedup. The non-monotonic behavior (500k gave R²=0.9979, but 400k gave R²=0.9998) suggests either stochastic variance or that 500k stops at a suboptimal point. Will probe 300k (600 steps/frame) next to find the actual boundary.
+
+
+============================================================
+=== Iteration 160 ===
+============================================================
+Configuration updated. Summary of iteration 160:
+
+**Iteration 160 Results (Block 14, iter 4/12)**
+- **R² = 0.9994** (excellent)
+- **Training time**: 15.1 min
+- **Config**: total_steps=300000 (600 steps/frame), lr=3E-5, hidden_dim=256, n_layers=4, omega_f=20
+
+**Steps/frame scaling for F@500 frames discovered:**
+| Steps/frame | Total steps | R² | Time |
+|-------------|-------------|------|------|
+| 1500 | 750k | 0.9997 | 36.7min |
+| 1000 | 500k | 0.9979 | 25.4min |
+| 800 | 400k | 0.9998 | 20.5min |
+| 600 | 300k | 0.9994 | 15.1min |
+
+**Key finding**: 800 steps/frame (400k total) appears optimal for accuracy, 600 steps/frame (300k total) is the speed Pareto point (59% faster, only 0.04% R² loss).
+
+**Next iteration (161)**: Testing 250k steps (500 steps/frame) to find the quality boundary where R² drops below 0.99.
+
+
+============================================================
+=== Iteration 161 ===
+============================================================
+Config updated. Here's a summary of iteration 161:
+
+**Iteration 161 Results - F Field @ 500 Frames - Speed Pareto Mapping**
+
+| Config | R² | Training Time | Steps/Frame |
+|--------|-----|---------------|-------------|
+| 750k steps | 0.9997 | 36.7min | 1500 |
+| 500k steps | 0.9979 | 25.4min | 1000 |
+| 400k steps | 0.9998 | 20.5min | 800 |
+| 300k steps | 0.9994 | 15.1min | 600 |
+| **250k steps** | **0.9923** | **12.4min** | **500** |
+
+**Key Findings:**
+- F field at 500 frames maintains excellent quality (R²>0.99) down to 500 steps/frame
+- 800 steps/frame appears to be the accuracy optimum (R²=0.9998)
+- 500 steps/frame is the speed Pareto (R²=0.9923, 66% faster than baseline)
+- Non-monotonic relationship suggests some stochastic variance
+
+**Next Iteration (162):**
+- Parent: Node 161 (UCB=2.573, highest)
+- Mutation: total_steps 250000 → 200000 (400 steps/frame)
+- Goal: Find the hard boundary where R² drops below 0.95
+
+
+============================================================
+=== Iteration 162 ===
+============================================================
+**Iteration 162 Summary:**
+
+- **Result**: Excellent (R²=0.9921)
+- **Node 162**: parent=161, UCB=2.724 (highest)
+- **Mutation**: total_steps 250000→200000 (500→400 steps/frame)
+- **Metrics**: R²=0.9921, slope=0.9912, training_time=10.0min
+
+**Key Finding**: 400 steps/frame achieves R²=0.9921 in only 10.0min - 73% faster than the 750k baseline (36.7min). The boundary is surprisingly low: at 500 frames, F field can achieve R²>0.99 with only 400 steps/frame.
+
+**Steps/frame map for F@500frames**:
+- 1500→0.9997, 1000→0.9979, 800→0.9998, 600→0.9994, 500→0.9923, 400→0.9921
+
+**Config for Next Iteration (163)**:
+- total_steps: 200000→150000 (400→300 steps/frame)
+- Testing boundary: will 300 steps/frame drop R² below 0.95?
+- Parent: Node 162
+
+
+============================================================
+=== Iteration 163 ===
+============================================================
+Config is set for iteration 164:
+- **Parent**: Node 159 (800 steps/frame optimal with R²=0.9998)
+- **Strategy**: switch-param (total_steps mutated 6 times consecutively, now testing depth)
+- **Mutation**: n_layers: 4 -> 2 (testing speed Pareto with shallower network)
+- **Config**: lr=3E-5, total_steps=400000 (800 steps/frame), hidden_dim=256, n_layers=2, omega_f=20
+
+This tests whether F field at 500 frames can maintain excellent R² with a shallower network (2 layers). Block 11 showed 256×2 achieved R²=0.994 at 200 frames in 9.5min - a 48% speed gain for 0.4% accuracy loss. Testing if this pattern scales to 500 frames.
+
+**Summary of Iteration 163:**
+- Result: R²=0.984 (good but below excellent threshold)
+- Boundary found: 300 steps/frame insufficient for R²>0.99 at 500 frames
+- Complete steps/frame map for F@500frames: 
+  - 1500→0.9997 (37min), 800→0.9998 (21min, OPTIMAL), 600→0.9994 (15min)
+  - 500→0.9923 (12min), 400→0.9921 (10min, SPEED PARETO), 300→0.9842 (7.6min, BELOW THRESHOLD)
+- Next: Testing n_layers=2 with 800 steps/frame for depth-based speed optimization
+
+
+============================================================
+=== Iteration 164 ===
+============================================================
+Configuration is ready for iteration 165:
+
+**Summary - Iteration 164 Complete**
+
+**Results:**
+- R² = 0.9806 (good, not excellent)
+- Depth reduction from 4→2 layers degraded performance from R²=0.9998 to 0.9806
+- Training time: 13.5 min
+
+**Key Finding:**
+- n_layers=4 is REQUIRED for F field at 500 frames to achieve R²>0.99
+- 2 layers has insufficient capacity even with 800 steps/frame
+
+**Block 14 Progress (iter 8/12):**
+- Steps/frame map complete: 1500→0.9997, 800→0.9998 (OPTIMAL), 600→0.9994, 500→0.9923, 400→0.9921, 300→0.9842
+- Depth boundary found: n_layers=2 insufficient (0.9806), n_layers=4 optimal (0.9998)
+
+**Next Iteration 165:**
+- Parent: Node 159 (best R²=0.9998)
+- Mutation: omega_f: 20.0 → 25.0 (test frequency boundary)
+- Config: lr=3E-5, total_steps=400000, hidden_dim=256, n_layers=4, omega_f=25.0
+
+
+============================================================
+=== Iteration 165 ===
+============================================================
+Configuration updated for iteration 166. 
+
+**Summary of Iteration 165:**
+- **Result**: Excellent (R²=0.994, slope=0.995)
+- **Config**: F field, 500 frames, lr=3E-5, total_steps=400k, hidden_dim=256, n_layers=4, omega_f=25
+- **Finding**: Omega_f=25 slightly degrades compared to omega_f=20 (R²=0.994 vs 0.9998). The omega_f=20 optimum established at 200 frames continues to hold at 500 frames.
+- **Next iteration (166)**: Testing omega_f=15 to map the lower frequency boundary at 500 frames
+
+**Block 14 Progress (iter 9/12):**
+- Steps/frame efficiency map complete: 1500→0.9997, 800→0.9998 (OPTIMAL), 600→0.9994, 500→0.9923, 400→0.9921 (SPEED PARETO), 300→0.9842 (BELOW 0.99)
+- Depth: n_layers=4 required (2 layers insufficient at 500 frames)
+- Omega_f: 20→0.9998, 25→0.994. Testing 15 next.
+
+
+============================================================
+=== Iteration 166 ===
+============================================================
+The config is ready for iteration 167:
+- **Field**: F (unchanged)
+- **lr_NNR_f**: 3E-5 (unchanged)  
+- **total_steps**: 400000 (unchanged, 800 steps/frame - optimal from iter 159)
+- **hidden_dim_nnr_f**: 384 (increased from 256 - testing capacity boundary)
+- **n_layers_nnr_f**: 4 (unchanged)
+- **omega_f**: 20.0 (restored to optimal from iter 166's 15.0)
+- **n_training_frames**: 500 (unchanged)
+
+**Summary for Iteration 166:**
+
+Iteration 166 completed with **excellent** results (R²=0.9921). This tested the lower omega_f boundary:
+- omega_f=15 achieves R²=0.9921, slightly below omega_f=20's R²=0.9998
+- **OMEGA_F MAP COMPLETE at 500 frames**: 15→0.9921, 20→0.9998 (OPTIMAL), 25→0.994
+- All three values are excellent (R²>0.99), but omega_f=20 is clearly optimal
+- omega_f range [15-25] is the viable range for F field at 500 frames
+
+**Next iteration (167)** will test capacity scaling by increasing hidden_dim from 256→384, returning to the optimal omega_f=20.0. This will determine whether F@500frames benefits from additional capacity (like other fields) or whether 256×4 is already sufficient.
+
+
+============================================================
+=== Iteration 167 ===
+============================================================
+Configuration is set for iteration 168:
+- **hidden_dim_nnr_f**: 128 (testing lower capacity boundary)
+- **n_layers_nnr_f**: 4 
+- **omega_f**: 20.0
+- **total_steps**: 400000 (800 steps/frame)
+- **lr_NNR_f**: 3E-5
+- **n_training_frames**: 500
+- **field_name**: F
+
+---
+
+**Iteration 167 Summary:**
+
+- **Result**: EXCELLENT (R²=0.9997, slope=1.000, training_time=29.3min)
+- **Node**: id=167, parent=159
+- **Mutation**: hidden_dim: 256 → 384 (capacity increase test)
+- **Finding**: hidden_dim=384 achieves R²=0.9997 vs hidden_dim=256's R²=0.9998. **IDENTICAL accuracy but 43% slower** (29.3min vs 20.5min). CONFIRMED: **256×4 is OPTIMAL for F@500frames** - more capacity provides no improvement.
+
+**Block 14 Parameter Map (F@500 frames) - COMPLETE:**
+| Parameter | Optimal | Viable Range | Boundary |
+|-----------|---------|--------------|----------|
+| steps/frame | 800 (R²=0.9998) | 400-1500 | <300 fails |
+| omega_f | 20 (R²=0.9998) | 15-25 | outside causes ~0.7% degradation |
+| n_layers | 4 (required) | 4 only | 2 layers = 0.980 |
+| hidden_dim | 256 (optimal) | ≥256 | testing 128 next |
+
+**Iteration 168 Config:**
+- **Mutation**: hidden_dim: 256 → 128 (testing lower capacity boundary)
+- **Parent**: Node 159 (best config at R²=0.9998)
+- **Hypothesis**: 128×4 will degrade R² below optimal but reveal the minimum capacity for F@500frames
+
+
+============================================================
+=== Iteration 168 ===
+============================================================
+**Block 14 Complete. Summary:**
+
+## Iteration 168: excellent
+- **Config**: hidden_dim=128, n_layers=4, omega_f=20, lr=3E-5, total_steps=400k
+- **Metrics**: R²=0.9966, slope=0.996, training_time=17.3min
+- **Finding**: Lower capacity boundary found. 128×4 achieves R²=0.9966 (vs 256×4's 0.9998) but 15% faster (17.3min vs 20.5min). Capacity map complete: 128→0.9966, 256→0.9998, 384→0.9997.
+
+## Block 14 Summary (COMPLETE)
+- **Field**: F @ 500 frames
+- **Best R²**: 0.9998 (Node 159)
+- **Key finding**: F field scales to 500 frames with NO diminishing returns (R²=0.9997@500f ≈ R²=0.9999@200f)
+- **Open Question 3 ANSWERED**: Extreme data scaling works excellently for F field
+- **Complete parameter maps**:
+  - steps/frame: 800 optimal, 400 speed Pareto, 300 threshold
+  - omega_f: 20 optimal, 15-25 viable
+  - n_layers: 4 required at 500f (2 insufficient)
+  - hidden_dim: 256 optimal, 128 speed Pareto
+
+## Block 15 Setup
+- **Field**: Jp @ 500 frames (testing Jp data scaling to complete picture)
+- **Config**: lr=4E-5, hidden_dim=384, n_layers=3, omega_f=20, total_steps=1M (2000 steps/frame)
+- **Hypothesis**: Jp will show continued diminishing returns or plateau at 500 frames
+
+**INSTRUCTIONS EDITED**: Added F extreme data scaling rule (Block 14 finding).
+
+
+============================================================
+=== Iteration 169 ===
+============================================================
+**Iteration 169 Complete.**
+
+**Summary:**
+- **Result**: R² = 0.965 (Good) - Jp field at 500 frames
+- **Critical Finding**: Jp REGRESSES at 500 frames compared to 200 frames (0.965 vs 0.989)
+- **Data scaling trajectory**: 0.968 (48f) → 0.982 (100f) → 0.989 (200f) → 0.965 (500f)
+- **Contrast with F field**: F scales perfectly to 500 frames (R²=0.9998), but Jp peaks at 200 frames and declines
+
+**Next iteration (170):**
+- Parent: Node 169 (only node, UCB=1.672)
+- Strategy: exploit - probe overfitting hypothesis
+- Mutation: total_steps: 1,000,000 → 600,000 (2000 → 1200 steps/frame)
+- Hypothesis: Like F field (which needed only 800/frame at 500f vs 1500 at 200f), Jp may need fewer steps at higher frame counts to avoid overfitting
+
+
+============================================================
+=== Iteration 170 ===
+============================================================
+Iteration 170 complete. 
+
+**Summary:**
+- **Result**: Excellent (R²=0.993, slope=0.977)
+- **Key finding**: Reduced steps from 1M to 600k (2000→1200 steps/frame) fixed the overfitting issue
+- **Jp data scaling now works**: 0.968(48f)→0.982(100f)→0.989(200f)→0.993(500f) - monotonic improvement confirmed
+- **Next iteration (171)**: Testing 400k steps (800 steps/frame) to find the minimum boundary - matching F's efficiency at 500 frames
+
+
+============================================================
+=== Iteration 171 ===
+============================================================
+**Iteration 171 Summary:**
+
+**Results:** R²=0.991 (excellent) - 800 steps/frame near-boundary found
+
+**Key findings:**
+- Steps/frame map for Jp@500f: 2000→0.965 (overfit), 1200→0.993 (optimal), 800→0.991 (acceptable)
+- 800 steps/frame shows only a 0.002 drop from 1200/frame but is 32% faster (23.9min vs 35.3min)
+- Jp requires more steps/frame than F at 500 frames (800 vs 800 for F) - Jp is less efficient
+
+**Config for iteration 172:**
+- **Parent**: Node 171 (UCB=2.215, highest)
+- **Strategy**: exploit
+- **Mutation**: omega_f: 20.0 → 15.0
+- **Rationale**: Testing if lower frequency (like F's success at 200f) can help at 400k steps. F showed omega_f=15-25 plateau; Jp at 200f had optimal at omega_f=20-25. At 500 frames, lower omega_f may compensate for reduced training steps.
+
+
+============================================================
+=== Iteration 172 ===
+============================================================
+Configuration updated for iteration 173. Summary:
+
+**Iteration 172 Results:**
+- **R² = 0.9967** (EXCELLENT - new Jp@500f record!)
+- omega_f=15 at 800 steps/frame BEATS omega_f=20 at 1200 steps/frame (0.993)
+- Confirms the omega_f-steps tradeoff pattern: lower omega_f compensates for fewer steps
+- Training time: 23.9 min
+
+**Key Finding:**
+The Jp data scaling trajectory is now: 0.968(48f) → 0.982(100f) → 0.989(200f) → **0.997(500f)** - monotonic improvement confirmed after fixing overfitting.
+
+**Next Iteration (173):**
+- Testing omega_f=10 to find the lower boundary
+- Same config otherwise: lr=4E-5, 400k steps, 384×3
+- If omega_f=10 degrades, omega_f=15 is optimal for Jp@500f
+
+
+============================================================
+=== Iteration 173 ===
+============================================================
+**Iteration 173 Summary:**
+
+**Results:** R²=0.994 (excellent) with omega_f=10, establishing the lower omega_f boundary for Jp at 500 frames.
+
+**Key Findings:**
+- omega_f=10 (R²=0.994) is slightly below omega_f=15 (R²=0.997), confirming omega_f=15 as OPTIMAL
+- Complete omega_f map for Jp@500f: 10→0.994, 15→0.997(optimal), 20→0.991
+- Pattern confirmed: optimal omega_f shifts DOWN with more frames (35@48f → 20-25@200f → 15@500f)
+
+**Next Iteration (174):**
+- Parent: Node 172 (omega_f=15, R²=0.997 - the optimal config)
+- Mutation: lr: 4E-5 → 5E-5
+- Strategy: Explore lr boundary at optimal omega_f=15
+- Goal: Determine if higher lr can maintain or improve R²=0.997
+
+Config ready: lr=5E-5, omega_f=15, total_steps=400k, hidden_dim=384, n_layers=3
+
+
+============================================================
+=== Iteration 174 ===
+============================================================
+**Summary of Iteration 174:**
+
+- **Result**: excellent (R²=0.9966, slope=0.977, time=24.0min)
+- **Finding**: lr=5E-5 is within tolerance but marginally below lr=4E-5's R²=0.997
+- **Mutation applied**: lr=4E-5 → 5E-5 
+- **Next iteration 175**: lr=3E-5 to complete the learning rate map for Jp@500f at optimal omega_f=15
+
+**Current Jp@500f parameter maps:**
+- omega_f: 10→0.994, **15→0.997(OPTIMAL)**, 20→0.991
+- lr: 4E-5→0.997(optimal), 5E-5→0.9966(acceptable)
+- steps/frame: 800→0.991, 1200→0.993, 2000→0.965(overfits)
+
+The next iteration will test lr=3E-5 to determine if lower learning rate improves or degrades performance at optimal omega_f=15 configuration.
+
+
+============================================================
+=== Iteration 175 ===
+============================================================
+Good. Now the config is set for iteration 176:
+- hidden_dim_nnr_f: 256 (reduced from 384 for speed Pareto test)
+- learning_rate_NNR_f: 4E-5 (optimal from Node 172)
+- omega_f: 15.0 (optimal from Node 172)
+- total_steps: 400000 (800 steps/frame)
+
+**Summary for Iteration 175:**
+- **Result**: R²=0.9945 (excellent), completing the lr map
+- **Finding**: LR MAP COMPLETE - 3E-5→0.9945, 4E-5→0.997(OPTIMAL), 5E-5→0.9966
+- **Key insight**: lr tolerance is asymmetric - wider toward higher lr (5E-5 loses 0.0004) than lower lr (3E-5 loses 0.0025)
+- **Next iteration (176)**: Testing hidden_dim=256 (from Node 172 optimal base) to probe speed Pareto. Using optimal lr=4E-5 and omega_f=15.
+
+
+============================================================
+=== Iteration 176 ===
+============================================================
+Configuration updated for iteration 177. The changes:
+- `n_layers_nnr_f`: 3 → 4 (testing depth boundary for Jp at 500 frames)
+- `hidden_dim_nnr_f`: 256 → 384 (restored to optimal capacity)
+
+**Summary of Iteration 176:**
+- **Result**: R²=0.9885 (excellent but below optimal)
+- **Finding**: hidden_dim=256 causes noticeable drop from 0.997 to 0.989 for Jp field. Time reduced 27% (24min→17.4min). Confirms Jp requires 384 capacity, unlike F which works with 256.
+- **Speed Pareto for Jp@500f**: 256×3 (17.4min, R²=0.989) vs Accuracy Pareto: 384×3 (24min, R²=0.997)
+
+**Next iteration (177)**: Testing n_layers=4 depth boundary. Established principle states Jp is depth-sensitive (4 layers degrades severely at lower frame counts). Testing if this holds at 500 frames.
+
+
+============================================================
+=== Iteration 177 ===
+============================================================
+Configuration complete. Summary:
+
+**Iteration 177 Complete:**
+- Result: R²=0.988 (excellent but regression from parent's 0.997)
+- Finding: **DEPTH SENSITIVITY CONFIRMED** - n_layers=4 degrades Jp performance at 500 frames
+- Pattern: Jp field is depth-sensitive at ALL frame counts (48f, 200f, 500f)
+- Jp@500f depth map: n_layers=3→0.997(OPTIMAL), n_layers=4→0.988(degraded)
+
+**Next Iteration (178):**
+- Parent: Node 174 (lr=5E-5, R²=0.997)
+- Mutation: hidden_dim: 384 → 512
+- Rationale: Test if higher capacity can improve R² at higher learning rate
+- Config: lr=5E-5, total_steps=400k, hidden_dim=512, n_layers=3, omega_f=15
+
+
+============================================================
+=== Iteration 178 ===
+============================================================
+Configuration is set for iteration 179:
+- **Parent**: Node 172 (omega_f=15, R²=0.997 - the optimal config)
+- **Mutation**: n_layers_nnr_f: 3 → 2 (testing minimum depth for Jp@500f)
+- **Config**: lr=4E-5, hidden_dim=384, n_layers=2, omega_f=15, total_steps=400k (800/frame)
+
+**Iteration 178 Summary:**
+- **Result**: R²=0.988 (excellent but degraded) - hidden_dim=512 HURTS Jp@500f
+- **Key finding**: INVERTED capacity scaling confirmed - 384 is the ceiling, not a minimum
+- **Complete capacity map**: 256→0.989, 384→0.997(optimal), 512→0.988
+
+**Iteration 179 Setup:**
+- Testing n_layers=2 from optimal config (omega_f=15, lr=4E-5, hidden_dim=384)
+- Hypothesis: F field worked with n_layers=2 (R²=0.994 at 200f). Test if Jp can use shallower networks
+- This will complete the depth exploration: n_layers [2,3,4] mapped
+
+
+============================================================
+=== Iteration 179 ===
+============================================================
+The config is now set to the optimal configuration for Jp@500frames:
+- lr=4E-5 ✓
+- total_steps=400000 ✓
+- hidden_dim=384 ✓
+- n_layers=3 ✓
+- omega_f=15.0 ✓
+
+This is a **robustness test** of Node 172's configuration. The next iteration (180) will be the final iteration of the block, so I'm set up to verify the R²=0.997 result is reproducible.
+
+**Summary for Iteration 179:**
+- **Result**: R²=0.958 (good) - significant degradation
+- **Finding**: n_layers=2 is too shallow for Jp field. Depth map complete: 2→0.958 (underfitting), 3→0.997 (OPTIMAL), 4→0.988 (overfitting)
+- **Next**: Robustness test of optimal config (Node 172) for final iteration of block
+
+
+============================================================
+=== Iteration 180 ===
+============================================================
+**Block 15 Complete / Block 16 Setup Summary:**
+
+**Block 15 Results (Jp@500 frames):**
+- **Best R²**: 0.997 (Node 172)
+- **Key Discovery**: Overfitting at 2000 steps/frame (R²=0.965), fixed at 800 steps/frame (R²=0.997)
+- **Jp Data Scaling**: 0.968→0.982→0.989→0.997 (48→100→200→500 frames) - monotonic improvement
+- **omega_f shift**: Confirmed 35→20→15 as frames increase
+- **Complete parameter map**: Jp STRICTLY needs 384×3 (both smaller/larger capacity AND shallower/deeper all degrade)
+- **Robustness variance**: ~0.006 (acceptable)
+
+**Block 16 Configuration (C@500 frames):**
+- **field_name**: C (APIC matrix)
+- **n_training_frames**: 500
+- **total_steps**: 500000 (1000 steps/frame, applying overfitting lesson from Jp)
+- **omega_f**: 20.0 (reduced from 25, following "more frames → lower omega_f" pattern)
+- **lr**: 3E-5 (known optimal for C)
+- **hidden_dim**: 384, **n_layers**: 3 (known optimal for C)
+
+**Block 16 Hypothesis**: C showed regression at 200 frames (0.994 < 0.996@100f). At 500 frames, C will either:
+1. Continue regressing (confirming C data scaling penalty)
+2. Stabilize if overfitting was the issue (like Jp fixed at 500f)
+
+Ready for iteration 181.
+
+
+============================================================
+=== Iteration 181 ===
+============================================================
+I have completed iteration 181 analysis and configured iteration 182. Here's the summary:
+
+## Iteration 181 Summary
+
+**Results**: R²=0.980 (good), slope=0.966, training time=29.2min
+
+**Key Finding**: C field data scaling continues to hurt performance:
+- C@100f: R²=0.996
+- C@200f: R²=0.994
+- C@500f: R²=0.980 ← confirmed regression continues
+
+**Analysis**: The C field shows inverse data scaling - more training frames leads to worse performance. This is now confirmed across three data points (100→200→500 frames). The initial config used omega_f=20 but Block 12 found omega_f=25 optimal for C - this may have contributed to the lower R².
+
+**Configuration for Iteration 182**:
+- **Parent**: Node 181 (UCB=1.687, highest/only node)
+- **Strategy**: exploit
+- **Mutation**: omega_f: 20.0 → 25.0 (Block 12's optimal for C field)
+- **Rationale**: Test whether omega_f=25 improves C@500f performance as it did at 200 frames
+
+All files updated:
+- Analysis log: Appended iter 181 entry
+- Working memory: Added iteration log and emerging observations
+- Config: omega_f changed from 20.0 to 25.0
+
+
+============================================================
+=== Iteration 182 ===
+============================================================
+Configuration is set for iteration 183.
+
+**Summary of Iteration 182:**
+- **Result**: R²=0.954 (good) - regression from iter 181's R²=0.980
+- **Key finding**: omega_f=25 HURTS C@500f, confirming the "more frames → lower omega_f" pattern extends to C field
+- **Strategy for iter 183**: Test overfitting hypothesis by reducing steps/frame from 1000 to 600 (500k→300k total steps), keeping omega_f=20 (the better value)
+
+**Config for next iteration (183):**
+- lr=3E-5, hidden=384, layers=3, omega=20.0, steps=300k (600 steps/frame)
+- Parent: Node 181 (omega_f=20, R²=0.980)
+- Mutation: total_steps: 500000 → 300000 (testing overfitting hypothesis)
+
+
+============================================================
+=== Iteration 183 ===
+============================================================
+Config updated for iteration 184:
+- **omega_f**: 20 → 15 (following "more frames → lower omega_f" pattern)
+- **total_steps**: restored to 500k (since reducing to 300k hurt C field)
+- **Parent**: Node 183 (highest UCB=2.197)
+
+**Summary of Iteration 183:**
+- **Result**: R²=0.973 (good) - overfitting fix FAILED for C field
+- **Key finding**: C and Jp have OPPOSITE overfitting behavior
+  - Jp@500f: Reducing steps (2000→800/frame) HELPED
+  - C@500f: Reducing steps (1000→600/frame) HURT
+- C appears undertrained, not overtrained at 500 frames
+
+**Next iteration (184) will test:**
+- omega_f=15 (from 20) following the pattern that more frames need lower omega_f
+- Restored 500k steps to give C field adequate training
+
+
+============================================================
+=== Iteration 184 ===
+============================================================
+**Iteration 184 Complete.**
+
+**Summary:**
+- **Iter 184 Result**: R²=0.978 (good) with omega_f=15
+- **Finding**: omega_f=15 is slightly worse than omega_f=20 (0.978 vs 0.980), confirming omega_f=20 is optimal for C@500f
+- **omega_f map for C@500f**: 15→0.978, 20→0.980, 25→0.954 (clear peak at 20)
+- **Next**: Testing 600k steps with omega_f=20 - C appears to need more training (unlike Jp which needed fewer steps at 500f)
+
+**Config changes for iter 185**:
+- omega_f: 15→20 (back to optimal)
+- total_steps: 500k→600k (testing if C needs more training)
+
+
+============================================================
+=== Iteration 185 ===
+============================================================
+Now I've completed iteration 185 analysis and set up iteration 186. 
+
+**Summary of Iteration 185:**
+- **Result**: R²=0.965 (good) - but WORSE than 500k steps (0.980)
+- **Key finding**: 600k steps OVERFITS C field. C has a narrow optimal window:
+  - 300k steps: R²=0.973 (undertrained)
+  - 500k steps: R²=0.980 (optimal)
+  - 600k steps: R²=0.965 (overtrained)
+- **C's optimal steps/frame ratio**: 1000 steps/frame (vs Jp: 800 steps/frame)
+- **All parameters now mapped for C@500f**:
+  - omega_f: 20 optimal (15→0.978, 20→0.980, 25→0.954)
+  - total_steps: 500k optimal
+  - lr: 3E-5 (unchanged baseline)
+  - hidden_dim: 384 (testing 512 next)
+
+**Next iteration (186)**:
+- Parent: node 184 (highest UCB=2.559)
+- Config: hidden_dim=512, omega_f=20, total_steps=500k, lr=3E-5, n_layers=3
+- Mutation: hidden_dim: 384 → 512 (testing if capacity increase helps C@500f)
+- Hypothesis: Block 12 showed C is depth-sensitive like Jp. Testing if width increase (not depth) can improve C@500f beyond 0.980 ceiling.
+
+
+============================================================
+=== Iteration 186 ===
+============================================================
+Iteration 186 analysis complete.
+
+**Summary:**
+- **Result**: R²=0.987 (good) - **NEW BEST for C@500f**
+- **Finding**: Capacity increase from 384→512 improved C field by +0.007
+- **Next iteration**: Test hidden_dim=640 (parent=186) to probe if further capacity helps
+
+**Key insight**: C field at 500 frames benefits from larger network capacity, similar to the S field pattern. The data scaling penalty can be partially mitigated by increasing model capacity.
+
+
+============================================================
+=== Iteration 187 ===
+============================================================
+**Iteration 187 Summary:**
+
+- **Result**: R²=0.989 (GOOD - new block best)
+- **Config**: lr=3E-5, steps=500k, hidden=640, layers=3, omega=20
+- **Mutation**: hidden_dim 512 → 640 (capacity increase)
+- **Training time**: 51.7 min
+
+**Key findings:**
+- Capacity scaling continues to work: 384(0.980)→512(0.987)→640(0.989)
+- Diminishing returns: +0.007 from 384→512, but only +0.002 from 512→640
+- Training time increased significantly (+35% from 38.4min to 51.7min)
+- Approaching capacity ceiling - likely near optimal tradeoff
+
+**Next iteration (188):**
+- Testing hidden_dim=768 to find the capacity ceiling
+- If R² improvement is minimal (<0.002) or training time becomes prohibitive (>70min), 640 is the optimal capacity
+- Parent: Node 187 (UCB=2.860, highest score)
+
+
+============================================================
+=== Iteration 188 ===
+============================================================
+The config is ready for iteration 189:
+- **Parent**: Node 187 (R²=0.989, hidden=640 - best config)
+- **Mutation**: lr: 3E-5 → 4E-5 (testing if higher lr helps C like it helped Jp at 500 frames)
+- **Config**: hidden=640, layers=3, omega=20, steps=500k, lr=4E-5
+
+**Summary of Iteration 188:**
+- **Result**: good (R²=0.979) 
+- **Key finding**: CAPACITY CEILING FOUND at hidden_dim=640. Increasing to 768 caused regression (0.989 → 0.979)
+- **Full capacity curve**: 384(0.980)→512(0.987)→640(0.989)→768(0.979)
+- **Next test**: lr=4E-5 on optimal 640×3 config to explore if higher learning rate helps (following Jp's pattern at 500 frames)
+
+
+============================================================
+=== Iteration 189 ===
+============================================================
+Configuration updated for iteration 190:
+- **Changed**: n_layers_nnr_f: 3 → 4, learning_rate_NNR_f: 4E-5 → 3E-5
+- **Parent**: Node 187 (best R²=0.989 with 640×3, lr=3E-5)
+- **Mutation**: n_layers: 3 → 4 (depth sensitivity test at higher capacity)
+- **Hypothesis**: Block 12 found C is depth-sensitive at 200f/384dim. Testing if larger capacity (640) at 500f can support depth=4.
+
+**Iteration 189 Summary**:
+- lr=4E-5 on hidden_dim=640 yielded R²=0.987, which is worse than lr=3E-5 (R²=0.989)
+- C field does NOT benefit from higher learning rate like Jp did
+- C optimal: lr=3E-5, hidden_dim=640, n_layers=3, omega_f=20, total_steps=500k (1000 steps/frame)
+
+
+============================================================
+=== Iteration 190 ===
+============================================================
+The configuration is ready for iteration 191.
+
+## Iteration 190 Summary
+
+**Result**: good (R²=0.983)
+
+**Analysis**:
+- Tested n_layers=4 from best config (Node 187, R²=0.989)
+- **DEPTH SENSITIVE CONFIRMED**: n_layers=4 REGRESSES (0.983 vs 0.989, -0.006)
+- C shares Jp's strict depth ceiling (both need exactly 3 layers)
+- Only F field tolerates 4+ layers
+- Training time increased 27% (51.7→65.9min) with worse results
+
+**Parameter Space Now Fully Mapped for C@500f**:
+| Parameter | Values Tested | Optimal |
+|-----------|--------------|---------|
+| hidden_dim | 384(0.980), 512(0.987), 640(0.989), 768(0.979) | 640 |
+| n_layers | 3(0.989), 4(0.983) | 3 |
+| omega_f | 15(0.978), 20(0.989), 25(0.954) | 20 |
+| lr | 3E-5(0.989), 4E-5(0.987) | 3E-5 |
+| total_steps | 300k(0.973), 500k(0.989), 600k(0.965) | 500k |
+
+**Next Iteration (191)**: Testing lr=2.5E-5 to complete lr boundary mapping
+- Config: lr=2.5E-5, hidden_dim=640, n_layers=3, omega_f=20, steps=500k
+- Parent: Node 187 (best R²=0.989)
+- Purpose: Test if lower lr improves or harms C@500f performance
+
+
+============================================================
+=== Iteration 191 ===
+============================================================
+**Summary - Iteration 191 complete:**
+
+**Results analyzed (Iter 191):**
+- R² = 0.989 (good) - matches best result
+- lr = 2.5E-5 performs equivalently to lr = 3E-5 (both give R²=0.989)
+- lr = 4E-5 is slightly worse (0.987)
+- C@500f lr tolerance confirmed: [2.5E-5, 3E-5]
+
+**Config for iteration 192 (final iteration of Block 16):**
+- n_layers_nnr_f: 3 → 2 (testing shallower depth)
+- lr_NNR_f: 3E-5 (reverting to optimal)
+- All other parameters unchanged (hidden_dim=640, omega=20, steps=500k)
+
+**Strategy**: Testing n_layers=2 to complete the depth map for C@500f. We know n_layers=4 regresses (0.983 vs 0.989), and n_layers=3 is optimal. This final test will determine if n_layers=2 also works (like F field) or regresses (confirming strict n_layers=3 requirement like Jp).
+
+**Block 16 progress (iter 11/12):**
+- Capacity ceiling mapped: 640 optimal
+- omega_f mapped: 20 optimal (15 and 25 both worse)
+- steps/frame: 1000 optimal (600 and 1200 both worse)
+- lr zone: [2.5E-5, 3E-5] both give R²=0.989
+- depth: 4 layers regresses (0.983), 3 optimal - testing 2 next
+- Best R² = 0.989 achieved with 640×3, omega=20, lr=3E-5, 500k steps
+
+
+============================================================
+=== Iteration 192 ===
+============================================================
+Block 16 is complete and Block 17 is set up. Let me provide a summary:
+
+---
+
+## Block 16 Summary (Iteration 192 - Block End)
+
+**Iteration 192 Results**: R²=0.953 (good) - n_layers=2 REGRESSES significantly compared to n_layers=3 (0.989)
+
+### Block 16 Completion:
+- **Field**: C at 500 frames
+- **Best R²**: 0.989 (Nodes 187, 191)
+- **Optimal Config**: hidden_dim=640, n_layers=3, omega_f=20, lr=2.5-3E-5, steps=500k
+
+### Key Findings from Block 16:
+1. **C depth map complete**: n_layers=2(0.953) << n_layers=3(0.989) >> n_layers=4(0.983). C shares Jp's strict depth=3 requirement.
+2. **Capacity ceiling**: 640 optimal (768 regresses)
+3. **Data scaling penalty mitigated**: 0.989@500f via capacity increase (was 0.980 at 384)
+4. **500-frame ranking**: F(0.9998) > Jp(0.997) > C(0.989) >> S(0.801)
+
+### Block 17 Configuration (S field - code modification focus):
+- **Field**: S
+- **n_training_frames**: 48
+- **Config**: 1280×4, omega_f=50, lr=2E-5, steps=150k (Block 13 optimal)
+- **Hypothesis**: Test code modifications (gradient clipping, LayerNorm) to stabilize S field's extreme stochastic variance
+
+The config has been updated for Block 17. The UCB scores file will be erased at block boundary, so parent=root for the first iteration.
+
+
+============================================================
+=== Iteration 193 ===
+============================================================
+The config is correct - same parameters as iteration 193 to isolate the code modification effect. The config has:
+- field_name: S
+- hidden_dim_nnr_f: 1280
+- n_layers_nnr_f: 4
+- omega_f: 50.0
+- learning_rate_NNR_f: 2E-5
+- total_steps: 150000
+- n_training_frames: 48
+- batch_size: 1
+
+**Summary of iteration 194 setup:**
+
+I have completed the following for Block 17, iteration 194:
+
+1. **Analyzed iteration 193 results**: S field baseline with optimal config (1280×4, omega=50, lr=2E-5) produced R²=0.751, confirming the stochastic variance issue (same config produced 0.084-0.801 in previous runs)
+
+2. **CODE MODIFICATION MADE** to `src/MPM_pytorch/models/graph_trainer.py`:
+   - Added gradient clipping (`torch.nn.utils.clip_grad_norm_(nnr_f.parameters(), max_norm=1.0)`) after `loss.backward()`
+   - **Hypothesis**: S field's extreme stochastic variance (R² range 0.08-0.80) may be caused by gradient instability at high omega_f=50. Clipping gradients should stabilize training and reduce variance between runs.
+
+3. **Config unchanged**: Same parameters as iteration 193 to isolate the effect of gradient clipping
+
+4. **Updated logs**: Full log appended to analysis.md, working memory updated with iteration 193 details and emerging observations
+
+Iteration 194 is ready to run with the gradient clipping code modification. The next iteration will reveal whether gradient clipping helps stabilize S field training.
+
+
+============================================================
+=== Iteration 194 ===
+============================================================
+The config is already correct for the robustness test:
+- field_name: S
+- hidden_dim_nnr_f: 1280
+- n_layers_nnr_f: 4
+- omega_f: 50.0
+- learning_rate_NNR_f: 2E-5
+- total_steps: 150000
+- batch_size: 1
+- n_training_frames: 48
+
+No changes needed. The next iteration (195) will run as a robustness test with the same config to get a third datapoint for variance measurement with gradient clipping.
+
+**Summary for Iteration 194:**
+
+- **Result**: R²=0.785 (moderate), +0.034 improvement over parent (0.751)
+- **Code Modification**: Gradient clipping (max_norm=1.0) was added in iteration 193
+- **Key Finding**: Early evidence of variance reduction. With gradient clipping: range 0.034 (2 runs). Without: range 0.717 (5 runs).
+- **Next Iteration (195)**: Robustness test - same config to get third datapoint and confirm variance reduction
+- **Strategy**: robustness-test (continue from Node 194, no config changes)
+
+
+============================================================
+=== Iteration 195 ===
+============================================================
+Now let me provide a summary of what was done for iteration 195:
+
+## Iteration 195 Summary
+
+**Results**: R² = 0.787, MSE = 3.14E-08, slope = 0.837, training_time = 59.1min
+
+**Classification**: Moderate (R² 0.75-0.90)
+
+**Key Finding - GRADIENT CLIPPING VARIANCE REDUCTION CONFIRMED**:
+- With gradient clipping (max_norm=1.0): [0.785, 0.787], **range = 0.002**
+- Without clipping (Block 13 data): [0.084, 0.595, 0.723, 0.751, 0.757, 0.801], **range = 0.717**
+- **99.7% variance reduction!**
+
+**Trade-off Identified**:
+- Gradient clipping at max_norm=1.0 dramatically stabilizes training
+- BUT mean R²~0.786 is below the best-ever 0.801 achieved without clipping
+- Clipping may be too aggressive, capping gradients that could reach higher R²
+
+**Code Modification for Iteration 196**:
+- Changed max_norm from 1.0 to 5.0 in `graph_trainer.py:data_train_INR`
+- Hypothesis: Less aggressive clipping (5.0 vs 1.0) may allow larger gradients that can reach higher R² ceiling while still preventing catastrophic failures (0.084, etc.)
+- This tests the optimal balance between stability and maximum achievable accuracy
+
+**Next Iteration (196)**: Will test max_norm=5.0 to see if we can get both:
+1. Stability (variance < 0.1)
+2. Higher R² ceiling (>0.80, closer to 0.801 record)
+
+
+============================================================
+=== Iteration 196 ===
+============================================================
+**Iteration 196 Summary:**
+
+**Result**: CATASTROPHIC FAILURE - R²=0.128 (poor)
+
+**Analysis**:
+- Iteration 195 changed gradient clipping from max_norm=1.0 to max_norm=5.0
+- This resulted in R²=0.128, which is WORSE than the minimum recorded without clipping (0.084 was the previous worst)
+- max_norm=5.0 is TOO PERMISSIVE for S field training
+
+**Key Finding**:
+- S field gradient clipping is BINARY: strict (max_norm=1.0) works, permissive (5.0) fails catastrophically
+- Summary so far: max_norm=1.0 → R²~0.786 (stable), max_norm=5.0 → R²=0.128 (FAIL)
+
+**Next Iteration (197)**:
+- Testing max_norm=2.0 as a smaller increment from 1.0
+- Same optimal config: 1280×4, omega_f=50, lr=2E-5, steps=150k
+- Goal: Find if there's a sweet spot between 1.0 and 5.0 that raises ceiling while maintaining stability
+- If max_norm=2.0 fails, we'll confirm that max_norm=1.0 is the ceiling and stability > potential for higher R²
+
+
+============================================================
+=== Iteration 197 ===
+============================================================
+**Iteration 197 Summary:**
+
+- **Result**: Poor (R²=0.118) - CATASTROPHIC FAILURE
+- **Finding**: max_norm=2.0 also fails, identical to max_norm=5.0 (R²=0.128)
+- **Key insight**: Gradient clipping threshold is SHARP, not gradual. There's a binary boundary between max_norm=1.0 (works) and max_norm=2.0 (fails)
+- **Clipping map established**: 1.0→0.786 (stable), 2.0→0.118 (FAIL), 5.0→0.128 (FAIL)
+
+**Next iteration (198) setup:**
+- Testing max_norm=1.5 to find exact threshold boundary
+- Parent: Node 195 (stable clipping node)
+- Config unchanged (1280×4, omega=50, lr=2E-5, steps=150k)
+- Code modification: max_norm changed from 2.0 to 1.5
+
+
+============================================================
+=== Iteration 198 ===
+============================================================
+**Iteration 198 Complete.**
+
+**Summary:**
+- **Result**: R²=0.075 (poor) - CATASTROPHIC FAILURE with max_norm=1.5
+- **Key Finding**: Gradient clipping threshold is EXACTLY at max_norm=1.0 - no gradual transition
+- **Clipping Map**: 
+  - 0.5 → TBD (testing next)
+  - 1.0 → R²=0.786 (STABLE)
+  - 1.5 → R²=0.075 (FAIL)
+  - 2.0 → R²=0.118 (FAIL)
+  - 5.0 → R²=0.128 (FAIL)
+
+**Next Iteration (199):**
+- Testing max_norm=0.5 to see if tighter clipping can improve R² above 0.786
+- Code already modified to use max_norm=0.5
+- Config unchanged (1280×4, omega=50, lr=2E-5, steps=150k)
+
+
+============================================================
+=== Iteration 199 ===
+============================================================
+The config is already correct for iteration 200. The code modification has been made (max_norm changed from 0.5 to 0.25 in graph_trainer.py).
+
+**Summary of Iteration 199:**
+
+## Iter 199: moderate (MAX_NORM=0.5 NEW S FIELD RECORD!)
+- **Node**: id=199, parent=195
+- **Mode/Strategy**: code-modification test
+- **Config**: lr_NNR_f=2E-5, total_steps=150000, hidden_dim_nnr_f=1280, n_layers_nnr_f=4, omega_f=50.0, batch_size=1
+- **CODE MODIFICATION**: Changed gradient clipping max_norm from 1.5 to 0.5
+- **Metrics**: final_r2=0.828, final_mse=2.56E-08, slope=0.893, training_time=59.2min
+- **Field**: field_name=S, inr_type=siren_txy, n_frames=48
+- **Observation**: **NEW S FIELD RECORD!** R²=0.828 beats Block 13's 0.801 by +0.027
+
+**Key Findings This Block:**
+1. Gradient clipping DRAMATICALLY stabilizes S field training (99.7% variance reduction)
+2. **ASYMMETRIC THRESHOLD**: max_norm >1.0 causes catastrophic failure, but tighter clipping (<1.0) IMPROVES R²
+3. Gradient clipping map: 0.25→TBD, **0.5→0.828 (NEW BEST)**, 1.0→0.786, 1.5→0.075 (FAIL), 2.0→0.118 (FAIL), 5.0→0.128 (FAIL)
+
+**Next Iteration (200):**
+- **Parent**: Node 199 (UCB=2.699, highest)
+- **Strategy**: exploit (continue exploring tighter clipping)
+- **Mutation**: [code] max_norm: 0.5 -> 0.25
+- **Hypothesis**: Even tighter gradient clipping may further improve S field R² above 0.828
+
+
+============================================================
+=== Iteration 200 ===
+============================================================
+## Iteration 200 Summary
+
+**Iteration 200 Result**: R²=0.810 (moderate) with max_norm=0.25
+
+**Key Finding**: max_norm=0.25 is TOO TIGHT, causing regression from the optimal max_norm=0.5 (R²=0.828).
+
+**Complete Gradient Clipping Map for S Field**:
+- 0.25 → R²=0.810 (regression - too tight)
+- **0.5 → R²=0.828 (OPTIMAL)**
+- 1.0 → R²=0.786 (works)
+- 1.5 → R²=0.075 (FAIL)
+- 2.0 → R²=0.118 (FAIL)
+- 5.0 → R²=0.128 (FAIL)
+
+**Critical Insight**: S field has a NARROW optimal gradient clipping window. The optimal value is exactly max_norm=0.5. Both tighter (0.25) and looser (≥1.5) values degrade performance.
+
+**Next Step**: Reverted code to max_norm=0.5 for iteration 201. Running robustness test to verify stability of the new S field record (R²=0.828).
+
+
+============================================================
+=== Iteration 201 ===
+============================================================
+Let me provide a summary of the iteration:
+
+## Iteration 201 Summary
+
+**Results**: R²=0.181 (poor) - CATASTROPHIC robustness test failure
+
+**Key Finding**: max_norm=0.5 gradient clipping robustness test revealed the **variance problem persists**:
+- First run with max_norm=0.5: R²=0.828 (iter 199)
+- Second run with max_norm=0.5: R²=0.181 (iter 201)
+- Range: 0.647 (nearly as bad as without clipping: 0.717)
+
+**Critical Insight**: Gradient clipping improved the **peak** R² (0.828 vs 0.801 without) but did NOT reduce the variance. The initial 2-sample test at max_norm=1.0 (range=0.002) appears to have been lucky - the true variance at max_norm=0.5 is still extremely high.
+
+**Next Action - Iteration 202**: 
+- **CODE MODIFICATION**: Added LayerNorm between hidden layers in the Siren network
+- Files modified:
+  1. `Siren_Network.py`: Added `use_layer_norm` parameter to Siren class, inserts LayerNorm after each SineLayer
+  2. `graph_trainer.py`: Added `use_layer_norm` config reading and passing to Siren constructor
+  3. Config: Set `use_layer_norm: true`
+- **Hypothesis**: LayerNorm normalizes activations across features, which may stabilize training by reducing the dependency on initial weight values that causes the stochastic variance
+- **Keeping**: max_norm=0.5 gradient clipping (still provides highest peak R²)
+

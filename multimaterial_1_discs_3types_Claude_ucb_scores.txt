@@ -1,6 +1,11 @@
-=== UCB Scores (Block 10, iters 121-132, N=4, c=1.414) ===
+=== UCB Scores (Block 16, iters 193-204, N=9, c=1.414) ===
 
-Node 124: UCB=2.414, parent=123, visits=1, R2=1.000, slope=1.000, time=15.4min, Mutation=omega_f: 15.0 -> 25.0
-Node 123: UCB=1.942, parent=122, visits=2, R2=1.000, slope=1.000, time=15.7min, Mutation=omega_f: 20.0 -> 15.0
-Node 122: UCB=1.707, parent=121, visits=3, R2=1.000, slope=1.000, time=18.0min, Mutation=total_steps: 200000 -> 300000 (1500 steps/frame)
-Node 121: UCB=1.501, parent=root, visits=4, R2=0.935, slope=0.944, time=12.1min, Mutation=Block 5 optimal config (lr=3E-5, 256×4, omega_f=20) scaled to 200 frames (200k steps = 1000 steps/frame)
+Node 200: UCB=2.931, parent=199, visits=1, R2=0.810, slope=0.861, time=59.2min [CODE] Changed gradient clipping max_norm from 0.5 to 0.25, Mutation=[code] max_norm: 0.5 -> 0.25
+Node 201: UCB=2.302, parent=199, visits=1, R2=0.181, slope=0.276, time=59.3min [CODE], Mutation=Robustness test (same config as iter 199)
+Node 196: UCB=2.249, parent=195, visits=1, R2=0.128, slope=0.203, time=59.2min [CODE] Changed gradient clipping max_norm from 1.0 to 5.0 (less aggressive), Mutation=[code] gradient clipping max_norm: 1.0 -> 5.0
+Node 197: UCB=2.239, parent=195, visits=1, R2=0.118, slope=0.188, time=59.2min [CODE] Changed gradient clipping max_norm from 5.0 to 2.0 (testing smaller increment from 1.0), Mutation=[code] gradient clipping max_norm: 5.0 -> 2.0
+Node 198: UCB=2.196, parent=195, visits=1, R2=0.075, slope=0.152, time=59.2min [CODE] Changed gradient clipping max_norm from 2.0 to 1.5, Mutation=[code] max_norm: 2.0 -> 1.5
+Node 199: UCB=1.889, parent=195, visits=3, R2=0.828, slope=0.893, time=59.2min [CODE] Changed gradient clipping max_norm from 1.5 to 0.5, Mutation=[code] max_norm: 1.5 -> 0.5
+Node 195: UCB=1.317, parent=194, visits=7, R2=0.787, slope=0.837, time=59.1min [CODE], Mutation=Robustness test (same config as iter 194)
+Node 194: UCB=1.256, parent=193, visits=8, R2=0.785, slope=0.838, time=59.0min [CODE] Added gradient clipping (torch.nn.utils.clip_grad_norm_, max_norm=1.0) after loss.backward(), Mutation=[code] gradient clipping max_norm=1.0
+Node 193: UCB=1.175, parent=root, visits=9, R2=0.751, slope=0.804, time=58.8min, Mutation=Block boundary - testing S field with code modification approach

@@ -37,7 +37,7 @@ from MPM_pytorch.models.exploration_tree import compute_ucb_scores, save_explora
 from MPM_pytorch.models.plot_exploration_tree import parse_ucb_scores, plot_ucb_tree
 
 # Import git tracking functionality
-from MPM_pytorch.git_code_tracker import track_code_modifications, git_push, is_git_repo
+from MPM_pytorch.git_code_tracker import track_code_modifications, git_push, is_git_repo, get_modified_code_files
 
 import warnings
 warnings.filterwarnings("ignore", message="pkg_resources is deprecated as an API")
@@ -82,7 +82,7 @@ if __name__ == "__main__":
         # out of memory: diminish n_particles
 
     # resume support: start_iteration parameter (default 1)
-    start_iteration = 123
+    start_iteration = 202
 
     # Claude task configuration
     n_iterations = task_params.get('iterations', 5)
@@ -285,60 +285,173 @@ if __name__ == "__main__":
                     if 'Claude' in task:
                         train_cmd.append('--erase')
 
-                    # Run training subprocess and stream output
+                    # Run training subprocess with repair loop
                     # Set environment to force tqdm to work in non-interactive mode
                     env = os.environ.copy()
                     env['PYTHONUNBUFFERED'] = '1'
                     env['TQDM_MININTERVAL'] = '1.0'  # Force tqdm to update less frequently
 
-                    process = subprocess.Popen(
-                        train_cmd,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        text=True,
-                        bufsize=1,
-                        env=env
-                    )
+                    # Code files that Claude might modify
+                    code_files = [
+                        'src/MPM_pytorch/models/Siren_Network.py',
+                        'src/MPM_pytorch/models/graph_trainer.py',
+                        'src/MPM_pytorch/generators/graph_data_generator.py',
+                    ]
 
-                    # Capture all output for logging while also streaming to console
-                    output_lines = []
-                    with open(error_log_path, 'w') as output_file:
-                        for line in process.stdout:
-                            print(line, end='', flush=True)
-                            output_file.write(line)
-                            output_file.flush()
-                            output_lines.append(line.rstrip())
+                    max_repair_attempts = 10
+                    training_success = False
+                    error_traceback = None
 
-                    process.wait()
+                    for repair_attempt in range(max_repair_attempts + 1):
+                        process = subprocess.Popen(
+                            train_cmd,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT,
+                            text=True,
+                            bufsize=1,
+                            env=env
+                        )
 
-                    if process.returncode != 0:
-                        print(f"\033[91m\ntraining subprocess failed with code {process.returncode}\033[0m")
-                        print(f"\033[93mthis may indicate a code modification error.\033[0m\n")
+                        # Capture all output for logging while also streaming to console
+                        output_lines = []
+                        with open(error_log_path, 'w') as output_file:
+                            for line in process.stdout:
+                                print(line, end='', flush=True)
+                                output_file.write(line)
+                                output_file.flush()
+                                output_lines.append(line.rstrip())
 
-                        # Show last 20 lines of output for context
-                        print(f"\033[93mLast 20 lines of output:\033[0m")
-                        print("-" * 80)
-                        for line in output_lines[-20:]:
-                            print(line)
-                        print("-" * 80)
+                        process.wait()
 
-                        # Show paths to log files
-                        print(f"\nFull output logged to: {error_log_path}")
-                        if os.path.exists(error_details_path):
-                            print(f"Error details logged to: {error_details_path}")
-                            # Show error details if available
-                            try:
-                                with open(error_details_path, 'r') as f:
-                                    error_details = f.read()
-                                if error_details.strip():
-                                    print(f"\n\033[91mDetailed error information:\033[0m")
-                                    print(error_details)
-                            except Exception as e:
-                                print(f"Could not read error details: {e}")
+                        if process.returncode == 0:
+                            training_success = True
+                            break
 
-                        raise RuntimeError(f"training failed at iteration {iteration}")
+                        # Training failed - capture error info
+                        error_traceback = '\n'.join(output_lines[-50:])  # Last 50 lines
+
+                        if repair_attempt == 0:
+                            print(f"\033[91m\ntraining subprocess failed with code {process.returncode}\033[0m")
+                            print(f"\033[93mthis may indicate a code modification error.\033[0m\n")
+
+                            # Show last 20 lines of output for context
+                            print(f"\033[93mLast 20 lines of output:\033[0m")
+                            print("-" * 80)
+                            for line in output_lines[-20:]:
+                                print(line)
+                            print("-" * 80)
+
+                            # Show paths to log files
+                            print(f"\nFull output logged to: {error_log_path}")
+                            if os.path.exists(error_details_path):
+                                print(f"Error details logged to: {error_details_path}")
+                                try:
+                                    with open(error_details_path, 'r') as f:
+                                        error_details = f.read()
+                                    if error_details.strip():
+                                        print(f"\n\033[91mDetailed error information:\033[0m")
+                                        print(error_details)
+                                        error_traceback = error_details + '\n' + error_traceback
+                                except Exception as e:
+                                    print(f"Could not read error details: {e}")
+
+                        # Check if code was modified (only attempt repair for code errors)
+                        modified_code = get_modified_code_files(root_dir, code_files) if is_git_repo(root_dir) else []
+
+                        if not modified_code and repair_attempt == 0:
+                            print(f"\033[93mNo code modifications detected - skipping repair attempts\033[0m")
+                            break
+
+                        # Attempt repair only if code was modified
+                        if repair_attempt < max_repair_attempts and modified_code:
+                            print(f"\033[93mRepair attempt {repair_attempt + 1}/{max_repair_attempts}: Asking Claude to fix the code error...\033[0m")
+
+                            repair_prompt = f"""TRAINING CRASHED - Please fix the code error.
+
+Attempt {repair_attempt + 1}/{max_repair_attempts}
+
+Error traceback:
+```
+{error_traceback[-3000:] if error_traceback else 'No traceback available'}
+```
+
+Modified code files that may contain the bug:
+{chr(10).join(f'- {root_dir}/{f}' for f in modified_code)}
+
+Instructions:
+1. Read the error traceback carefully
+2. Identify the bug in the modified code
+3. Fix the bug using the Edit tool
+4. Do NOT make other changes, only fix the crash
+
+If you cannot fix it, say "CANNOT_FIX" and explain why."""
+
+                            repair_cmd = [
+                                'claude',
+                                '-p', repair_prompt,
+                                '--output-format', 'text',
+                                '--max-turns', '10',
+                                '--allowedTools', 'Read', 'Edit'
+                            ]
+
+                            repair_result = subprocess.run(repair_cmd, cwd=root_dir, capture_output=True, text=True)
+                            repair_output = repair_result.stdout
+
+                            if 'CANNOT_FIX' in repair_output:
+                                print(f"\033[91mClaude cannot fix the error\033[0m")
+                                break
+
+                            print(f"\033[92mRepair attempt {repair_attempt + 1} complete, retrying training...\033[0m")
+
+                    # If still failing after all attempts, rollback and skip iteration
+                    if not training_success:
+                        print(f"\033[91mAll repair attempts failed - rolling back code changes\033[0m")
+
+                        # Rollback modified files using git
+                        if is_git_repo(root_dir):
+                            for file_path in code_files:
+                                try:
+                                    subprocess.run(['git', 'checkout', 'HEAD', '--', file_path],
+                                                  cwd=root_dir, capture_output=True, timeout=10)
+                                except:
+                                    pass
+                            print(f"\033[93mRolled back code to last working state\033[0m")
+
+                        # Log failed modification to memory
+                        if os.path.exists(memory_path):
+                            with open(memory_path, 'a') as f:
+                                f.write(f"\n### Failed Code Modification (Iter {iteration})\n")
+                                f.write(f"Error: {error_traceback[-500:] if error_traceback else 'Unknown'}\n")
+                                f.write(f"**DO NOT retry this modification**\n\n")
+
+                        continue  # Skip to next iteration
 
                     print(f"\033[92mtraining subprocess completed successfully\033[0m")
+
+                    # Copy videos and montages to iteration-specific names
+                    dataset_dir = f"{root_dir}/graphs_data/{config.dataset}"
+
+                    # Copy simulation video if it exists
+                    input_video = f"{dataset_dir}/fig.mp4"
+                    video_path = f"{dataset_dir}/video_iter_{iteration:03d}.mp4"
+                    if os.path.exists(input_video):
+                        shutil.copy2(input_video, video_path)
+                        print(f"\033[92mCopied video: {video_path}\033[0m")
+
+                    # Copy grid video if it exists
+                    grid_video = f"{dataset_dir}/grid.mp4"
+                    grid_video_path = f"{dataset_dir}/grid_iter_{iteration:03d}.mp4"
+                    if os.path.exists(grid_video):
+                        shutil.copy2(grid_video, grid_video_path)
+                        print(f"\033[92mCopied grid video: {grid_video_path}\033[0m")
+
+                    # Copy first frame as montage/thumbnail if it exists
+                    input_image = f"{dataset_dir}/input_fig.png"
+                    montage_path = f"{dataset_dir}/montage_iter_{iteration:03d}.png"
+                    if os.path.exists(input_image):
+                        shutil.copy2(input_image, montage_path)
+                        print(f"\033[92mCopied montage: {montage_path}\033[0m")
+
                 else:
                     # For non-Claude tasks, run directly (no code modifications expected)
                     data_train_INR(

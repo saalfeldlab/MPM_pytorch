@@ -615,6 +615,8 @@ Three variants:
 - **IMPORTANT (Block 1 finding)**: Depth vs width tradeoff - 256×4 matches 512×3 accuracy (R²=0.908) at 2.5x faster training (7.7min vs 19.1min)
 - **lr-depth relationship (Block 1 finding)**: Deeper networks require lower lr. Scaling: n_layers=3-4 tolerates lr=2E-5, n_layers=5 needs lr≤2E-5, n_layers=5 + lr=3E-5 fails catastrophically
 - **5-layer ceiling (Block 2 finding)**: n_layers=5 degrades R² regardless of lr (tested 2E-5, 1.5E-5, 1E-5). 4 layers is the optimal depth for siren_txy.
+- **F field depth tolerance (Block 11 finding)**: F field TOLERATES 5 layers (R²=0.9999) unlike Jp which degrades. F: depth [2-5] all viable, Jp: depth ceiling at 3 layers.
+- **Depth Pareto tradeoff (Block 11)**: F@200frames: 256×2 achieves R²=0.994 in 9.5min (speed Pareto), 256×4 achieves R²=0.9998 in 18min (accuracy Pareto).
 
 **Training data scaling (Block 2 finding, updated Block 5, Block 10)**:
 
@@ -624,6 +626,10 @@ Three variants:
 - **DATA SCALING BENEFIT (Block 5)**: More training frames IMPROVES accuracy (100 frames R²=0.9998 > 48 frames R²=0.9995 for F)
 - **OVERFITTING RISK (Block 10)**: Too many steps causes overfitting. Jp@200frames: 400k OK (0.989), 500k OVERFITS (0.939). Never exceed 2500 steps/frame.
 - **DIMINISHING RETURNS (Block 10)**: Jp data scaling gains halve per doubling: +0.014 (48→100), +0.007 (100→200)
+- **F NO DIMINISHING RETURNS (Block 11)**: F field shows NO diminishing returns at 200 frames (R²=0.9998 same as 100 frames). F more scalable than Jp.
+- **F steps/frame scaling (Block 11, updated Block 14)**: F needs 1500 steps/frame at 200 frames (vs 1000 at 100 frames). BUT at 500 frames, only 800 steps/frame needed (efficiency gain).
+- **F EXTREME DATA SCALING (Block 14)**: F field scales to 500 frames with NO diminishing returns (R²=0.9997). Speed Pareto: 400 steps/frame achieves R²=0.992 in 10min.
+- **DATA SCALING FIELD CATEGORIZATION (Block 12)**: F benefits (no diminishing returns), Jp benefits (diminishing returns), C HURTS (0.994@200f < 0.996@100f), S HURTS (fails entirely). Half of fields penalized by more data.
 
 **SIREN frequency (omega_f)**:
 
@@ -632,6 +638,10 @@ Three variants:
 - High (>50): high-frequency detail, unstable training
 - **Field-specific optimal omega_f (Block 2 finding, updated Block 10)**: F field optimal at omega_f=15-25, Jp optimal at 20-25 (200 frames) or 30-35 (48 frames). More frames → lower optimal omega_f.
 - **Jp@200frames omega_f map (Block 10)**: 35(0.786) << 30(0.982) < 25(0.985) ≈ 20(0.989) > 15(0.978). Optimal=20-25.
+- **F@200frames boundaries (Block 11)**: omega_f [15-40] viable (15=0.9996, 20=0.9998, 25=0.9997, 40=0.9991). lr [3E-5 to 1E-4] viable. lr=2E-4 FAILS.
+- **C@200frames omega_f map (Block 12)**: 15(0.993) < 20(0.990) < 25(0.994) < 27(0.992) < 30(0.989). Peak at omega_f=25 (NOT 20 like F). Non-monotonic.
+- **C depth ceiling (Block 12)**: C field is depth-sensitive like Jp. n_layers=4 regresses (0.987 vs 0.994 at n_layers=3). Optimal depth=3.
+- **S field capacity ceiling (Block 13)**: S requires MUCH more capacity than other fields. Optimal: 1280×4 (R²=0.801). Capacity scaling: 256→0.389, 512→0.638, 1024→0.646, 1280→0.801, 1536→0.145 (FAILS). S also requires omega_f=50, lr=2E-5 (NO tolerance for lr=3E-5).
 
 **Compression ratio**:
 

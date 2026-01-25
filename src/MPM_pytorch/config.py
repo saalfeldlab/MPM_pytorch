@@ -152,6 +152,7 @@ class GraphModelConfig(BaseModel):
     outermost_linear_nnr_f: bool = True
     omega_f: float = 80.0
     omega_f_learning: bool = False  # make omega learnable during training
+    use_layer_norm: bool = False  # add layer normalization to SIREN network
 
     nnr_f_xy_period: float = 1.0
 
