@@ -1,9 +1,3 @@
-=== UCB Scores (Block 0, iters 1-12, N=7, c=1.414) ===
+=== UCB Scores (Block 0, iters 1-12, N=1, c=1.414) ===
 
-Node 7: UCB=2.831, parent=6, visits=1, R2=0.960, slope=0.848, time=5.0min, Mutation=lr_NNR_f: 3E-5 -> 4E-5
-Node 6: UCB=2.184, parent=5, visits=2, R2=0.937, slope=0.813, time=5.0min, Mutation=total_steps: 50000 -> 80000
-Node 5: UCB=1.802, parent=4, visits=3, R2=0.867, slope=0.634, time=3.3min, Mutation=hidden_dim: 256 -> 384
-Node 4: UCB=1.621, parent=3, visits=4, R2=0.873, slope=0.455, time=2.5min, Mutation=lr_NNR_f: 1E-5 -> 3E-5
-Node 3: UCB=1.398, parent=2, visits=5, R2=0.774, slope=0.178, time=2.7min, Mutation=omega_f: 80 -> 25
-Node 2: UCB=1.333, parent=1, visits=6, R2=0.799, slope=0.189, time=2.9min, Mutation=hidden_dim: 64 -> 256
-Node 1: UCB=0.884, parent=root, visits=7, R2=0.416, slope=0.049, time=2.4min, Mutation=Initial config (baseline)
+Node 1: UCB=1.132, parent=root, visits=1, R2=0.425, slope=0.049, time=6.5min, Mutation=initial config (baseline)

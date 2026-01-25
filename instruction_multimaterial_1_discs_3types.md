@@ -692,6 +692,7 @@ Examples:
 - Too high → oscillation, NaN
 - Too low → slow convergence, underfitting
 - Optimal range: 1E-6 to 1E-4 for most fields
+- **DATASET-SPECIFIC LR (Block 1 multimaterial finding)**: multimaterial_1_discs_3types tolerates 2x higher LR than prior knowledge. Jp optimal LR=8E-5 (not 4E-5). Always probe LR upper boundary on new datasets.
 
 **Capacity vs Overfitting**:
 

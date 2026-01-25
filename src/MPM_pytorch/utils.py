@@ -1,6 +1,7 @@
 import glob
 import logging
 import os
+import shutil
 
 import GPUtil
 import imageio
@@ -556,31 +557,38 @@ def create_log_dir(config=[], erase=True):
         os.makedirs(os.path.join(log_dir, 'tmp_training/ghost'), exist_ok=True)
 
     if erase:
+        def remove_path(p):
+            """Remove file or directory."""
+            if os.path.isdir(p):
+                shutil.rmtree(p)
+            else:
+                os.remove(p)
+
         files = glob.glob(f"{log_dir}/results/*")
         for f in files:
             if ('all' not in f) & ('field' not in f):
-                os.remove(f)
+                remove_path(f)
         files = glob.glob(f"{log_dir}/tmp_training/particle/*")
         for f in files:
-            os.remove(f)
+            remove_path(f)
         files = glob.glob(f"{log_dir}/tmp_training/field/*")
         for f in files:
-            os.remove(f)
+            remove_path(f)
         files = glob.glob(f"{log_dir}/tmp_training/matrix/*")
         for f in files:
-            os.remove(f)
+            remove_path(f)
         files = glob.glob(f"{log_dir}/tmp_training/function/lin_edge/*")
         for f in files:
-            os.remove(f)
+            remove_path(f)
         files = glob.glob(f"{log_dir}/tmp_training/function/lin_phis/*")
         for f in files:
-            os.remove(f)
+            remove_path(f)
         files = glob.glob(f"{log_dir}/tmp_training/embedding/*")
         for f in files:
-            os.remove(f)
+            remove_path(f)
         files = glob.glob(f"{log_dir}/tmp_training/ghost/*")
         for f in files:
-            os.remove(f)
+            remove_path(f)
     os.makedirs(os.path.join(log_dir, 'tmp_recons'), exist_ok=True)
 
     logging.basicConfig(filename=os.path.join(log_dir, 'training.log'),
