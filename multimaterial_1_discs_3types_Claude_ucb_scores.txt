@@ -1,11 +1,9 @@
-=== UCB Scores (Block 16, iters 193-204, N=9, c=1.414) ===
+=== UCB Scores (Block 0, iters 1-12, N=7, c=1.414) ===
 
-Node 200: UCB=2.931, parent=199, visits=1, R2=0.810, slope=0.861, time=59.2min [CODE] Changed gradient clipping max_norm from 0.5 to 0.25, Mutation=[code] max_norm: 0.5 -> 0.25
-Node 201: UCB=2.302, parent=199, visits=1, R2=0.181, slope=0.276, time=59.3min [CODE], Mutation=Robustness test (same config as iter 199)
-Node 196: UCB=2.249, parent=195, visits=1, R2=0.128, slope=0.203, time=59.2min [CODE] Changed gradient clipping max_norm from 1.0 to 5.0 (less aggressive), Mutation=[code] gradient clipping max_norm: 1.0 -> 5.0
-Node 197: UCB=2.239, parent=195, visits=1, R2=0.118, slope=0.188, time=59.2min [CODE] Changed gradient clipping max_norm from 5.0 to 2.0 (testing smaller increment from 1.0), Mutation=[code] gradient clipping max_norm: 5.0 -> 2.0
-Node 198: UCB=2.196, parent=195, visits=1, R2=0.075, slope=0.152, time=59.2min [CODE] Changed gradient clipping max_norm from 2.0 to 1.5, Mutation=[code] max_norm: 2.0 -> 1.5
-Node 199: UCB=1.889, parent=195, visits=3, R2=0.828, slope=0.893, time=59.2min [CODE] Changed gradient clipping max_norm from 1.5 to 0.5, Mutation=[code] max_norm: 1.5 -> 0.5
-Node 195: UCB=1.317, parent=194, visits=7, R2=0.787, slope=0.837, time=59.1min [CODE], Mutation=Robustness test (same config as iter 194)
-Node 194: UCB=1.256, parent=193, visits=8, R2=0.785, slope=0.838, time=59.0min [CODE] Added gradient clipping (torch.nn.utils.clip_grad_norm_, max_norm=1.0) after loss.backward(), Mutation=[code] gradient clipping max_norm=1.0
-Node 193: UCB=1.175, parent=root, visits=9, R2=0.751, slope=0.804, time=58.8min, Mutation=Block boundary - testing S field with code modification approach
+Node 7: UCB=2.831, parent=6, visits=1, R2=0.960, slope=0.848, time=5.0min, Mutation=lr_NNR_f: 3E-5 -> 4E-5
+Node 6: UCB=2.184, parent=5, visits=2, R2=0.937, slope=0.813, time=5.0min, Mutation=total_steps: 50000 -> 80000
+Node 5: UCB=1.802, parent=4, visits=3, R2=0.867, slope=0.634, time=3.3min, Mutation=hidden_dim: 256 -> 384
+Node 4: UCB=1.621, parent=3, visits=4, R2=0.873, slope=0.455, time=2.5min, Mutation=lr_NNR_f: 1E-5 -> 3E-5
+Node 3: UCB=1.398, parent=2, visits=5, R2=0.774, slope=0.178, time=2.7min, Mutation=omega_f: 80 -> 25
+Node 2: UCB=1.333, parent=1, visits=6, R2=0.799, slope=0.189, time=2.9min, Mutation=hidden_dim: 64 -> 256
+Node 1: UCB=0.884, parent=root, visits=7, R2=0.416, slope=0.049, time=2.4min, Mutation=Initial config (baseline)

@@ -120,6 +120,18 @@ Step B: Choose strategy
 - For S field: 1024×4 ranges 0.595-0.723, 1280×4 ranges 0.084-0.757
 - When stochastic variance detected: (1) switch to different field, (2) try code modification (loss scaling, gradient clipping), or (3) accept unreliable ceiling
 
+**Frame-dependent omega_f (Block 1 finding):**
+
+- omega_f optimal values are FRAME-DEPENDENT:
+  - Jp@48frames: omega_f=30 optimal (NOT 15-20)
+  - Jp@200frames: omega_f=20-25 optimal (from prior)
+- Rule: When changing n_training_frames, re-tune omega_f (expect higher omega_f for fewer frames)
+
+**LR boundary mapping (Block 1 finding):**
+
+- Jp@48frames LR boundary: 4E-5 < 5E-5 < 6E-5 (optimal) > 8E-5
+- Rule: Probe LR upper boundary after finding good config. Optimal LR may be higher than prior knowledge suggests for fewer frames.
+
 **Recombination details:**
 
 Trigger: exists Node A and Node B where:
@@ -175,9 +187,9 @@ graph_model:
   omega_f_learning: False # or True
   learning_rate_omega_f: 1.0E-6 # if omega_f_learning=True
   nnr_f_xy_period: 1.0 # spatial normalization for siren_txy
-  # NGP-specific (if inr_type: ngp)
-  # ngp_n_levels: 16 # range: 8-24
-  # ngp_log2_hashmap_size: 19 # range: 15-22
+  # NGP-specific - DO NOT USE (implementation incomplete)
+  # ngp_n_levels: 16  # NOT READY
+  # ngp_log2_hashmap_size: 19  # NOT READY
 claude:
   field_name: Jp # values: Jp, F, S, C (change between blocks)
   ucb_c: 1.414 # UCB exploration constant (0.5-3.0), adjust between blocks
@@ -398,6 +410,7 @@ Next: parent=P
 - Add dependencies requiring new pip packages (unless absolutely necessary)
 - Make multiple simultaneous code changes (can't isolate causality)
 - Modify code just to "try something" without hypothesis
+- **Use `inr_type: ngp` (InstantNGP/hash encoding) - NOT READY FOR USE** (implementation incomplete, will cause errors)
 
 **ALWAYS:**
 
@@ -584,11 +597,12 @@ Three variants:
 - `siren_id`: Input = (time, particle_id)
 - `siren_txy`: Input = (time, x, y) - uses Lagrangian positions
 
-**InstantNGP (Hash Encoding)**:
+**InstantNGP (Hash Encoding)** ⚠️ **NOT READY - DO NOT USE**:
 
 - Multi-resolution hash encoding + MLP
 - Faster training but more memory
 - `ngp`: Hash-encoded time representation
+- **STATUS**: Implementation incomplete - will cause errors. Use SIREN variants only.
 
 ### MPM Fields
 
@@ -598,6 +612,78 @@ Three variants:
 | Jp    | Plastic deformation  | 1          | ~0.8-1.2      |
 | S     | Stress tensor        | 4          | ~0-0.01       |
 | C     | APIC matrix          | 4          | ~-1 to 1      |
+
+### Visualization Panels (Field Plot)
+
+After each training iteration, a visualization is saved to `tmp_training/field/`. **You MUST analyze this plot qualitatively.**
+
+**Panel Layout for 4-component fields (F, S, C):**
+```
+[Loss curve] [Traces]     [Info]      [Scatter]
+[GT 00]      [GT 01]      [Pred 00]   [Pred 01]
+[GT 10]      [GT 11]      [Pred 10]   [Pred 11]
+```
+
+**Panel Layout for 1-component fields (Jp):**
+```
+[Loss curve] [Traces]     [Info]
+[GT field]   [Pred field] [Scatter]
+```
+
+**Panel descriptions:**
+
+| Panel | What it shows | What to look for |
+|-------|---------------|------------------|
+| **Loss curve** (top-left) | MSE loss vs training steps. Gray=raw, Red=smoothed | Convergence shape: steep initial drop is good. Oscillation = lr too high. Plateau = underfitting |
+| **Traces** (top-middle) | 10 particle time series. Green=GT, White=Pred. Centered by mean, spaced by 4×std | Temporal dynamics match: white should follow green. Systematic offsets indicate bias |
+| **Info** (top-right for 4-comp, or right for 1-comp) | Field name, step count, components, particles, frames, MSE | Basic run metadata |
+| **Scatter** (top-right for 4-comp, or bottom-right for 1-comp) | Pred vs GT for ALL values. Red dashed=ideal, Green=regression fit | Cloud should be tight along diagonal. Slope<1 means underprediction. R² and slope shown |
+| **GT panels** (bottom rows) | Ground truth field at frame n_frames/2. Each component shown separately. Yellow SSIM value | Spatial structure of the true field. SSIM measures structural similarity to prediction |
+| **Pred panels** (bottom rows) | Slope-corrected prediction at same frame. White SSIM value | Should match GT visually. Low SSIM despite high R² = wrong spatial patterns learned |
+
+**Qualitative analysis checklist:**
+
+1. **Do Pred panels visually match GT panels?** Same spatial patterns, same contrast?
+2. **Is SSIM consistent across components?** One low SSIM component = that component is harder
+3. **Does the scatter show bias?** Slope ≠ 1 means systematic over/underprediction
+4. **Are there spatial artifacts?** Blurry regions, wrong gradients, missing features?
+5. **Do traces show temporal fidelity?** High-frequency oscillations captured?
+
+**REQUIRED: Add qualitative observation to iteration log**
+
+After viewing the plot, add a line to your iteration entry:
+
+```
+Visual: [brief qualitative observation about spatial match and any artifacts]
+```
+
+Examples:
+- `Visual: GT/Pred match well, SSIM>0.95 all components, no visible artifacts`
+- `Visual: F01 component blurry (SSIM=0.72), other components good`
+- `Visual: Spatial patterns correct but contrast too low (slope=0.85)`
+- `Visual: Complete mismatch - prediction shows uniform field, GT has structure`
+
+### Prior Knowledge (from 17 blocks of exploration)
+
+**Field difficulty ranking**: F (R²=0.9999) > Jp (R²=0.997) > C (R²=0.989) >> S (R²=0.801)
+
+**Optimal configurations per field** (use these as starting points):
+
+| Field | hidden_dim | n_layers | omega_f | lr_NNR_f | steps/frame | Best R² |
+|-------|------------|----------|---------|----------|-------------|---------|
+| F     | 256        | 4        | 20      | 3E-5     | 800         | 0.9999  |
+| Jp    | 384        | 3        | 15-20   | 4E-5     | 800         | 0.997   |
+| C     | 640        | 3        | 20-25   | 3E-5     | 1000        | 0.989   |
+| S     | 1280       | 4        | 50      | 2E-5     | 3000+       | 0.801   |
+
+**Critical constraints discovered**:
+- **n_layers**: Jp and C require EXACTLY 3 layers (both 2 and 4 degrade). F tolerates 2-5. S prefers 4.
+- **hidden_dim ceilings**: S@1280 (1536 fails), Jp@384 (256 AND 512 both degrade), C scales with frames
+- **omega_f**: Field-specific and frame-dependent. More frames → lower optimal omega_f.
+- **Data scaling**: F scales excellently (no diminishing returns to 1000f). Jp benefits. C hurts (mitigate with capacity). S fails entirely.
+- **S field instability**: EXTREME stochastic variance (R² 0.08-0.80 same config). Use gradient clipping max_norm=1.0.
+- **SIREN + normalization**: LayerNorm/BatchNorm DESTROY SIREN (R²=0.022). Never use.
+- **batch_size**: Always use batch_size=1 to avoid training time explosion.
 
 ### Training Dynamics
 
@@ -642,6 +728,8 @@ Three variants:
 - **C@200frames omega_f map (Block 12)**: 15(0.993) < 20(0.990) < 25(0.994) < 27(0.992) < 30(0.989). Peak at omega_f=25 (NOT 20 like F). Non-monotonic.
 - **C depth ceiling (Block 12)**: C field is depth-sensitive like Jp. n_layers=4 regresses (0.987 vs 0.994 at n_layers=3). Optimal depth=3.
 - **S field capacity ceiling (Block 13)**: S requires MUCH more capacity than other fields. Optimal: 1280×4 (R²=0.801). Capacity scaling: 256→0.389, 512→0.638, 1024→0.646, 1280→0.801, 1536→0.145 (FAILS). S also requires omega_f=50, lr=2E-5 (NO tolerance for lr=3E-5).
+- **S field gradient clipping (Block 17)**: CRITICAL - S field REQUIRES gradient clipping max_norm=1.0 for stable training. Clipping map: 0.25→0.810, 0.5→[0.828,0.181], 1.0→[0.785,0.787,0.732]. max_norm>1.5 causes catastrophic failure (R²<0.13). max_norm=1.0 is MOST STABLE (mean R²=0.768±0.031).
+- **SIREN normalization incompatibility (Block 17)**: LayerNorm, BatchNorm INCOMPATIBLE with SIREN architecture. LayerNorm causes R²=0.022 (catastrophic). SIREN relies on omega-scaled initialization which normalization destroys.
 
 **Compression ratio**:
 
