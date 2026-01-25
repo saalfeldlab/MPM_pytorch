@@ -3,6 +3,7 @@ import sys
 from subprocess import run
 import time
 import glob
+import shutil
 
 import matplotlib.pyplot as plt
 import torch
@@ -699,7 +700,34 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
             progress_pct = (step / total_steps) * 100
             steps_per_sec = step / elapsed if elapsed > 0 else 0
             eta_seconds = (total_steps - step) / steps_per_sec if steps_per_sec > 0 else 0
-            print(f"  {progress_pct:5.1f}% | step {step:6d}/{total_steps} | loss: {loss.item():.2f} | {steps_per_sec:.1f} it/s | eta: {eta_seconds/60:.1f}m", flush=True)
+            # Compute R² on ALL data (consistent with final R² and plot)
+            with torch.no_grad():
+                if inr_type == 'siren_t':
+                    prog_pred = nnr_f(time_input).reshape(n_frames, n_particles, n_components)
+                elif inr_type == 'siren_id':
+                    prog_pred_list = []
+                    for t_idx in range(n_frames):
+                        t_val = torch.full((n_particles, 1), t_idx / n_frames, device=device)
+                        input_t = torch.cat([t_val, neuron_ids_norm[:, None]], dim=1)
+                        prog_pred_list.append(nnr_f(input_t))
+                    prog_pred = torch.stack(prog_pred_list, dim=0)
+                elif inr_type == 'siren_txy':
+                    prog_pred_list = []
+                    for t_idx in range(n_frames):
+                        t_val = torch.full((n_particles, 1), t_idx / n_frames, device=device)
+                        pos_t = particle_pos[t_idx, :, :]
+                        input_t = torch.cat([t_val, pos_t], dim=1)
+                        prog_pred_list.append(nnr_f(input_t))
+                    prog_pred = torch.stack(prog_pred_list, dim=0)
+                elif inr_type == 'ngp':
+                    time_all = torch.arange(0, n_frames, dtype=torch.float32, device=device).unsqueeze(1) / n_frames
+                    prog_pred = nnr_f(time_all).reshape(n_frames, n_particles, n_components)
+                # Compute R² on all data
+                prog_pred_flat = prog_pred.reshape(-1).cpu().numpy()
+                gt_all_flat = ground_truth.reshape(-1).cpu().numpy()
+                corr_matrix = np.corrcoef(prog_pred_flat, gt_all_flat)
+                all_r2 = corr_matrix[0, 1] ** 2 if not np.isnan(corr_matrix[0, 1]) else 0.0
+            print(f"  {progress_pct:5.1f}% | step {step:6d}/{total_steps} | loss: {loss.item():.4f} | R²: {all_r2:.4f} | {steps_per_sec:.1f} it/s | eta: {eta_seconds/60:.1f}m", flush=True)
 
         if step % steps_til_summary == 0:
             with torch.no_grad():
@@ -856,41 +884,49 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
                 for spine in ax3.spines.values():
                     spine.set_color('white')
 
-                # Scatter plot: pred vs gt
+                # Scatter plot: pred vs gt (use ALL data, not just single frame norm)
                 ax4 = plt.subplot(2, 3, 6)
                 ax4.set_facecolor('black')
-                ax4.scatter(gt_norm, pred_norm, c='white', s=1, alpha=0.5)
 
-                # Compute statistics
+                # Use ALL frames and ALL components for R² (consistent with final R²)
+                gt_all_flat = gt_np.reshape(-1)
+                pred_all_flat = pred_np.reshape(-1)
+                # Subsample for plotting (too many points otherwise)
+                n_plot_points = min(50000, len(gt_all_flat))
+                plot_indices = np.random.choice(len(gt_all_flat), n_plot_points, replace=False)
+                ax4.scatter(gt_all_flat[plot_indices], pred_all_flat[plot_indices], c='white', s=1, alpha=0.3)
+
+                # Compute statistics on ALL data (same as final R²)
                 from scipy.stats import linregress
-                slope, intercept, r_value, p_value, std_err = linregress(gt_norm, pred_norm)
+                slope, intercept, r_value, p_value, std_err = linregress(gt_all_flat, pred_all_flat)
                 r2 = r_value ** 2
-                frame_mse = ((pred_norm - gt_norm) ** 2).mean()
+                frame_mse = ((pred_all_flat - gt_all_flat) ** 2).mean()
 
                 # Add diagonal line (ideal)
-                lims = [min(gt_norm.min(), pred_norm.min()), max(gt_norm.max(), pred_norm.max())]
+                lims = [min(gt_all_flat.min(), pred_all_flat.min()), max(gt_all_flat.max(), pred_all_flat.max())]
                 ax4.plot(lims, lims, 'r--', alpha=0.5, lw=1, label='ideal')
 
                 # Add regression line
-                x_line = np.array([gt_norm.min(), gt_norm.max()])
+                x_line = np.array([gt_all_flat.min(), gt_all_flat.max()])
                 y_line = slope * x_line + intercept
                 ax4.plot(x_line, y_line, 'g-', alpha=0.7, lw=1, label=f'fit (slope={slope:.3f})')
 
                 # Recenter on data range with some padding
-                x_margin = (gt_norm.max() - gt_norm.min()) * 0.05
-                y_margin = (pred_norm.max() - pred_norm.min()) * 0.05
-                ax4.set_xlim([gt_norm.min() - x_margin, gt_norm.max() + x_margin])
-                ax4.set_ylim([pred_norm.min() - y_margin, pred_norm.max() + y_margin])
+                x_margin = (gt_all_flat.max() - gt_all_flat.min()) * 0.05
+                y_margin = (pred_all_flat.max() - pred_all_flat.min()) * 0.05
+                ax4.set_xlim([gt_all_flat.min() - x_margin, gt_all_flat.max() + x_margin])
+                ax4.set_ylim([pred_all_flat.min() - y_margin, pred_all_flat.max() + y_margin])
 
                 ax4.set_xlabel('Ground Truth', color='white', fontsize=11)
                 ax4.set_ylabel('Prediction', color='white', fontsize=11)
-                ax4.set_title(f'Pred vs GT (frame {frame_idx})', color='white', fontsize=12)
+                ax4.set_title('Pred vs GT (all data)', color='white', fontsize=12)
                 ax4.tick_params(colors='white', labelsize=10)
                 for spine in ax4.spines.values():
                     spine.set_color('white')
 
                 # Add statistics text
-                stats_text = f'N: {n_particles}\n'
+                n_total_values = len(gt_all_flat)  # frames × particles × components
+                stats_text = f'N: {n_total_values:,}\n'  # total values with comma separator
                 stats_text += f'R²: {r2:.4f}\n'
                 stats_text += f'slope: {slope:.4f}\n'
                 stats_text += f'MSE: {frame_mse:.6f}'
@@ -992,6 +1028,24 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
     training_time = time.time() - training_start_time
     training_time_min = training_time / 60.0
     print(f"training completed in {training_time_min:.1f} minutes")
+
+    # Copy final field visualization to Claude exploration archive
+    try:
+        # Find the latest file in output_folder
+        output_files = sorted(glob.glob(f"{output_folder}/*.png"))
+        if output_files:
+            latest_file = output_files[-1]
+            # Create destination directory
+            final_field_dir = os.path.join('log', 'Claude_exploration', 'instruction_multimaterial_1_discs_3types', 'final_field')
+            os.makedirs(final_field_dir, exist_ok=True)
+            # Generate unique filename with timestamp
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            dest_filename = f"final_field_{field_name}_{timestamp}.png"
+            dest_path = os.path.join(final_field_dir, dest_filename)
+            shutil.copy2(latest_file, dest_path)
+            print(f"final field saved to: {dest_path}")
+    except Exception as e:
+        print(f"warning: could not copy final field: {e}")
 
     # Write analysis.log if log_file provided
     if log_file is not None:
