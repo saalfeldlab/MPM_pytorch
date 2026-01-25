@@ -1241,21 +1241,26 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
         video_output_path
     ]
 
+    # Create destination folder first (in log_dir, not output_folder)
+    video_dest_dir = os.path.join(log_dir, 'video')
+    os.makedirs(video_dest_dir, exist_ok=True)
+
     try:
         import subprocess
+        print(f"running ffmpeg: {' '.join(ffmpeg_cmd)}")
         result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=300)
         if result.returncode == 0:
             print(f"generated video: {video_output_path}")
 
             # Copy to destination folder
-            video_dest_dir = '/groups/saalfeld/home/allierc/Graph/MPM_pytorch/log/Claude_exploration/instruction_multimaterial_1_discs_3types/video'
-            os.makedirs(video_dest_dir, exist_ok=True)
             timestamp = time.strftime("%Y%m%d_%H%M%S")
             video_dest_path = os.path.join(video_dest_dir, f'field_{field_name}_{timestamp}.mp4')
             shutil.copy2(video_output_path, video_dest_path)
             print(f"video copied to: {video_dest_path}")
         else:
-            print(f"video generation failed: {result.stderr}")
+            print(f"video generation failed (returncode={result.returncode})")
+            print(f"  stderr: {result.stderr}")
+            print(f"  stdout: {result.stdout}")
     except subprocess.TimeoutExpired:
         print("video generation timeout")
     except FileNotFoundError:
