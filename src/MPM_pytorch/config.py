@@ -164,6 +164,7 @@ class GraphModelConfig(BaseModel):
     ngp_per_level_scale: float = 1.4
     ngp_n_neurons: int = 128
     ngp_n_hidden_layers: int = 4
+    ngp_n_particles: int = 128  # Number of particles for NGP input (t, particle_id)
 
 
 class PlottingConfig(BaseModel):

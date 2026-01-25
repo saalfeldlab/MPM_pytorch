@@ -82,7 +82,7 @@ if __name__ == "__main__":
         # out of memory: diminish n_particles
 
     # resume support: start_iteration parameter (default 1)
-    start_iteration = 202
+    start_iteration = 1
 
     # Claude task configuration
     n_iterations = task_params.get('iterations', 5)
@@ -391,7 +391,7 @@ If you cannot fix it, say "CANNOT_FIX" and explain why."""
                                 '-p', repair_prompt,
                                 '--output-format', 'text',
                                 '--max-turns', '10',
-                                '--allowedTools', 'Read', 'Edit'
+                                '--allowedTools', 'Read', 'Edit', 'Write'
                             ]
 
                             repair_result = subprocess.run(repair_cmd, cwd=root_dir, capture_output=True, text=True)
@@ -537,7 +537,7 @@ Current config: {config_path}"""
                     '-p', claude_prompt,
                     '--output-format', 'text',
                     '--max-turns', '100',
-                    '--allowedTools', 'Read', 'Edit'
+                    '--allowedTools', 'Read', 'Edit', 'Write'
                 ]
 
                 # run with real-time output streaming and token expiry detection
