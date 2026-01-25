@@ -684,10 +684,10 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
         optim.zero_grad()
         loss.backward()
         # Gradient clipping to stabilize training (especially for S field with high variance)
-        # OPTIMAL FOUND: max_norm=0.5 gives best R²=0.828 with variance reduction
-        # Complete clipping map: 0.25->0.810, 0.5->0.828(OPTIMAL), 1.0->0.786, 1.5->0.075(FAIL), 2.0->0.118(FAIL), 5.0->0.128(FAIL)
-        # Robustness test: verifying max_norm=0.5 stability
-        torch.nn.utils.clip_grad_norm_(nnr_f.parameters(), max_norm=0.5)
+        # Clipping map: 0.25->0.810, 0.5->[0.828,0.181](high variance), 1.0->[0.785,0.787](LOW variance), 1.5->0.075(FAIL), 2.0->0.118(FAIL), 5.0->0.128(FAIL)
+        # Testing max_norm=0.75 to find sweet spot between 0.5 (high peak, high variance) and 1.0 (low peak, low variance)
+        # LayerNorm INCOMPATIBLE with SIREN (R²=0.022 catastrophic failure)
+        torch.nn.utils.clip_grad_norm_(nnr_f.parameters(), max_norm=0.75)
         optim.step()
 
         loss_list.append(loss.item())
