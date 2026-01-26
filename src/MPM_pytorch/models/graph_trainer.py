@@ -4,6 +4,7 @@ from subprocess import run
 import time
 import glob
 import shutil
+from tqdm import tqdm
 
 import matplotlib.pyplot as plt
 import torch
@@ -406,7 +407,7 @@ def data_train_material(config, erase, best_model, device):
         #     plt.close()
 
 
-def data_train_INR(config=None, device=None, field_name='C', total_steps=None, erase=False, log_file=None):
+def data_train_INR(config=None, device=None, field_name='C', total_steps=None, erase=False, log_file=None, current_iteration=None):
     """
     Train INR network on MPM fields (C, F, Jp, S) from generated_data.
 
@@ -1159,7 +1160,7 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
         cmap_name = 'viridis'
 
     # Generate frames
-    for frame_idx in range(n_frames):
+    for frame_idx in tqdm(range(n_frames), desc='generating frames', ncols=100):
         pos_data = x_list[frame_idx, :, 1:3]
 
         if n_components == 4:
@@ -1222,9 +1223,6 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
         plt.savefig(f"{video_frames_dir}/frame_{frame_idx:06d}.png", dpi=100, facecolor='black')
         plt.close()
 
-        if frame_idx % 50 == 0:
-            print(f"  generated frame {frame_idx}/{n_frames}")
-
     # Generate MP4 using ffmpeg
     video_output_path = os.path.join(output_folder, f'field_comparison_{field_name}.mp4')
     input_pattern = os.path.join(video_frames_dir, "frame_%06d.png")
@@ -1241,10 +1239,6 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
         video_output_path
     ]
 
-    # Create destination folder first (in log_dir, not output_folder)
-    video_dest_dir = os.path.join(log_dir, 'video')
-    os.makedirs(video_dest_dir, exist_ok=True)
-
     try:
         import subprocess
         print(f"running ffmpeg: {' '.join(ffmpeg_cmd)}")
@@ -1252,11 +1246,14 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
         if result.returncode == 0:
             print(f"generated video: {video_output_path}")
 
-            # Copy to destination folder
-            timestamp = time.strftime("%Y%m%d_%H%M%S")
-            video_dest_path = os.path.join(video_dest_dir, f'field_{field_name}_{timestamp}.mp4')
-            shutil.copy2(video_output_path, video_dest_path)
-            print(f"video copied to: {video_dest_path}")
+            # Copy to global Claude_exploration/videos folder with iteration number
+            if current_iteration is not None:
+                # Claude exploration: copy to global videos folder
+                global_videos_dir = os.path.join(os.path.dirname(log_dir), 'videos')
+                os.makedirs(global_videos_dir, exist_ok=True)
+                video_dest_path = os.path.join(global_videos_dir, f'iter_{current_iteration:03d}_field_{field_name}.mp4')
+                shutil.copy2(video_output_path, video_dest_path)
+                print(f"video copied to: {video_dest_path}")
         else:
             print(f"video generation failed (returncode={result.returncode})")
             print(f"  stderr: {result.stderr}")
