@@ -92,7 +92,7 @@ $$
 \mathbf{x}_i^{n+1} = \mathbf{x}_i^n + \Delta t \, \mathbf{v}_i^{n+1}
 $$
 
-## Simulation Gallery
+## 2D Simulation Gallery
 
 ::: {.panel-tabset}
 
@@ -119,6 +119,18 @@ Liquid and jelly discs squeezing a center jelly disc.
 Soft cell-like bodies with expansion, simulating biological tissue.
 
 {{< video graphs_data/cell/cells_1/input_cells_1.mp4 >}}
+
+:::
+
+## 3D Simulation Gallery
+
+::: {.panel-tabset}
+
+### Falling Cubes
+
+27 cubes of particles falling in a 3D box (35,937 particles on 128x128x128 grid).
+
+{{< video graphs_data/multimaterial/multimaterial_1_3D/input_no_id.mp4 >}}
 
 :::
 

@@ -1,0 +1,314 @@
+---
+title: "Variable Schematic"
+subtitle: "Mapping Code Variables to MPM Equations"
+---
+
+## Complete Variable Flow
+
+This diagram shows how variables in `MPM_step.py` correspond to the mathematical quantities in MPM.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         MPM TIME STEP VARIABLE FLOW                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+INPUT STATE (per particle)
+┌──────────┬─────────────┬──────────────────────────────────────────────────┐
+│ Variable │ Math Symbol │ Description                                      │
+├──────────┼─────────────┼──────────────────────────────────────────────────┤
+│ X        │ xᵢ          │ Position [n_particles, 2]                        │
+│ V        │ vᵢ          │ Velocity [n_particles, 2]                        │
+│ C        │ Cᵢ          │ Affine velocity matrix [n_particles, 2, 2]       │
+│ F        │ Fᵢ          │ Deformation gradient [n_particles, 2, 2]         │
+│ Jp       │ Jₚ          │ Plastic volume ratio [n_particles, 1]            │
+│ T        │ type        │ Material type (0=liquid, 1=jelly, 2=snow)        │
+│ M        │ mᵢ          │ Mass [n_particles, 1]                            │
+└──────────┴─────────────┴──────────────────────────────────────────────────┘
+
+                                    │
+                                    ▼
+╔═══════════════════════════════════════════════════════════════════════════╗
+║  STEP 1: DEFORMATION GRADIENT UPDATE                                      ║
+║                                                                           ║
+║    F = (I + dt*C) @ F                                                     ║
+║                                                                           ║
+║  Code: F = (identity + dt * C) @ F                            Line 49    ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+                                    │
+                                    ▼
+┌───────────────────────────────────────────────────────────────────────────┐
+│  STEP 1->2: MATERIAL-SPECIFIC F REFINEMENT                                │
+│                                                                           │
+│  ┌─────────────────────────────────────────────────────────────────────┐  │
+│  │  SVD DECOMPOSITION                                                  │  │
+│  │                                                                     │  │
+│  │    F = U * Sigma * V^T                                              │  │
+│  │                                                                     │  │
+│  │  Code: U, sig, Vh = torch.linalg.svd(F_reg)            Line 64     │  │
+│  │                                                                     │  │
+│  │  Variables:                                                         │  │
+│  │    U, Vh  -> rotation matrices [n_particles, 2, 2]                  │  │
+│  │    sig    -> singular values (stretches) [n_particles, 2]           │  │
+│  │    J      -> det(F) = sig1*sig2 = torch.prod(sig)                   │  │
+│  └─────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                      │
+│      ┌─────────────────────────────┼─────────────────────────────┐        │
+│      ▼                             ▼                             ▼        │
+│  ┌───────────────┐          ┌───────────────┐          ┌───────────────┐  │
+│  │    LIQUID     │          │     JELLY     │          │     SNOW      │  │
+│  │   (T == 0)    │          │   (T == 1)    │          │   (T == 2)    │  │
+│  ├───────────────┤          ├───────────────┤          ├───────────────┤  │
+│  │ mu = 0        │          │ h = 0.3       │          │ h = exp(10*   │  │
+│  │ (no shear)    │          │ (constant)    │          │    (1-Jp))    │  │
+│  │               │          │               │          │               │  │
+│  │ F = sqrt(J)*I │          │ sig clamped   │          │ sig clamped   │  │
+│  │ (isotropic)   │          │ F = U*Sig*V^T │          │ [0.975,1.0045]│  │
+│  │               │          │               │          │ Jp updated    │  │
+│  └───────────────┘          └───────────────┘          └───────────────┘  │
+│      │                             │                             │        │
+│      └─────────────────────────────┼─────────────────────────────┘        │
+│                                    ▼                                      │
+│  Code references:                                                         │
+│    - Hardening: h = torch.exp(10 * (1.0 - Jp.squeeze()))      Line 51    │
+│    - Jelly h:   h = torch.where(jelly_mask, 0.3, h)           Line 52    │
+│    - Lame:      mu = mu_0 * h, la = lambda_0 * h              Lines 55-56│
+│    - Liquid mu: mu = torch.where(liquid_mask, 0.0, mu)        Line 57    │
+│    - Snow clamp: sig = torch.clamp(sig, 1-2.5e-2, 1+4.5e-3)   Line 98    │
+│    - Jp update: Jp = Jp * plastic_ratio                       Line 102   │
+│    - Liquid F:  F_liquid = identity * sqrt(J)                 Line 112   │
+│    - Solid F:   F_solid = U @ sig_diag @ Vh                   Line 113   │
+└───────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+╔═══════════════════════════════════════════════════════════════════════════╗
+║  STEP 2: STRESS COMPUTATION                                               ║
+║                                                                           ║
+║    R = U * V^T                   (rotation component)                     ║
+║                                                                           ║
+║    stress = 2*mu*(F-R)*F^T + la*J*(J-1)*I   (Cauchy, corotated model)     ║
+║                                                                           ║
+║  Code:                                                                    ║
+║    R = U @ Vh                                                 Line 123   ║
+║    F_minus_R = F - R                                          Line 124   ║
+║    stress = (2*mu*(F-R)@F^T + la*J*(J-1)*I)                  Line 125-126║
+║    stress = (-dt * p_vol * 4 * inv_dx^2) * stress            Line 127    ║
+║                                                                           ║
+║  The scaling factor converts stress to force for P2G transfer             ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+                                    │
+                                    ▼
+┌───────────────────────────────────────────────────────────────────────────┐
+│  STEP 2->3: AFFINE MOMENTUM COMPUTATION                                   │
+│                                                                           │
+│  ┌─────────────────────────────────────────────────────────────────────┐  │
+│  │                                                                     │  │
+│  │     affine = stress + m * C                                         │  │
+│  │                                                                     │  │
+│  │  Code: affine = stress + p_mass.unsqueeze(-1).unsqueeze(-1) * C    │  │
+│  │                                                        Line 162    │  │
+│  │                                                                     │  │
+│  │  Physical interpretation:                                           │  │
+│  │    - stress term: internal forces from deformation                  │  │
+│  │    - m*C term: momentum transport (APIC angular momentum)           │  │
+│  │                                                                     │  │
+│  │  This combined "affine" carries BOTH force AND momentum info        │  │
+│  │  to the grid in a single transfer.                                  │  │
+│  └─────────────────────────────────────────────────────────────────────┘  │
+│                                                                           │
+│  Variables at this point:                                                 │
+│  ┌────────────┬─────────────┬────────────────────────────────────────┐   │
+│  │ Variable   │ Shape       │ Description                            │   │
+│  ├────────────┼─────────────┼────────────────────────────────────────┤   │
+│  │ stress     │ [N, 2, 2]   │ Scaled stress (force)                  │   │
+│  │ C          │ [N, 2, 2]   │ Affine velocity matrix                 │   │
+│  │ p_mass     │ [N]         │ Particle mass                          │   │
+│  │ affine     │ [N, 2, 2]   │ Combined force + momentum gradient     │   │
+│  └────────────┴─────────────┴────────────────────────────────────────┘   │
+└───────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+╔═══════════════════════════════════════════════════════════════════════════╗
+║  STEP 3: P2G TRANSFER (Particle to Grid)                                  ║
+║                                                                           ║
+║  Each particle i CONTRIBUTES to its 9 neighboring grid nodes j:           ║
+║                                                                           ║
+║    contribution to mass:     dm_j = w_j * m_i                             ║
+║    contribution to momentum: dp_j = w_j * (m_i*v_i + Q_i*(x_j - x_i))     ║
+║                                                                           ║
+║  The GNN ACCUMULATES all particle contributions at each grid node:        ║
+║                                                                           ║
+║    m_j = SUM_i dm_j   (total mass at node j)                              ║
+║    p_j = SUM_i dp_j   (total momentum at node j)                          ║
+║                                                                           ║
+║  Code (MPM_P2G.message computes d, GNN aggregation computes SUM):         ║
+║    out_m = mass_j * weights              # dm_j contribution              ║
+║    out_v = weights * (m*v + Q @ dpos)    # dp_j contribution              ║
+║                                                                           ║
+║  After GNN aggregation (Line 214-216):                                    ║
+║    grid_m = accumulated mass m_j     [n_grid, n_grid]                     ║
+║    grid_v = accumulated momentum p_j [n_grid, n_grid, 2] (NOT velocity!)  ║
+║                                                                           ║
+║  Weights: Quadratic B-spline w0, w1, w2                     Lines 178-181 ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+                                    │
+                                    ▼
+╔═══════════════════════════════════════════════════════════════════════════╗
+║  STEP 4: GRID OPERATIONS                                                  ║
+║                                                                           ║
+║    v_j = p_j / m_j               (momentum -> velocity, using accumulated)║
+║    v_j += dt * g                 (gravity)                                ║
+║    Apply boundary conditions     (friction, no-penetration)               ║
+║                                                                           ║
+║  Code:                                                                    ║
+║    grid_v = grid_v / (grid_m + eps)                         Line 226-228  ║
+║    grid_v = grid_v + gravity_force                          Line 232-234  ║
+║    Boundary handling                                        Lines 242-266 ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+                                    │
+                                    ▼
+╔═══════════════════════════════════════════════════════════════════════════╗
+║  STEP 5: G2P TRANSFER                                                     ║
+║                                                                           ║
+║    v_i = SUM_j w_j * v_j              (APIC velocity update)              ║
+║                                                                           ║
+║    C_i = 4/dx^2 * SUM_j w_j * v_j (x) (x_j - x_i)   (affine velocity)     ║
+║                                                                           ║
+║  Code:                                                                    ║
+║    new_V = SUM weights * g_v_all                            Line 304-305  ║
+║    outer_products = g_v @ dpos^T                            Line 309-311  ║
+║    new_C = 4 * inv_dx * SUM weights * outer_products        Line 315      ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+                                    │
+                                    ▼
+╔═══════════════════════════════════════════════════════════════════════════╗
+║  STEP 6: ADVECTION                                                        ║
+║                                                                           ║
+║    x_i = x_i + dt * v_i                                                   ║
+║                                                                           ║
+║  Code: X = X + dt * new_V                                       Line 322  ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+                                    │
+                                    ▼
+OUTPUT STATE: X, V, C, F, Jp (updated)
+```
+
+## Variable Reference Table
+
+| Code Variable | Math Symbol | Shape | Physical Meaning | Units |
+|:--------------|:------------|:------|:-----------------|:------|
+| `X` | $\mathbf{x}_i$ | `[N, 2]` | Particle position | m |
+| `V` | $\mathbf{v}_i$ | `[N, 2]` | Particle velocity | m/s |
+| `C` | $\mathbf{C}_i$ | `[N, 2, 2]` | Affine velocity matrix (velocity gradient) | 1/s |
+| `F` | $\mathbf{F}_i$ | `[N, 2, 2]` | Deformation gradient | - |
+| `Jp` | $J_p$ | `[N, 1]` | Plastic volume ratio (accumulated) | - |
+| `T` | type | `[N, 1]` | Material type index | - |
+| `M` | $m_i$ | `[N, 1]` | Particle mass | kg |
+| `U` | $\mathbf{U}$ | `[N, 2, 2]` | Left rotation (from SVD) | - |
+| `sig` | $\boldsymbol{\sigma}$ | `[N, 2]` | Singular values (stretches) | - |
+| `Vh` | $\mathbf{V}^T$ | `[N, 2, 2]` | Right rotation transposed | - |
+| `R` | $\mathbf{R}$ | `[N, 2, 2]` | Rotation matrix $\mathbf{U}\mathbf{V}^T$ | - |
+| `J` | $J$ | `[N]` | Volume ratio $\det(\mathbf{F})$ | - |
+| `h` | $h$ | `[N]` | Hardening factor | - |
+| `mu` | $\mu$ | `[N]` | Shear modulus | Pa |
+| `la` | $\lambda$ | `[N]` | First Lame parameter | Pa |
+| `stress` | $\boldsymbol{\sigma}$ | `[N, 2, 2]` | Cauchy stress (scaled) | N |
+| `affine` | $\mathbf{Q}$ | `[N, 2, 2]` | Affine momentum $\sigma + m\mathbf{C}$ | N |
+| `grid_m` | $m_j$ | `[G, G]` | Grid mass (accumulated) | kg |
+| `grid_v` | $\mathbf{p}_j$ | `[G, G, 2]` | Grid momentum (accumulated, NOT velocity!) | kg·m/s |
+| `w` | $w$ | `[N, 3, 2]` | B-spline weights | - |
+
+## Key Equations Summary
+
+### Deformation Update
+$$\mathbf{F}^{n+1} = (\mathbf{I} + \Delta t \, \mathbf{C}^n) \mathbf{F}^n$$
+
+### SVD Decomposition
+$$\mathbf{F} = \mathbf{U} \, \text{diag}(\sigma_1, \sigma_2) \, \mathbf{V}^T$$
+
+### Hardening (Snow)
+$$h = \exp\bigl(10(1 - J_p)\bigr)$$
+
+### Lame Parameters
+$$\mu = \mu_0 \cdot h, \quad \lambda = \lambda_0 \cdot h$$
+
+### Cauchy Stress (Fixed Corotated)
+$$\boldsymbol{\sigma} = 2\mu (\mathbf{F} - \mathbf{R}) \mathbf{F}^T + \lambda J (J-1) \mathbf{I}$$
+
+### Affine Momentum
+$$\mathbf{Q} = \boldsymbol{\sigma}_{\text{scaled}} + m \, \mathbf{C}$$
+
+### P2G Transfer
+
+**Step 1: Each particle contributes to neighboring grid nodes**
+$$\delta m_j = w_j \, m_i, \quad \delta \mathbf{p}_j = w_j \bigl(m_i \mathbf{v}_i + \mathbf{Q} \cdot (\mathbf{x}_j - \mathbf{x}_i)\bigr)$$
+
+**Step 2: GNN accumulates all contributions at each node**
+$$m_j = \sum_i \delta m_j, \quad \mathbf{p}_j = \sum_i \delta \mathbf{p}_j$$
+
+### Grid Operations (uses accumulated values)
+$$\mathbf{v}_j = \mathbf{p}_j / m_j \quad \text{(momentum} \to \text{velocity)}$$
+
+### G2P Transfer (APIC)
+$$\mathbf{v}_i = \sum_j w_j \, \mathbf{v}_j, \quad \mathbf{C}_i = \frac{4}{\Delta x^2} \sum_j w_j \, \mathbf{v}_j \otimes (\mathbf{x}_j - \mathbf{x}_i)$$
+
+### Advection
+$$\mathbf{x}^{n+1} = \mathbf{x}^n + \Delta t \, \mathbf{v}^{n+1}$$
+
+## The Affine Term Explained
+
+The key insight is that **affine = stress + m·C** combines two physical effects:
+
+::: {.callout-important}
+## Why stress + m·C?
+
+1. **stress term**: Internal forces from material deformation. This is what creates elastic/plastic behavior.
+
+2. **m·C term**: The APIC (Affine Particle-In-Cell) contribution. This preserves angular momentum and prevents numerical dissipation.
+
+Each particle's contribution to grid momentum is:
+$$\delta \mathbf{p}_j = w_j \cdot \bigl[\underbrace{m_i \mathbf{v}_i}_{\text{linear momentum}} + \underbrace{\mathbf{Q}}_{\text{affine}} \cdot \underbrace{(\mathbf{x}_j - \mathbf{x}_i)}_{\text{dpos}}\bigr]$$
+
+This single transfer carries both **force** (from stress) and **momentum gradient** (from C) information.
+:::
+
+## Material-Specific Behavior
+
+```
+                    ┌─────────────┐
+                    │   F update  │
+                    │ F=(I+dt·C)F │
+                    └──────┬──────┘
+                           │
+                    ┌──────▼──────┐
+                    │     SVD     │
+                    │  F = UΣVᵀ   │
+                    └──────┬──────┘
+                           │
+         ┌─────────────────┼─────────────────┐
+         ▼                 ▼                 ▼
+   ┌───────────┐    ┌───────────┐    ┌───────────┐
+   │  LIQUID   │    │   JELLY   │    │   SNOW    │
+   │  (T=0)    │    │   (T=1)   │    │   (T=2)   │
+   ├───────────┤    ├───────────┤    ├───────────┤
+   │ μ = 0     │    │ h = 0.3   │    │ h=e^10(1-Jp)
+   │           │    │ μ = μ₀·h  │    │ μ = μ₀·h  │
+   │ F = √J·I  │    │ F = UΣVᵀ  │    │ Σ clamped │
+   │(isotropic)│    │           │    │ Jp updated│
+   │           │    │           │    │ F = UΣ'Vᵀ │
+   └─────┬─────┘    └─────┬─────┘    └─────┬─────┘
+         │                │                │
+         └────────────────┼────────────────┘
+                          ▼
+                   ┌─────────────┐
+                   │   Stress    │
+                   │ σ=2μ(F-R)Fᵀ │
+                   │  +λJ(J-1)I  │
+                   └──────┬──────┘
+                          ▼
+                   ┌─────────────┐
+                   │   Affine    │
+                   │  Q = σ + mC │
+                   └──────┬──────┘
+                          ▼
+                      P2G transfer
+```

@@ -2,7 +2,7 @@
 
 ## Goal
 
-Map the **MPM INR training landscape**: understand which INR architectures and training configurations achieve best field reconstruction (R² > 0.95) for Material Point Method simulations. Other important evaluation are slope (~1.0) and training time. Get an intuition for the training_time.
+Map the **MPM INR training landscape**: understand which INR architectures and training configurations achieve best field reconstruction (R² > 0.995) for Material Point Method simulations. Other important evaluation are slope (~1.0) and training time. Get an intuition for the training_time.
 
 ## Iteration Loop Structure
 
@@ -55,10 +55,10 @@ Read `{config}_memory.md` to recall:
 
 **Classification:**
 
-- **Excellent**: R² > 0.95
-- **Good**: R² 0.90-0.95
-- **Moderate**: R² 0.75-0.90
-- **Poor**: R² < 0.75
+- **Excellent**: R² > 0.995
+- **Good**: R² 0.990 - 0.995
+- **Moderate**: R² 0.90-0.99
+- **Poor**: R² < 0.90
 
 **UCB scores from `ucb_scores.txt`:**
 
@@ -102,17 +102,17 @@ Next: parent=P
 
 Step B: Choose strategy
 
-| Condition                            | Strategy            | Action                             |
-| ------------------------------------ | ------------------- | ---------------------------------- |
-| Default                              | **exploit**         | Highest UCB node, try mutation     |
-| 3+ consecutive R² ≥ 0.95             | **failure-probe**   | Extreme parameter to find boundary |
-| n_iter_block/4 consecutive successes | **explore**         | Select outside recent chain        |
-| Good config found                    | **robustness-test** | Re-run same config                 |
-| 2+ distant nodes with R² > 0.95      | **recombine**       | Merge params from both nodes       |
-| 100% convergence, branching<10%      | **forced-branch**   | Select node in bottom 50% of tree  |
-| Same param mutated 4+ times          | **switch-param**    | Mutate different parameter         |
-| All R² > 0.94, branching <20%        | **random-branch**   | Select random unvisited parent     |
-| Robustness test variance > 0.1       | **stochastic-field**| Switch to different field or try code mod |
+| Condition                            | Strategy             | Action                                    |
+| ------------------------------------ | -------------------- | ----------------------------------------- |
+| Default                              | **exploit**          | Highest UCB node, try mutation            |
+| 3+ consecutive R² ≥ 0.95             | **failure-probe**    | Extreme parameter to find boundary        |
+| n_iter_block/4 consecutive successes | **explore**          | Select outside recent chain               |
+| Good config found                    | **robustness-test**  | Re-run same config                        |
+| 2+ distant nodes with R² > 0.95      | **recombine**        | Merge params from both nodes              |
+| 100% convergence, branching<10%      | **forced-branch**    | Select node in bottom 50% of tree         |
+| Same param mutated 4+ times          | **switch-param**     | Mutate different parameter                |
+| All R² > 0.94, branching <20%        | **random-branch**    | Select random unvisited parent            |
+| Robustness test variance > 0.1       | **stochastic-field** | Switch to different field or try code mod |
 
 **Stochastic variance detection (Block 9 finding):**
 
@@ -553,15 +553,7 @@ Iterations: M to M+n_iter_block
 
 ## Knowledge Base Guidelines
 
-### What to Add to Established Principles
-
-Examples:
-
-- ✓ "siren_txy needs lower lr_NNR_f than siren_id" (causal, generalizable)
-- ✓ "omega_f > 50 causes training instability for F field" (boundary condition)
-- ✓ "total_steps < 20k insufficient for R² > 0.95" (threshold)
-- ✗ "lr_NNR_f=1E-5 worked in Block 4" (too specific)
-- ✗ "Block 3 converged" (not a principle)
+Add established principles
 
 ### Scientific Method (CRITICAL)
 
@@ -597,6 +589,27 @@ Three variants:
 - `siren_id`: Input = (time, particle_id)
 - `siren_txy`: Input = (time, x, y) - uses Lagrangian positions
 
+**SIREN Implementation Details**:
+
+SIREN uses sinusoidal activations instead of ReLU:
+
+$$\phi(x) = \sin(\omega_0 \cdot Wx + b)$$
+
+Key implementation points:
+
+| Component     | Formula                                           | Purpose                      |
+| ------------- | ------------------------------------------------- | ---------------------------- |
+| First layer   | $W \sim U(-1/n, 1/n)$                             | Input scaling                |
+| Hidden layers | $W \sim U(-\sqrt{6/n}/\omega, \sqrt{6/n}/\omega)$ | Preserve gradient magnitude  |
+| Activation    | $\sin(\omega_0 \cdot z)$                          | Periodic, smooth derivatives |
+
+**Input normalization** (critical for `siren_txy`):
+
+- Time: $t_{norm} = t / n\_frames$ → [0, 1]
+- Spatial: $(x, y)_{norm} = (x, y) / \text{nnr\_f\_xy\_period}$
+
+The `omega_f` parameter controls frequency capacity - higher values capture finer spatial/temporal detail but risk training instability. The `nnr_f_xy_period` parameter scales spatial coordinates relative to time, effectively controlling the ratio of spatial-to-temporal frequency sensitivity. Smaller `nnr_f_xy_period` → higher effective spatial frequency.
+
 **InstantNGP (Hash Encoding)** ⚠️ **NOT READY - DO NOT USE**:
 
 - Multi-resolution hash encoding + MLP
@@ -618,6 +631,7 @@ Three variants:
 After each training iteration, a visualization is saved to `tmp_training/field/`. **You MUST analyze this plot qualitatively.**
 
 **Panel Layout for 4-component fields (F, S, C):**
+
 ```
 [Loss curve] [Traces]     [Info]      [Scatter]
 [GT 00]      [GT 01]      [Pred 00]   [Pred 01]
@@ -625,6 +639,7 @@ After each training iteration, a visualization is saved to `tmp_training/field/`
 ```
 
 **Panel Layout for 1-component fields (Jp):**
+
 ```
 [Loss curve] [Traces]     [Info]
 [GT field]   [Pred field] [Scatter]
@@ -632,14 +647,14 @@ After each training iteration, a visualization is saved to `tmp_training/field/`
 
 **Panel descriptions:**
 
-| Panel | What it shows | What to look for |
-|-------|---------------|------------------|
-| **Loss curve** (top-left) | MSE loss vs training steps. Gray=raw, Red=smoothed | Convergence shape: steep initial drop is good. Oscillation = lr too high. Plateau = underfitting |
-| **Traces** (top-middle) | 10 particle time series. Green=GT, White=Pred. Centered by mean, spaced by 4×std | Temporal dynamics match: white should follow green. Systematic offsets indicate bias |
-| **Info** (top-right for 4-comp, or right for 1-comp) | Field name, step count, components, particles, frames, MSE | Basic run metadata |
-| **Scatter** (top-right for 4-comp, or bottom-right for 1-comp) | Pred vs GT for ALL values. Red dashed=ideal, Green=regression fit | Cloud should be tight along diagonal. Slope<1 means underprediction. R² and slope shown |
-| **GT panels** (bottom rows) | Ground truth field at frame n_frames/2. Each component shown separately. Yellow SSIM value | Spatial structure of the true field. SSIM measures structural similarity to prediction |
-| **Pred panels** (bottom rows) | Slope-corrected prediction at same frame. White SSIM value | Should match GT visually. Low SSIM despite high R² = wrong spatial patterns learned |
+| Panel                                                          | What it shows                                                                              | What to look for                                                                                 |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| **Loss curve** (top-left)                                      | MSE loss vs training steps. Gray=raw, Red=smoothed                                         | Convergence shape: steep initial drop is good. Oscillation = lr too high. Plateau = underfitting |
+| **Traces** (top-middle)                                        | 10 particle time series. Green=GT, White=Pred. Centered by mean, spaced by 4×std           | Temporal dynamics match: white should follow green. Systematic offsets indicate bias             |
+| **Info** (top-right for 4-comp, or right for 1-comp)           | Field name, step count, components, particles, frames, MSE                                 | Basic run metadata                                                                               |
+| **Scatter** (top-right for 4-comp, or bottom-right for 1-comp) | Pred vs GT for ALL values. Red dashed=ideal, Green=regression fit                          | Cloud should be tight along diagonal. Slope<1 means underprediction. R² and slope shown          |
+| **GT panels** (bottom rows)                                    | Ground truth field at frame n_frames/2. Each component shown separately. Yellow SSIM value | Spatial structure of the true field. SSIM measures structural similarity to prediction           |
+| **Pred panels** (bottom rows)                                  | Slope-corrected prediction at same frame. White SSIM value                                 | Should match GT visually. Low SSIM despite high R² = wrong spatial patterns learned              |
 
 **Qualitative analysis checklist:**
 
@@ -658,25 +673,27 @@ Visual: [brief qualitative observation about spatial match and any artifacts]
 ```
 
 Examples:
+
 - `Visual: GT/Pred match well, SSIM>0.95 all components, no visible artifacts`
 - `Visual: F01 component blurry (SSIM=0.72), other components good`
 - `Visual: Spatial patterns correct but contrast too low (slope=0.85)`
 - `Visual: Complete mismatch - prediction shows uniform field, GT has structure`
 
-### Prior Knowledge (from 17 blocks of exploration)
+### Prior Knowledge (from 17 blocks prior exploration)
 
 **Field difficulty ranking**: F (R²=0.9999) > Jp (R²=0.997) > C (R²=0.989) >> S (R²=0.801)
 
 **Optimal configurations per field** (use these as starting points):
 
 | Field | hidden_dim | n_layers | omega_f | lr_NNR_f | steps/frame | Best R² |
-|-------|------------|----------|---------|----------|-------------|---------|
+| ----- | ---------- | -------- | ------- | -------- | ----------- | ------- |
 | F     | 256        | 4        | 20      | 3E-5     | 800         | 0.9999  |
 | Jp    | 384        | 3        | 15-20   | 4E-5     | 800         | 0.997   |
 | C     | 640        | 3        | 20-25   | 3E-5     | 1000        | 0.989   |
 | S     | 1280       | 4        | 50      | 2E-5     | 3000+       | 0.801   |
 
 **Critical constraints discovered**:
+
 - **n_layers**: Jp and C require EXACTLY 3 layers (both 2 and 4 degrade). F tolerates 2-5. S prefers 4.
 - **hidden_dim ceilings**: S@1280 (1536 fails), Jp@384 (256 AND 512 both degrade), C scales with frames
 - **omega_f**: Field-specific and frame-dependent. More frames → lower optimal omega_f.
@@ -781,3 +798,4 @@ Examples:
 - Network size: double or half
 - Training steps: ×1.5 or ×2
 - omega_f: ±10 or ×1.5
+- nnr_f_xy_period: ×2 or ÷2 (spatial frequency scaling)

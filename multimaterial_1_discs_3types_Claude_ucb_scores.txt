@@ -1,7 +1,10 @@
-=== UCB Scores (Block 0, iters 1-12, N=5, c=1.414) ===
+=== UCB Scores (Block 0, iters 1-12, N=8, c=1.414) ===
 
-Node 5: UCB=2.508, parent=4, visits=1, R2=0.927, slope=0.773, time=3.3min, Mutation=lr_NNR_f: 3E-5 -> 5E-5
-Node 4: UCB=1.916, parent=3, visits=2, R2=0.862, slope=0.000, time=3.4min, Mutation=lr_NNR_f: 1E-5 -> 3E-5
-Node 3: UCB=1.620, parent=2, visits=3, R2=0.830, slope=0.000, time=3.3min, Mutation=hidden_dim_nnr_f: 64 -> 384
-Node 2: UCB=1.059, parent=1, visits=4, R2=0.427, slope=0.000, time=2.6min, Mutation=omega_f: 80 -> 25
-Node 1: UCB=0.947, parent=root, visits=5, R2=0.420, slope=0.000, time=2.4min, Mutation=[initial config] omega_f=80 and hidden_dim=64 both far from prior optimal
+Node 8: UCB=2.979, parent=7, visits=1, R2=0.979, slope=0.930, time=16.8min, Mutation=total_steps 100k→150k
+Node 5: UCB=2.892, parent=4, visits=1, R2=0.892, slope=0.863, time=8.6min, Mutation=lr 6E-5→8E-5
+Node 7: UCB=2.294, parent=6, visits=2, R2=0.961, slope=0.890, time=10.4min, Mutation=total_steps 50k→100k
+Node 6: UCB=1.918, parent=4, visits=3, R2=0.918, slope=0.822, time=7.7min, Mutation=hidden_dim 384→512
+Node 4: UCB=1.609, parent=3, visits=5, R2=0.942, slope=0.825, time=8.6min, Mutation=lr 4E-5→6E-5
+Node 3: UCB=1.484, parent=2, visits=6, R2=0.913, slope=0.683, time=5.3min, Mutation=lr 1E-5→4E-5
+Node 2: UCB=1.335, parent=1, visits=7, R2=0.835, slope=0.257, time=5.9min, Mutation=hidden_dim 64→384, omega_f 80→25
+Node 1: UCB=0.843, parent=root, visits=8, R2=0.399, slope=0.000, time=6.3min, Mutation=Initial config (from template)
