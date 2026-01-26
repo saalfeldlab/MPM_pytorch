@@ -1160,7 +1160,7 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
         cmap_name = 'viridis'
 
     # Generate frames
-    for frame_idx in tqdm(range(n_frames), desc='generating frames', ncols=100):
+    for frame_idx in range(n_frames):
         pos_data = x_list[frame_idx, :, 1:3]
 
         if n_components == 4:
@@ -1239,31 +1239,23 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
         video_output_path
     ]
 
-    try:
-        import subprocess
-        print(f"running ffmpeg: {' '.join(ffmpeg_cmd)}")
-        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=300)
-        if result.returncode == 0:
-            print(f"generated video: {video_output_path}")
-
-            # Copy to global Claude_exploration/videos folder with iteration number
-            if current_iteration is not None:
-                # Claude exploration: copy to global videos folder
-                global_videos_dir = os.path.join(os.path.dirname(log_dir), 'videos')
-                os.makedirs(global_videos_dir, exist_ok=True)
-                video_dest_path = os.path.join(global_videos_dir, f'iter_{current_iteration:03d}_field_{field_name}.mp4')
-                shutil.copy2(video_output_path, video_dest_path)
-                print(f"video copied to: {video_dest_path}")
-        else:
-            print(f"video generation failed (returncode={result.returncode})")
-            print(f"  stderr: {result.stderr}")
-            print(f"  stdout: {result.stdout}")
-    except subprocess.TimeoutExpired:
-        print("video generation timeout")
-    except FileNotFoundError:
-        print("ffmpeg not found, skipping video generation")
-    except Exception as e:
-        print(f"video generation error: {e}")
+    # Check if ffmpeg is available
+    if shutil.which('ffmpeg') is None:
+        print("ffmpeg not found - install with: conda install -c conda-forge ffmpeg")
+    else:
+        try:
+            import subprocess
+            result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=300)
+            if result.returncode == 0:
+                print(f"generated video: {video_output_path}")
+                # Note: video copying to exploration folder is handled by run_MPM.py
+            else:
+                print(f"video generation failed (returncode={result.returncode})")
+                print(f"  stderr: {result.stderr}")
+        except subprocess.TimeoutExpired:
+            print("video generation timeout")
+        except Exception as e:
+            print(f"video generation error: {e}")
 
     # Write analysis.log if log_file provided
     if log_file is not None:
