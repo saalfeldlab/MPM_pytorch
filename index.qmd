@@ -1,0 +1,139 @@
+---
+title: "MPM PyTorch"
+subtitle: "Material Point Method with Differentiable Physics"
+author: "Cedric Allier"
+date: "2025"
+---
+
+## Introduction
+
+The **Material Point Method (MPM)** is a numerical technique for simulating materials that undergo large deformations, fracture, and complex material interactions. It combines the strengths of both Lagrangian (particle-based) and Eulerian (grid-based) approaches.
+
+This implementation provides a fully differentiable MPM solver in PyTorch, enabling:
+
+- **Forward simulation** of multi-material interactions (liquids, solids, snow)
+- **Inverse problems** through automatic differentiation
+- **Neural network integration** via Graph Neural Networks for P2G transfer
+
+## Hybrid Lagrangian-Eulerian Approach
+
+MPM uses a hybrid approach where:
+
+1. **Particles** carry material state (mass, velocity, deformation history)
+2. **Grid** handles momentum transfer and boundary conditions
+
+| Step | Phase | Description |
+|:----:|-------|-------------|
+| 1 | **Update F** | Deformation gradient update: $\mathbf{F} \leftarrow (\mathbf{I} + \Delta t \mathbf{C}) \mathbf{F}$ |
+| 2 | **Compute Stress** | Cauchy stress from constitutive model |
+| 3 | **P2G Transfer** | Scatter mass & momentum to grid |
+| 4 | **Grid Operations** | Apply gravity, boundary conditions |
+| 5 | **G2P Transfer** | Gather velocities back to particles |
+| 6 | **Advect** | Update particle positions: $\mathbf{x} \leftarrow \mathbf{x} + \Delta t \mathbf{v}$ |
+
+The cycle repeats for each timestep.
+
+## Particle State Variables
+
+Each particle $i$ carries the following quantities:
+
+| Symbol | Variable | Dimension | Description |
+|--------|----------|-----------|-------------|
+| $\mathbf{x}_i$ | Position | $d$ | Spatial location (2D or 3D) |
+| $\mathbf{v}_i$ | Velocity | $d$ | Material velocity |
+| $\mathbf{C}_i$ | Affine velocity | $d \times d$ | Local velocity gradient (APIC) |
+| $\mathbf{F}_i$ | Deformation gradient | $d \times d$ | Tracks total deformation |
+| $J_i$ | Plastic deformation | $1$ | Accumulated plastic volume change |
+| $m_i$ | Mass | $1$ | Particle mass |
+| $T_i$ | Material type | $1$ | 0=liquid, 1=jelly, 2=snow |
+
+## Material Types
+
+MPM PyTorch supports three material types with distinct behaviors:
+
+::: {.panel-tabset}
+
+### Liquid
+- No shear resistance ($\mu = 0$)
+- Isotropic deformation: $\mathbf{F} = \sqrt{J} \, \mathbf{I}$
+- Optional surface tension
+
+### Jelly (Elastic Solid)
+- Fixed stiffness ($h = 0.3$)
+- Full elastic response
+- Preserves shape memory
+
+### Snow
+- Plastic deformation with clamped singular values
+- Hardening/softening based on $J_p$
+- Captures compression and fracture
+
+:::
+
+## Key Equations
+
+### Deformation Gradient Update
+
+$$
+\mathbf{F}_i^{n+1} = (\mathbf{I} + \Delta t \, \mathbf{C}_i^n) \mathbf{F}_i^n
+$$
+
+### Cauchy Stress (Neo-Hookean)
+
+$$
+\boldsymbol{\sigma} = 2\mu (\mathbf{F} - \mathbf{R}) \mathbf{F}^T + \lambda J (J-1) \mathbf{I}
+$$
+
+where $\mathbf{R} = \mathbf{U}\mathbf{V}^T$ is the rotation from SVD of $\mathbf{F}$.
+
+### Particle Advection
+
+$$
+\mathbf{x}_i^{n+1} = \mathbf{x}_i^n + \Delta t \, \mathbf{v}_i^{n+1}
+$$
+
+## Simulation Gallery
+
+::: {.panel-tabset}
+
+### Multi-Material (3 types)
+
+9 discs of different materials (liquid, jelly, snow) falling under gravity.
+
+{{< video graphs_data/multimaterial/multimaterial_1_discs_3types/input_fig.mp4 >}}
+
+### Collision
+
+Two discs of different materials colliding.
+
+{{< video graphs_data/multimaterial/multimaterial_1_scenario_collision/input_multimaterial_1_scenario_collision.mp4 >}}
+
+### Pincer
+
+Liquid and jelly discs squeezing a center jelly disc.
+
+{{< video graphs_data/multimaterial/multimaterial_1_scenario_pincer/input_multimaterial_1_scenario_pincer.mp4 >}}
+
+### Cells
+
+Soft cell-like bodies with expansion, simulating biological tissue.
+
+{{< video graphs_data/cell/cells_1/input_cells_1.mp4 >}}
+
+:::
+
+## Documentation
+
+| Page | Content |
+|------|---------|
+| [MPM Algorithm](mpm-algorithm.qmd) | Complete algorithm overview |
+| [P2G & G2P Transfers](p2g-g2p.qmd) | Particle-grid interpolation |
+| [Material Types](materials.qmd) | Liquid, jelly, snow behaviors |
+| [Constitutive Models](constitutive.qmd) | Stress computation |
+| [Implementation](implementation.qmd) | Code walkthrough |
+
+## References
+
+- Stomakhin et al. (2013). "A material point method for snow simulation"
+- Hu et al. (2018). "A moving least squares material point method with displacement discontinuity and two-way rigid body coupling"
+- Jiang et al. (2015). "The affine particle-in-cell method"

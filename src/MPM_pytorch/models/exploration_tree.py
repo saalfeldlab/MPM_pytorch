@@ -320,8 +320,10 @@ def save_exploration_artifacts(root_dir, exploration_dir, config, config_file, p
     # Create directories
     tree_save_dir = f"{exploration_dir}/ucb_trees"
     protocol_save_dir = f"{exploration_dir}/protocols"
+    videos_save_dir = f"{exploration_dir}/videos"
     os.makedirs(tree_save_dir, exist_ok=True)
     os.makedirs(protocol_save_dir, exist_ok=True)
+    os.makedirs(videos_save_dir, exist_ok=True)
 
     # Path to activity visualization (placeholder - create in data_train_INR if needed)
     log_dir = f"./log/{config.dataset}/"
@@ -338,5 +340,6 @@ def save_exploration_artifacts(root_dir, exploration_dir, config, config_file, p
     return {
         'tree_save_dir': tree_save_dir,
         'protocol_save_dir': protocol_save_dir,
+        'videos_save_dir': videos_save_dir,
         'activity_path': activity_path
     }

@@ -1,0 +1,201 @@
+---
+title: "MPM Algorithm"
+subtitle: "Complete Time Step Overview"
+---
+
+## Algorithm Overview
+
+The MPM time step consists of four main phases executed in sequence:
+
+| Step | Phase | Description |
+|:----:|-------|-------------|
+| 1 | **Update F** | $\mathbf{F} \leftarrow (\mathbf{I} + \Delta t \mathbf{C}) \mathbf{F}$ |
+| 2 | **Compute Stress** | SVD, plasticity, Cauchy stress |
+| 3 | **P2G Transfer** | Scatter to grid nodes |
+| 4 | **Grid Operations** | Gravity, boundaries |
+| 5 | **G2P Transfer** | Gather from grid |
+| 6 | **Advect** | $\mathbf{x} \leftarrow \mathbf{x} + \Delta t \mathbf{v}$ |
+
+## Phase 1: Deformation Gradient Update
+
+The deformation gradient $\mathbf{F}$ tracks how material has deformed from its rest configuration.
+
+### Update Rule
+
+Using the Moving Least Squares (MLS) approximation:
+
+$$
+\mathbf{F}_i^{n+1} = (\mathbf{I} + \Delta t \, \mathbf{C}_i^n) \mathbf{F}_i^n
+$$
+
+where $\mathbf{C}_i$ is the affine velocity matrix capturing local velocity gradients.
+
+### SVD Decomposition
+
+For plasticity and stability, we decompose:
+
+$$
+\mathbf{F}_i = \mathbf{U} \, \boldsymbol{\Sigma} \, \mathbf{V}^T
+$$
+
+where:
+- $\mathbf{U}, \mathbf{V}$ are rotation matrices
+- $\boldsymbol{\Sigma} = \text{diag}(\sigma_1, \sigma_2)$ contains singular values (stretches)
+
+::: {.callout-note}
+## Implementation Note
+The code uses `torch.linalg.svd` with sign corrections to ensure proper rotation matrices (det = +1).
+:::
+
+## Phase 2: Stress Computation
+
+### Hardening Factor
+
+Material stiffness varies with plastic deformation:
+
+$$
+h = \exp(10(1 - J_p))
+$$
+
+- $J_p < 1$ (compression): $h > 1$ (hardening)
+- $J_p > 1$ (expansion): $h < 1$ (softening)
+
+### Lame Parameters
+
+$$
+\mu = \mu_0 \cdot h, \quad \lambda = \lambda_0 \cdot h
+$$
+
+| Parameter | Symbol | Physical Meaning |
+|-----------|--------|------------------|
+| $\mu$ | Shear modulus | Resistance to shape change |
+| $\lambda$ | First Lame parameter | Resistance to volume change |
+
+### Cauchy Stress
+
+The fixed corotated hyperelastic model:
+
+$$
+\boldsymbol{\sigma} = 2\mu (\mathbf{F} - \mathbf{R}) \mathbf{F}^T + \lambda J (J-1) \mathbf{I}
+$$
+
+where:
+- $\mathbf{R} = \mathbf{U}\mathbf{V}^T$ is the rotation component
+- $J = \det(\mathbf{F}) = \sigma_1 \cdot \sigma_2$ is the volume ratio
+
+## Phase 3: P2G Transfer
+
+Transfer particle quantities to the background grid using quadratic B-spline weights.
+
+### Base Index
+
+$$
+\mathbf{j}_{\text{base}} = \lfloor \mathbf{x}_i / \Delta x - 0.5 \rfloor
+$$
+
+### B-Spline Weights
+
+For fractional position $\mathbf{f}_x = \mathbf{x}_i / \Delta x - \mathbf{j}_{\text{base}}$:
+
+$$
+\begin{aligned}
+w_0 &= 0.5(1.5 - f_x)^2 \\
+w_1 &= 0.75 - (f_x - 1)^2 \\
+w_2 &= 0.5(f_x - 0.5)^2
+\end{aligned}
+$$
+
+### Momentum Transfer
+
+For each of the 9 neighboring grid nodes (in 2D):
+
+$$
+\Delta \mathbf{m}_{\mathbf{j}} = w_{\mathbf{j}} \left( m_i \mathbf{v}_i + \mathbf{Q}_i (\mathbf{x}_{\mathbf{j}} - \mathbf{x}_i) \right)
+$$
+
+where $\mathbf{Q}_i = \text{stress} + m_i \mathbf{C}_i$ is the affine momentum.
+
+## Phase 4: Grid Operations
+
+### Momentum to Velocity
+
+$$
+\mathbf{v}_{\mathbf{j}} = \frac{\mathbf{m}_{\mathbf{j}}}{m_{\mathbf{j}}}
+$$
+
+### Gravity
+
+$$
+\mathbf{v}_{\mathbf{j}} \leftarrow \mathbf{v}_{\mathbf{j}} + \Delta t \, \mathbf{g}
+$$
+
+### Boundary Conditions
+
+- **Normal**: Set penetrating velocity to zero
+- **Tangential**: Apply friction: $\mathbf{v}_t \leftarrow (1-\alpha) \mathbf{v}_t$
+
+## Phase 5: G2P Transfer
+
+### Velocity Update (APIC)
+
+$$
+\mathbf{v}_i^{n+1} = \sum_{\mathbf{j} \in \mathcal{N}} w_{\mathbf{j}} \, \mathbf{v}_{\mathbf{j}}
+$$
+
+### Affine Velocity Update
+
+$$
+\mathbf{C}_i^{n+1} = 4 \Delta x^{-2} \sum_{\mathbf{j} \in \mathcal{N}} w_{\mathbf{j}} \, \mathbf{v}_{\mathbf{j}} \otimes (\mathbf{x}_{\mathbf{j}} - \mathbf{x}_i)
+$$
+
+The outer product captures local velocity gradients.
+
+## Phase 6: Advection
+
+$$
+\mathbf{x}_i^{n+1} = \mathbf{x}_i^n + \Delta t \, \mathbf{v}_i^{n+1}
+$$
+
+## Complete Algorithm
+
+```
+Algorithm: MPM Time Step
+────────────────────────────────────────────────
+Input: Particle states {x, v, C, F, Jp, m, T}
+       Grid parameters: n_grid, dx, dt
+       Material parameters: mu_0, lambda_0
+
+1. FOR each particle i:
+   │  F ← (I + dt*C) @ F
+   │  U, Σ, V^T ← SVD(F)
+   │
+   │  IF snow: clamp Σ, update Jp
+   │  IF liquid: F ← sqrt(J)*I
+   │
+   │  Compute stress σ
+   │  Q ← stress + m*C
+   └
+
+2. P2G: Clear grid, scatter particle contributions
+   FOR each particle i:
+   │  FOR each neighbor j ∈ N(i):
+   │  │  m_j += w_j * m_i
+   │  │  mv_j += w_j * (m_i*v_i + Q*(x_j - x_i))
+   └  └
+
+3. Grid: Apply physics
+   FOR each grid node j with m_j > 0:
+   │  v_j ← mv_j / m_j + dt*g
+   │  Apply boundary conditions
+   └
+
+4. G2P: Gather grid velocities
+   FOR each particle i:
+   │  v_new ← Σ w_j * v_j
+   │  C_new ← 4/dx² * Σ w_j * v_j ⊗ (x_j - x_i)
+   │  x ← x + dt * v_new
+   └
+
+Output: Updated particle states
+────────────────────────────────────────────────
+```

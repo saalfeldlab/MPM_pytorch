@@ -50,10 +50,10 @@ graph_model:
   inr_type: siren_txy
   input_size_nnr_f: 3
   n_layers_nnr_f: 3
-  hidden_dim_nnr_f: 64
+  hidden_dim_nnr_f: 384
   output_size_nnr_f: 1
   outermost_linear_nnr_f: true
-  omega_f: 80.0
+  omega_f: 25.0
   omega_f_learning: false
   nnr_f_xy_period: 1.0
 plotting:
@@ -79,4 +79,4 @@ training:
   fix_cluster_embedding: true
   learning_rate_start: 1E-5
   learning_rate_embedding_start: 1E-2
-  learning_rate_NNR_f: 1E-5
+  learning_rate_NNR_f: 8E-5

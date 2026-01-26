@@ -1,0 +1,186 @@
+---
+title: "Material Types"
+subtitle: "Liquid, Jelly, and Snow"
+---
+
+## Overview
+
+MPM PyTorch supports three distinct material types, each with different physical behaviors:
+
+| Type | ID | Shear | Plasticity | Use Cases |
+|------|:--:|:-----:|:----------:|-----------|
+| Liquid | 0 | None | None | Water, fluids |
+| Jelly | 1 | Fixed | None | Elastic solids |
+| Snow | 2 | Variable | Yes | Granular materials |
+
+## Material Masks
+
+In the code, materials are distinguished by type ID:
+
+```python
+liquid_mask = (T.squeeze() == 0)
+jelly_mask = (T.squeeze() == 1)
+snow_mask = (T.squeeze() == 2)
+```
+
+## Liquid ($T = 0$)
+
+Liquids are **incompressible fluids** with no resistance to shear deformation.
+
+### Properties
+
+- **Shear modulus**: $\mu = 0$
+- **Deformation**: Isotropic only
+
+### Deformation Gradient
+
+For liquids, the deformation gradient is reset to preserve only volume:
+
+$$
+\mathbf{F}^{\text{liquid}} = \sqrt{J} \cdot \mathbf{I}
+$$
+
+where $J = \det(\mathbf{F})$ is the volume ratio.
+
+::: {.callout-note}
+## Physical Interpretation
+This ensures liquids have no "shape memory"---they flow to fill any container while preserving volume (incompressibility).
+:::
+
+### Surface Tension (Optional)
+
+When enabled, surface tension creates cohesive forces between liquid particles:
+
+$$
+\boldsymbol{\sigma}_{\text{surface}} = -\gamma \cdot s \cdot (\mathbf{n} \otimes \mathbf{n})
+$$
+
+where:
+- $\gamma$ is the surface tension coefficient
+- $s$ measures how much of a "surface particle" each particle is
+- $\mathbf{n}$ is the direction toward the local center of mass
+
+## Jelly ($T = 1$)
+
+Jelly represents **elastic solids** that deform and return to their original shape.
+
+### Properties
+
+- **Hardening factor**: Fixed at $h = 0.3$ (70% softer than reference)
+- **Full elastic response**: Both shear and bulk resistance
+
+### Stress Response
+
+$$
+\boldsymbol{\sigma} = 2\mu (\mathbf{F} - \mathbf{R}) \mathbf{F}^T + \lambda J (J-1) \mathbf{I}
+$$
+
+The rotation $\mathbf{R} = \mathbf{U}\mathbf{V}^T$ is extracted from SVD of $\mathbf{F}$.
+
+::: {.callout-tip}
+## Jelly Behavior
+- Bounces back after deformation
+- Preserves shape memory
+- No permanent (plastic) deformation
+:::
+
+## Snow ($T = 2$)
+
+Snow exhibits **elastoplastic behavior** with hardening and softening.
+
+### Plasticity Model
+
+The singular values of $\mathbf{F}$ are clamped to limit elastic deformation:
+
+$$
+\sigma_k^{\text{new}} = \text{clamp}(\sigma_k, 1 - 2.5 \times 10^{-2}, 1 + 4.5 \times 10^{-3})
+$$
+
+| Limit | Value | Meaning |
+|-------|-------|---------|
+| Lower | 0.975 | Max 2.5% compression before plastic flow |
+| Upper | 1.0045 | Max 0.45% stretch before plastic flow |
+
+### Plastic Volume Accumulation
+
+$$
+J_p^{\text{new}} = J_p \cdot \prod_k \frac{\sigma_k^{\text{old}}}{\sigma_k^{\text{new}}}
+$$
+
+This tracks cumulative plastic deformation.
+
+### Hardening
+
+The hardening factor depends on plastic history:
+
+$$
+h = \exp(10 \cdot (1 - J_p))
+$$
+
+| $J_p$ | $h$ | Material State |
+|-------|-----|----------------|
+| $< 1$ | $> 1$ | Compressed, harder |
+| $= 1$ | $= 1$ | Reference state |
+| $> 1$ | $< 1$ | Expanded, softer |
+
+### Reconstructed Deformation
+
+After plasticity projection:
+
+$$
+\mathbf{F}^{\text{snow}} = \mathbf{U} \cdot \text{diag}(\sigma_k^{\text{new}}) \cdot \mathbf{V}^T
+$$
+
+## Material Parameters
+
+### Lame Parameters
+
+From Young's modulus $E$ and Poisson's ratio $\nu$:
+
+$$
+\mu_0 = \frac{E}{2(1+\nu)}, \quad \lambda_0 = \frac{E\nu}{(1+\nu)(1-2\nu)}
+$$
+
+### Default Values
+
+| Parameter | Symbol | Value |
+|-----------|--------|-------|
+| Young's modulus | $E$ | $10^3$ Pa |
+| Poisson's ratio | $\nu$ | 0.2 |
+| Shear modulus | $\mu_0$ | 417 Pa |
+| Lame first | $\lambda_0$ | 278 Pa |
+
+### Material-Specific Adjustments
+
+```python
+# Hardening factor
+h = torch.exp(10 * (1.0 - Jp.squeeze()))
+
+# Jelly: fixed softness
+h = torch.where(jelly_mask, 0.3, h)
+
+# Apply to Lame parameters
+mu = mu_0 * h
+la = lambda_0 * h
+
+# Liquids: no shear
+mu = torch.where(liquid_mask, 0.0, mu)
+```
+
+## Density and Mass
+
+Different materials can have different densities:
+
+```yaml
+# Config example
+simulation:
+  MPM_rho_list: [1000, 1200, 400]  # [liquid, jelly, snow] kg/m³
+```
+
+Particle mass is computed as:
+
+$$
+m_i = \rho_{T_i} \cdot V_p
+$$
+
+where $V_p = (\Delta x / 2)^2$ is the particle volume.

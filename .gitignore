@@ -10,3 +10,6 @@
 *.tif
 *.pyc
 
+
+/.quarto/
+**/*.quarto_ipynb

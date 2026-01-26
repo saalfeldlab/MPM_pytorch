@@ -1,0 +1,37 @@
+project:
+  type: website
+  render:
+    - "*.qmd"
+
+website:
+  title: "MPM PyTorch"
+  navbar:
+    left:
+      - href: index.qmd
+        text: Home
+      - text: Algorithm
+        menu:
+          - href: mpm-algorithm.qmd
+            text: MPM Algorithm
+          - href: p2g-g2p.qmd
+            text: P2G & G2P Transfers
+      - text: Materials
+        menu:
+          - href: materials.qmd
+            text: Material Types
+          - href: constitutive.qmd
+            text: Constitutive Models
+      - href: implementation.qmd
+        text: Implementation
+    tools:
+      - icon: github
+        href: https://github.com/allierc/MPM_pytorch
+  page-footer: "Copyright 2025, Cedric Allier"
+
+format:
+  html:
+    theme:
+      light: flatly
+      dark: darkly
+    toc: true
+    smooth-scroll: true

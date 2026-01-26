@@ -1,0 +1,276 @@
+---
+title: "Implementation"
+subtitle: "Code Walkthrough"
+---
+
+## Code Structure
+
+```
+MPM_pytorch/
+├── run_MPM.py                     # Main entry point
+├── config/                        # YAML configuration files
+│   └── multimaterial/            # Multi-material scenarios
+├── src/MPM_pytorch/
+│   ├── generators/
+│   │   ├── graph_data_generator.py   # Data generation
+│   │   ├── MPM_step.py               # Core MPM algorithm
+│   │   └── utils.py                  # Initialization helpers
+│   ├── models/
+│   │   ├── graph_trainer.py          # Training loops
+│   │   └── utils.py                  # Model utilities
+│   └── utils.py                      # General utilities
+└── graphs_data/                   # Generated simulation data
+```
+
+## Key Files
+
+### `MPM_step.py` - Core Algorithm
+
+The heart of the simulation. Contains:
+
+- `MPM_step()`: Complete time step
+- `compute_surface_tension_stress()`: Liquid surface tension
+
+### `graph_data_generator.py` - Simulation Runner
+
+Orchestrates the full simulation:
+
+- `data_generate_MPM_2D()`: 2D simulation loop
+- Initialization of particle states
+- Frame-by-frame stepping
+- Visualization output
+
+## MPM Step Implementation
+
+### Function Signature
+
+```python
+def MPM_step(
+    model_MPM,      # GNN model for P2G
+    X, V, C, F, Jp, T, M,  # Particle states
+    n_particles, n_grid,   # Dimensions
+    dt, dx, inv_dx,        # Time/space steps
+    mu_0, lambda_0,        # Material parameters
+    p_vol, offsets, particle_offsets,
+    expansion_factor, gravity, friction,
+    frame,
+    surface_tension_coeff, tension_scaling,
+    enable_surface_tension, debug_surface,
+    device
+):
+```
+
+### Phase 1: Deformation Update
+
+```python
+# Material masks
+liquid_mask = (T.squeeze() == 0)
+jelly_mask = (T.squeeze() == 1)
+snow_mask = (T.squeeze() == 2)
+
+# Update deformation gradient
+identity = torch.eye(2, device=device).unsqueeze(0)
+F = (identity + dt * C) @ F
+
+# Hardening factor
+h = torch.exp(10 * (1.0 - Jp.squeeze()))
+h = torch.where(jelly_mask, 0.3, h)  # Fixed for jelly
+
+# Lame parameters
+mu = mu_0 * h
+la = lambda_0 * h
+mu = torch.where(liquid_mask, 0.0, mu)  # No shear for liquid
+```
+
+### Phase 2: SVD and Plasticity
+
+```python
+# SVD decomposition
+U, sig, Vh = torch.linalg.svd(F + 1e-6 * identity)
+
+# Sign corrections for proper rotations
+det_U = torch.det(U)
+neg_det_U = det_U < 0
+if neg_det_U.any():
+    U[neg_det_U, :, -1] *= -1
+    sig[neg_det_U, -1] *= -1
+
+# Snow plasticity: clamp singular values
+sig = torch.where(
+    snow_mask.unsqueeze(1),
+    torch.clamp(sig, min=1-2.5e-2, max=1+4.5e-3),
+    sig
+)
+
+# Update plastic deformation
+Jp = Jp * torch.prod(original_sig / sig, dim=1, keepdim=True)
+```
+
+### Phase 3: Stress Computation
+
+```python
+# Volume ratio
+J = torch.prod(sig, dim=1)
+J = torch.clamp(J, min=1e-4)
+
+# Rotation matrix
+R = U @ Vh
+
+# Cauchy stress (fixed corotated)
+F_minus_R = F - R
+stress = (2 * mu.unsqueeze(-1).unsqueeze(-1) * F_minus_R @ F.transpose(-2, -1) +
+          identity * (la * J * (J - 1)).unsqueeze(-1).unsqueeze(-1))
+
+# Scale for P2G transfer
+stress = (-dt * p_vol * 4 * inv_dx * inv_dx) * stress
+
+# Affine momentum
+affine = stress + p_mass.unsqueeze(-1).unsqueeze(-1) * C
+```
+
+### Phase 4: P2G Transfer
+
+```python
+# Base grid node
+base = (X * inv_dx - 0.5).int()
+fx = X * inv_dx - base.float()
+
+# B-spline weights
+w_0 = 0.5 * (1.5 - fx) ** 2
+w_1 = 0.75 - (fx - 1) ** 2
+w_2 = 0.5 * (fx - 0.5) ** 2
+w = torch.stack([w_0, w_1, w_2], dim=1)
+
+# Combined weights for 9 neighbors
+weights_all = w[:, i_indices, 0] * w[:, j_indices, 1]
+
+# Build graph for GNN
+dataset = data.Data(
+    x=x_,
+    edge_index=edge_index,
+    weights_per_edge=weights_per_edge,
+    affine_per_edge=affine_per_edge,
+    dpos_per_edge=dpos_per_edge
+)
+
+# GNN forward pass
+grid_output = model_MPM(dataset)[0:n_grid**2]
+grid_m = grid_output[:, 0].view(n_grid, n_grid)
+grid_v = grid_output[:, 1:3].view(n_grid, n_grid, 2)
+```
+
+### Phase 5: Grid Operations
+
+```python
+# Momentum to velocity
+valid_mass_mask = grid_m > 0
+grid_v = torch.where(
+    valid_mass_mask.unsqueeze(-1),
+    grid_v / (grid_m.unsqueeze(-1) + 1e-10),
+    grid_v
+)
+
+# Apply gravity
+gravity_force = torch.tensor([0.0, dt * gravity], device=device)
+grid_v = grid_v + gravity_force
+
+# Boundary conditions
+grid_v[:, :, 0] = torch.where(left_mask & (grid_v[:, :, 0] < 0), 0.0, grid_v[:, :, 0])
+grid_v[:, :, 0] = torch.where(right_mask & (grid_v[:, :, 0] > 0), 0.0, grid_v[:, :, 0])
+# ... similar for y-component
+```
+
+### Phase 6: G2P Transfer
+
+```python
+# Gather velocities from 9 neighbors
+velocity_contribs = weights_all.unsqueeze(-1) * g_v_all
+new_V = velocity_contribs.sum(dim=1)
+
+# APIC: reconstruct affine velocity matrix
+g_v_flat = g_v_all.reshape(-1, 2, 1)
+dpos_flat = dpos_all.reshape(-1, 1, 2)
+outer_products = torch.bmm(g_v_flat, dpos_flat).reshape(n_particles, 9, 2, 2)
+weighted_outer = weights_all.unsqueeze(-1).unsqueeze(-1) * outer_products
+new_C = 4 * inv_dx * weighted_outer.sum(dim=1)
+
+# Advection
+X = X + dt * new_V
+```
+
+## Data Generation
+
+### Initialization (`graph_data_generator.py`)
+
+```python
+def data_generate_MPM_2D(config, ...):
+    # Grid parameters
+    n_grid = simulation_config.n_grid
+    dx, inv_dx = 1 / n_grid, float(n_grid)
+
+    # Material parameters
+    E, nu = 0.1e4 / young_coeff, 0.2
+    mu_0 = E / (2 * (1 + nu))
+    lambda_0 = E * nu / ((1 + nu) * (1 - 2 * nu))
+
+    # Initialize particles
+    N, X, V, C, F, T, Jp, M, S, ID = init_MPM_shapes(...)
+
+    # Simulation loop
+    for frame in range(n_frames):
+        X, V, C, F, Jp, T, M, stress, grid_m, grid_v = MPM_step(
+            model_MPM, X, V, C, F, Jp, T, M,
+            n_particles, n_grid, dt, dx, inv_dx,
+            mu_0, lambda_0, p_vol, offsets, particle_offsets,
+            expansion_factor, gravity, friction, frame,
+            surface_tension_coeff, tension_scaling,
+            enable_surface_tension, debug_surface,
+            device
+        )
+
+        # Save frame data
+        x_list.append(...)
+```
+
+## Configuration
+
+Example YAML config:
+
+```yaml
+description: "Multi-material simulation with 3 types"
+dataset: "multimaterial/multimaterial_1_discs_3types"
+
+simulation:
+  n_particles: 9600
+  n_particle_types: 3
+  n_grid: 128
+  n_frames: 2000
+  delta_t: 1.0E-4
+
+  # Material parameters
+  MPM_n_objects: 3
+  MPM_object_type: [0, 1, 2]  # liquid, jelly, snow
+  MPM_rho_list: [1000, 1200, 400]
+  MPM_young_coeff: 1.0
+  MPM_gravity: -200
+  MPM_friction: 0.5
+  MPM_expansion_factor: 1.0
+  MPM_surface_tension: 0.0
+
+training:
+  n_runs: 1
+  device: auto
+```
+
+## Running Simulations
+
+```bash
+# Generate data
+python run_MPM.py -o generate multimaterial_1_discs_3types
+
+# Train INR model
+python run_MPM.py -o train_INR multimaterial_1_discs_3types
+
+# Claude-guided exploration
+python run_MPM.py -o train_INR_Claude multimaterial_1_discs_3types iterations=100
+```

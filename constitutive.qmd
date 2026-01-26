@@ -1,0 +1,169 @@
+---
+title: "Constitutive Models"
+subtitle: "Stress-Strain Relationships"
+---
+
+## Overview
+
+The **constitutive model** relates deformation ($\mathbf{F}$) to stress ($\boldsymbol{\sigma}$). MPM PyTorch uses a **fixed corotated hyperelastic model** with material-specific modifications.
+
+## Deformation Gradient
+
+The deformation gradient $\mathbf{F}$ is a $d \times d$ matrix (2×2 in 2D) that maps from reference to deformed configuration:
+
+$$
+d\mathbf{x} = \mathbf{F} \cdot d\mathbf{X}
+$$
+
+### Update Rule
+
+$$
+\mathbf{F}^{n+1} = (\mathbf{I} + \Delta t \, \mathbf{C}^n) \, \mathbf{F}^n
+$$
+
+where $\mathbf{C}$ is the affine velocity matrix (velocity gradient).
+
+### SVD Decomposition
+
+For stress computation and plasticity:
+
+$$
+\mathbf{F} = \mathbf{U} \, \boldsymbol{\Sigma} \, \mathbf{V}^T
+$$
+
+| Component | Size | Interpretation |
+|-----------|------|----------------|
+| $\mathbf{U}$ | $d \times d$ | Left rotation |
+| $\boldsymbol{\Sigma}$ | $d \times d$ | Stretch (diagonal) |
+| $\mathbf{V}^T$ | $d \times d$ | Right rotation |
+
+### Key Quantities
+
+| Symbol | Formula | Meaning |
+|--------|---------|---------|
+| $J$ | $\det(\mathbf{F}) = \prod_k \sigma_k$ | Volume ratio |
+| $\mathbf{R}$ | $\mathbf{U}\mathbf{V}^T$ | Rotation component |
+
+## Fixed Corotated Model
+
+The stress depends on how much $\mathbf{F}$ deviates from a pure rotation.
+
+### First Piola-Kirchhoff Stress
+
+$$
+\mathbf{P} = 2\mu (\mathbf{F} - \mathbf{R}) + \lambda (J - 1) J \mathbf{F}^{-T}
+$$
+
+### Cauchy Stress (Used in Code)
+
+$$
+\boldsymbol{\sigma} = \frac{1}{J} \mathbf{P} \mathbf{F}^T = 2\mu (\mathbf{F} - \mathbf{R}) \mathbf{F}^T + \lambda J (J-1) \mathbf{I}
+$$
+
+### Components
+
+| Term | Physical Meaning |
+|------|------------------|
+| $2\mu (\mathbf{F} - \mathbf{R}) \mathbf{F}^T$ | Shear resistance (shape recovery) |
+| $\lambda J (J-1) \mathbf{I}$ | Bulk resistance (volume recovery) |
+
+::: {.callout-note}
+## Why "Corotated"?
+The model measures deformation relative to the rotation $\mathbf{R}$, making it frame-invariant and stable under large rotations.
+:::
+
+## Hardening Model
+
+Material stiffness varies with plastic history through the **hardening factor** $h$:
+
+$$
+h = \exp(10 (1 - J_p))
+$$
+
+### Effect on Lame Parameters
+
+$$
+\mu = \mu_0 \cdot h, \quad \lambda = \lambda_0 \cdot h
+$$
+
+### Physical Interpretation
+
+| State | $J_p$ | $h$ | Material |
+|-------|-------|-----|----------|
+| Compressed | $< 1$ | $> 1$ | Stiffer |
+| Reference | $= 1$ | $= 1$ | Normal |
+| Expanded | $> 1$ | $< 1$ | Softer |
+
+## Plasticity (Snow Only)
+
+Snow undergoes **irreversible plastic deformation** when stretched or compressed beyond limits.
+
+### Yield Surface
+
+The singular values are constrained:
+
+$$
+\sigma_k \in [1 - \epsilon_c, 1 + \epsilon_s]
+$$
+
+| Parameter | Value | Meaning |
+|-----------|-------|---------|
+| $\epsilon_c$ | 0.025 | Compression limit |
+| $\epsilon_s$ | 0.0045 | Stretch limit |
+
+### Plastic Flow
+
+When singular values exceed limits:
+
+1. **Clamp** to valid range: $\sigma_k^{\text{new}} = \text{clamp}(\sigma_k, ...)$
+2. **Update plastic deformation**: $J_p \leftarrow J_p \cdot \prod_k \frac{\sigma_k^{\text{old}}}{\sigma_k^{\text{new}}}$
+3. **Reconstruct**: $\mathbf{F} \leftarrow \mathbf{U} \, \text{diag}(\sigma_k^{\text{new}}) \, \mathbf{V}^T$
+
+## Stress Scaling for MPM
+
+The stress is scaled for P2G momentum transfer:
+
+$$
+\text{stress} = -\Delta t \cdot V_p \cdot 4 \cdot \Delta x^{-2} \cdot \boldsymbol{\sigma}
+$$
+
+### Affine Momentum
+
+The final quantity transferred to grid:
+
+$$
+\mathbf{Q} = \text{stress} + m \, \mathbf{C}
+$$
+
+## Implementation
+
+```python
+# SVD decomposition
+U, sig, Vh = torch.linalg.svd(F_reg)
+
+# Rotation matrix
+R = U @ Vh
+
+# Cauchy stress (fixed corotated)
+F_minus_R = F - R
+stress = (2 * mu * F_minus_R @ F.transpose(-2, -1) +
+          identity * (la * J * (J - 1)))
+
+# Scale for P2G
+stress = (-dt * p_vol * 4 * inv_dx * inv_dx) * stress
+
+# Affine momentum
+affine = stress + p_mass * C
+```
+
+## Energy Density
+
+The stored elastic energy (for reference):
+
+$$
+\Psi = \mu \|\mathbf{F} - \mathbf{R}\|_F^2 + \frac{\lambda}{2}(J-1)^2
+$$
+
+This energy is minimized when:
+- $\mathbf{F} = \mathbf{R}$ (pure rotation, no stretch)
+- $J = 1$ (no volume change)

@@ -1,0 +1,278 @@
+\documentclass{article}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{bm}
+
+\title{Inverse Material Point Method: Learning Material Properties from Particle Trajectories}
+\author{Cedric Allier}
+\date{August 2025}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+We discuss the ability to inverse material point method (MPM) simulations. Namely, given the positions and velocities of all particles over time, is it possible to extract the rules governing motions and material deformations. At first, this implies estimating the fields attached with every particle (index $i$) as used in the MPM calculations. Namely the velocity field Jacobian $\mathbf{C}_i(t)$, the deformation gradient matrix $\mathbf{F}_i(t)$ and the plastic deformation $J_i(t)$. Next, update equations must be recovered to explain the motions and the deformations observed in the simulations. 
+
+This inverse problem faces two challenges. Firstly, the observables are partial. Particle trajectories are given, but the history of deformations and the material properties are not given. Secondly, the physics engine of the MPM is given but not the exact formulation of every field update and how they differ with material properties.
+
+\section{Method}
+
+\subsection{MPM Background}
+
+The Material Point Method employs a hybrid Eulerian-Lagrangian approach where material properties are stored on Lagrangian particles that move through a fixed Eulerian grid. Each particle $i$ carries the following state variables:
+\begin{itemize}
+    \item Position: $\mathbf{x}_i \in \mathbb{R}^d$ (where $d=2$ or $3$)
+    \item Velocity: $\mathbf{v}_i \in \mathbb{R}^d$
+    \item Affine velocity matrix: $\mathbf{C}_i \in \mathbb{R}^{d \times d}$
+    \item Deformation gradient: $\mathbf{F}_i \in \mathbb{R}^{d \times d}$
+    \item Plastic deformation: $J_i \in \mathbb{R}$
+    \item Mass: $m_i \in \mathbb{R}$
+    \item Material type: $T_i \in \{0,1,2\}$ (liquid, jelly, snow)
+\end{itemize}
+
+\subsection{Tensor Computations and Field Updates}
+
+\subsubsection{Deformation Gradient Update}
+
+The deformation gradient evolves according to the Moving Least Squares approximation:
+\begin{equation}
+\mathbf{F}_i^{n+1} = (\mathbf{I} + \Delta t \, \mathbf{C}_i^n) \mathbf{F}_i^n
+\end{equation}
+
+For materials exhibiting plasticity (snow), the deformation gradient undergoes Singular Value Decomposition:
+\begin{equation}
+\mathbf{F}_i = \mathbf{U} \, \bm{\Sigma} \, \mathbf{V}^T
+\end{equation}
+where $\bm{\Sigma} = \text{diag}(\sigma_1, \ldots, \sigma_d)$ contains the singular values.
+
+\subsubsection{Plasticity Model}
+
+For snow materials, we apply constraints on the singular values:
+\begin{equation}
+\sigma_k^{\text{new}} = \text{clamp}(\sigma_k, 1 - 2.5 \times 10^{-2}, 1 + 4.5 \times 10^{-3})
+\end{equation}
+
+The plastic deformation accumulates as:
+\begin{equation}
+J_i^{n+1} = J_i^n \prod_{k=1}^{d} \frac{\sigma_k^{\text{old}}}{\sigma_k^{\text{new}}}
+\end{equation}
+
+After plasticity projection, the deformation gradient is reconstructed:
+\begin{equation}
+\mathbf{F}_i^{\text{elastic}} = \mathbf{U} \, \bm{\Sigma}^{\text{new}} \, \mathbf{V}^T
+\end{equation}
+
+For liquids, the deformation gradient is reset to maintain incompressibility:
+\begin{equation}
+\mathbf{F}_i^{\text{liquid}} = \sqrt{J} \, \mathbf{I}, \quad J = \prod_{k=1}^{d} \sigma_k
+\end{equation}
+
+\subsubsection{Constitutive Model and Stress Tensor}
+
+The material stiffness is governed by Lamé parameters with hardening:
+\begin{equation}
+h = \exp(10(1 - J_i)), \quad \mu = \mu_0 h, \quad \lambda = \lambda_0 h
+\end{equation}
+
+For liquids, shear resistance vanishes: $\mu^{\text{liquid}} = 0$.
+
+The Cauchy stress tensor follows a neo-Hookean model:
+\begin{equation}
+\bm{\sigma} = 2\mu (\mathbf{F} - \mathbf{R}) \mathbf{F}^T + \lambda J (J-1) \mathbf{I}
+\end{equation}
+where $\mathbf{R} = \mathbf{U}\mathbf{V}^T$ is the rotation matrix extracted from $\mathbf{F}$.
+
+The stress contributes to the affine momentum matrix:
+\begin{equation}
+\text{stress} = -\Delta t \, V_i \, 4 \, \Delta x^{-2} \, \bm{\sigma}
+\end{equation}
+\begin{equation}
+\mathbf{Q}_i = \text{stress} + m_i \mathbf{C}_i
+\end{equation}
+
+\subsection{Particle-to-Grid Transfer (P2G)}
+
+The P2G transfer uses quadratic B-spline interpolation kernels. For each particle, we identify the base grid node:
+\begin{equation}
+\mathbf{j}_{\text{base}} = \lfloor \mathbf{x}_i / \Delta x - 0.5 \rfloor
+\end{equation}
+
+The fractional offset is:
+\begin{equation}
+\mathbf{f}_x = \mathbf{x}_i / \Delta x - \mathbf{j}_{\text{base}}
+\end{equation}
+
+Quadratic B-spline weights are computed for each dimension:
+\begin{align}
+w_0(\mathbf{f}_x) &= 0.5(1.5 - \mathbf{f}_x)^2 \\
+w_1(\mathbf{f}_x) &= 0.75 - (\mathbf{f}_x - 1)^2 \\
+w_2(\mathbf{f}_x) &= 0.5(\mathbf{f}_x - 0.5)^2
+\end{align}
+
+For each of the $3^d$ neighboring grid nodes (9 in 2D, 27 in 3D), the combined weight is:
+\begin{equation}
+w_{jkl} = w_j(f_{x,1}) \cdot w_k(f_{x,2}) \cdot w_l(f_{x,3})
+\end{equation}
+
+The momentum transfer to grid node $\mathbf{j}$ is:
+\begin{equation}
+\Delta \mathbf{m}_{\mathbf{j}} = w_{\mathbf{j}} \left( m_i \mathbf{v}_i + \mathbf{Q}_i (\mathbf{x}_{\mathbf{j}} - \mathbf{x}_i) \right)
+\end{equation}
+
+Mass transfer:
+\begin{equation}
+\Delta m_{\mathbf{j}} = w_{\mathbf{j}} m_i
+\end{equation}
+
+After accumulation from all particles, grid velocities are computed:
+\begin{equation}
+\mathbf{v}_{\mathbf{j}}^{\text{grid}} = \frac{\mathbf{m}_{\mathbf{j}}^{\text{grid}}}{m_{\mathbf{j}}^{\text{grid}}}
+\end{equation}
+
+Gravity and boundary conditions are applied on the grid:
+\begin{equation}
+\mathbf{v}_{\mathbf{j}}^{\text{grid}} \leftarrow \mathbf{v}_{\mathbf{j}}^{\text{grid}} + \Delta t \, \mathbf{g}
+\end{equation}
+
+Boundary conditions enforce no-penetration and friction:
+\begin{itemize}
+    \item Normal component: $v_n \leftarrow 0$ if penetrating
+    \item Tangential component: $\mathbf{v}_t \leftarrow (1 - \alpha_{\text{friction}}) \mathbf{v}_t$
+\end{itemize}
+
+\subsection{Grid-to-Particle Transfer (G2P)}
+
+The G2P transfer updates particle velocities and affine velocity matrices:
+\begin{equation}
+\mathbf{v}_i^{n+1} = \sum_{\mathbf{j}} w_{\mathbf{j}} \, \mathbf{v}_{\mathbf{j}}^{\text{grid}}
+\end{equation}
+
+The affine velocity matrix captures the local velocity gradient:
+\begin{equation}
+\mathbf{C}_i^{n+1} = 4 \Delta x^{-2} \sum_{\mathbf{j}} w_{\mathbf{j}} \, \mathbf{v}_{\mathbf{j}}^{\text{grid}} \otimes (\mathbf{x}_{\mathbf{j}} - \mathbf{x}_i)
+\end{equation}
+
+Finally, particle positions are advected:
+\begin{equation}
+\mathbf{x}_i^{n+1} = \mathbf{x}_i^n + \Delta t \, \mathbf{v}_i^{n+1}
+\end{equation}
+
+\subsection{Graph Neural Network Architecture (Optional)}
+
+When using GNN for P2G transfer, we construct a bipartite graph connecting particles to their neighboring grid nodes. The graph structure is:
+\begin{itemize}
+    \item Nodes: $V = V_{\text{particles}} \cup V_{\text{grid}}$
+    \item Edges: $E = \{(i, \mathbf{j}) : \mathbf{j} \in \mathcal{N}(\mathbf{x}_i)\}$
+\end{itemize}
+
+where $\mathcal{N}(\mathbf{x}_i)$ denotes the $3^d$ neighboring grid nodes.
+
+The message passing operation aggregates particle contributions:
+\begin{equation}
+\mathbf{m}_{i \to \mathbf{j}} = w_{i,\mathbf{j}} \left( m_i \mathbf{v}_i + \mathbf{Q}_i \mathbf{d}_{i,\mathbf{j}} \right)
+\end{equation}
+
+where $\mathbf{d}_{i,\mathbf{j}} = \mathbf{x}_{\mathbf{j}} - \mathbf{x}_i$.
+
+The aggregation function sums messages from all connected particles:
+\begin{equation}
+\mathbf{m}_{\mathbf{j}} = \sum_{i : (i,\mathbf{j}) \in E} \mathbf{m}_{i \to \mathbf{j}}
+\end{equation}
+
+This GNN formulation provides a flexible framework that can be extended with learned components while preserving physical constraints.
+
+\subsection{Complete MPM Time Step Algorithm}
+
+\begin{algorithm}[H]
+\caption{MPM Time Step}
+\begin{algorithmic}[1]
+\REQUIRE Particle states: $\{\mathbf{x}_i, \mathbf{v}_i, \mathbf{C}_i, \mathbf{F}_i, J_i, m_i, T_i\}$
+\REQUIRE Grid parameters: $n_{\text{grid}}, \Delta x, \Delta t$
+\REQUIRE Material parameters: $\mu_0, \lambda_0$
+\ENSURE Updated particle states
+
+\STATE \textbf{// Deformation gradient update}
+\FOR{each particle $i$}
+    \STATE $\mathbf{F}_i \leftarrow (\mathbf{I} + \Delta t \mathbf{C}_i) \mathbf{F}_i$
+    \STATE $\mathbf{U}, \bm{\Sigma}, \mathbf{V}^T \leftarrow \text{SVD}(\mathbf{F}_i)$
+    \IF{$T_i = \text{snow}$}
+        \STATE Apply plasticity: clamp $\bm{\Sigma}$, update $J_i$
+        \STATE $\mathbf{F}_i \leftarrow \mathbf{U} \bm{\Sigma}^{\text{new}} \mathbf{V}^T$
+    \ELSIF{$T_i = \text{liquid}$}
+        \STATE $\mathbf{F}_i \leftarrow \sqrt{\det(\mathbf{F}_i)} \, \mathbf{I}$
+    \ENDIF
+    \STATE Compute stress $\bm{\sigma}$ from $\mathbf{F}_i$
+    \STATE $\mathbf{Q}_i \leftarrow -\Delta t V_i 4\Delta x^{-2} \bm{\sigma} + m_i \mathbf{C}_i$
+\ENDFOR
+
+\STATE \textbf{// Particle-to-Grid (P2G) transfer}
+\STATE Clear grid: $\mathbf{v}_{\mathbf{j}} \leftarrow \mathbf{0}, m_{\mathbf{j}} \leftarrow 0$
+\FOR{each particle $i$}
+    \STATE Compute base index and weights $w_{jkl}$
+    \FOR{each neighbor $\mathbf{j} \in \mathcal{N}(i)$}
+        \STATE $m_{\mathbf{j}} \leftarrow m_{\mathbf{j}} + w_{\mathbf{j}} m_i$
+        \STATE $\mathbf{m}_{\mathbf{j}} \leftarrow \mathbf{m}_{\mathbf{j}} + w_{\mathbf{j}} (m_i \mathbf{v}_i + \mathbf{Q}_i (\mathbf{x}_{\mathbf{j}} - \mathbf{x}_i))$
+    \ENDFOR
+\ENDFOR
+
+\STATE \textbf{// Grid operations}
+\FOR{each grid node $\mathbf{j}$}
+    \IF{$m_{\mathbf{j}} > 0$}
+        \STATE $\mathbf{v}_{\mathbf{j}} \leftarrow \mathbf{m}_{\mathbf{j}} / m_{\mathbf{j}} + \Delta t \mathbf{g}$
+        \STATE Apply boundary conditions
+    \ENDIF
+\ENDFOR
+
+\STATE \textbf{// Grid-to-Particle (G2P) transfer}
+\FOR{each particle $i$}
+    \STATE $\mathbf{v}_i^{\text{new}} \leftarrow \sum_{\mathbf{j}} w_{\mathbf{j}} \mathbf{v}_{\mathbf{j}}$
+    \STATE $\mathbf{C}_i^{\text{new}} \leftarrow 4\Delta x^{-2} \sum_{\mathbf{j}} w_{\mathbf{j}} \mathbf{v}_{\mathbf{j}} \otimes (\mathbf{x}_{\mathbf{j}} - \mathbf{x}_i)$
+    \STATE $\mathbf{x}_i \leftarrow \mathbf{x}_i + \Delta t \mathbf{v}_i^{\text{new}}$
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Inverse Problem Formulation}
+
+Given observed particle trajectories $\{\mathbf{x}_i^t\}_{t=0}^T$, we seek to recover:
+\begin{enumerate}
+    \item Material parameters: $\mu_0, \lambda_0$ for each material type
+    \item Implicit fields: $\mathbf{C}_i^t, \mathbf{F}_i^t, J_i^t$ at each time step
+    \item Material classification: $T_i$ for each particle
+\end{enumerate}
+
+The inverse problem can be posed as an optimization:
+\begin{equation}
+\min_{\theta} \sum_{t=0}^{T-1} \|\mathbf{x}_i^{t+1,\text{pred}}(\theta) - \mathbf{x}_i^{t+1,\text{obs}}\|^2
+\end{equation}
+
+where $\theta$ represents the learnable parameters (material properties, initial hidden states).
+
+This can be solved using:
+\begin{itemize}
+    \item Gradient-based optimization through differentiable MPM
+    \item Neural network parameterization of constitutive laws
+    \item Graph neural networks for flexible force modeling
+\end{itemize}
+
+\section{Implementation Details}
+
+The implementation uses PyTorch for automatic differentiation and supports both 2D and 3D simulations. Key parameters:
+\begin{itemize}
+    \item Grid resolution: $n_{\text{grid}} = 128$
+    \item Time step: $\Delta t = 10^{-4}$ s
+    \item Grid spacing: $\Delta x = 1/n_{\text{grid}}$
+    \item Young's modulus: $E = 10^3$ Pa
+    \item Poisson's ratio: $\nu = 0.2$
+\end{itemize}
+
+The quadratic B-spline kernels ensure $C^1$ continuity and second-order accuracy for the interpolation between particles and grid.
+
+\section{Conclusion}
+
+We have presented a detailed formulation of the inverse MPM problem, emphasizing the tensor computations involved in P2G and G2P transfers. The method combines classical continuum mechanics with modern differentiable programming, enabling gradient-based optimization for material parameter recovery from trajectory observations.
+
+\end{document}

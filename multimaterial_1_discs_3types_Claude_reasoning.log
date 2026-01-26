@@ -1,0 +1,92 @@
+
+============================================================
+=== Iteration 1 ===
+============================================================
+**Summary of Iteration 1 Analysis:**
+
+**Results:** R² = 0.420 (poor), slope = 0.049, training_time = 2.4min
+
+**Problem diagnosis:** 
+- omega_f = 80 is 3-4x higher than prior optimal (20-25 for 100 frames)
+- hidden_dim = 64 is 6x smaller than prior optimal (384 for Jp)
+- The combination causes severe underfitting (slope = 0.049 means predictions are ~5% of actual values)
+
+**Action taken:**
+- Selected parent=1 (only node in UCB tree)
+- Strategy: exploit
+- Mutation: omega_f: 80 → 25 (fixing most critical parameter first based on prior knowledge)
+- Will address hidden_dim in subsequent iterations
+
+**Next iteration config:**
+- omega_f = 25 (changed from 80)
+- hidden_dim = 64 (unchanged for now - isolating one variable)
+- All other parameters unchanged
+
+
+============================================================
+=== Iteration 2 ===
+============================================================
+Configuration updated. Summary of iteration 2:
+
+**Iteration 2 Results:**
+- **R² = 0.427** (poor) - only marginal improvement from iter 1 (0.420)
+- **slope = 0.040** - severe underprediction persists
+- omega_f fix (80→25) had minimal impact
+
+**Analysis:** The capacity bottleneck (hidden_dim=64) is the dominant issue. Fixing omega_f alone cannot overcome insufficient network capacity.
+
+**Next iteration (Iter 3):** 
+- Parent: Node 2 (highest UCB=1.427)
+- Mutation: hidden_dim_nnr_f: 64 → 384
+- Rationale: Address the primary bottleneck. Prior knowledge indicates Jp@100frames needs ~384 hidden_dim with n_layers=3.
+
+
+============================================================
+=== Iteration 3 ===
+============================================================
+Iteration 3 complete.
+
+**Summary:**
+- **Iter 3 result**: R²=0.830 (moderate), slope=0.254, 3.3min
+- **Key finding**: hidden_dim increase (64→384) gave +0.40 R² improvement - capacity was the main bottleneck
+- **New bottleneck identified**: slope=0.254 indicates the model learns spatial patterns but not amplitude. This suggests the learning rate is too conservative.
+- **Next iteration**: Increased lr_NNR_f from 1E-5 to 3E-5 to address amplitude collapse
+
+The config is now set up for iteration 4 with:
+- hidden_dim_nnr_f=384
+- n_layers_nnr_f=3
+- omega_f=25
+- lr_NNR_f=3E-5 (increased from 1E-5)
+- total_steps=50000
+- batch_size=1
+
+
+============================================================
+=== Iteration 4 ===
+============================================================
+**Iteration 4 Summary:**
+
+- **Result**: R²=0.862 (moderate), slope=0.611, training_time=3.4min
+- **Progress**: lr increase (1E-5→3E-5) improved both R² (+0.032) and slope (0.254→0.611)
+- **Key insight**: Slope more than doubled, confirming lr was limiting amplitude learning
+- **Next**: Continue exploiting by increasing lr_NNR_f: 3E-5 → 5E-5 to probe upper boundary
+
+The UCB tree continues to favor exploitation of the current improving branch. The slope <1 indicates the model can still benefit from higher learning rate.
+
+
+============================================================
+=== Iteration 5 ===
+============================================================
+**Iteration 5 Summary:**
+
+- **Result**: Good (R² = 0.927, slope = 0.773)
+- **UCB Node**: id=5, parent=4, highest UCB score (2.508)
+- **Mutation**: lr_NNR_f: 3E-5 → 5E-5
+- **Finding**: Continued monotonic improvement from lr increase. R² +0.065, slope +0.16. Clear pattern that higher lr benefits this config.
+
+**Next Iteration (6):**
+- **Parent**: Node 5 (highest UCB)
+- **Strategy**: exploit - continue probing lr upper boundary
+- **Mutation**: lr_NNR_f: 5E-5 → 8E-5
+- **Rationale**: Prior knowledge suggests this dataset tolerates 2x higher lr than typical. The monotonic trend (1E-5→3E-5→5E-5 all improving) suggests 8E-5 may reach R²>0.95 target.
+

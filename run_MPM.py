@@ -192,6 +192,7 @@ if __name__ == "__main__":
                     f.write("### Iterations This Block\n\n")
                     f.write("### Emerging Observations\n\n")
                 print(f"\033[93mcleared {memory_path}\033[0m")
+                # Note: videos folder is created by save_exploration_artifacts in instruction-specific dir
             else:
                 print(f"\033[93mpreserving {analysis_path} (resuming from iter {start_iteration})\033[0m")
                 print(f"\033[93mpreserving {memory_path} (resuming from iter {start_iteration})\033[0m")
@@ -459,7 +460,8 @@ If you cannot fix it, say "CANNOT_FIX" and explain why."""
                         device=device,
                         field_name=field_name,
                         erase=False,
-                        log_file=log_file
+                        log_file=log_file,
+                        current_iteration=iteration
                     )
 
             log_file.close()
@@ -479,6 +481,21 @@ If you cannot fix it, say "CANNOT_FIX" and explain why."""
                     root_dir, exploration_dir, config, config_file_, pre_folder, iteration,
                     iter_in_block=iter_in_block, block_number=block_number
                 )
+
+                # Copy videos to exploration videos folder
+                # Video is generated at: ./log/{config_file}/tmp_training/field/field_comparison_{field_name}.mp4
+                videos_save_dir = artifact_paths['videos_save_dir']
+                log_dir = f"{root_dir}/log/{config.config_file}"
+                with open(f"{config_root}/{config_file}.yaml", 'r') as f:
+                    raw_config = yaml.safe_load(f)
+                field_name = raw_config.get('claude', {}).get('field_name', 'Jp')
+                video_src = f"{log_dir}/tmp_training/field/field_comparison_{field_name}.mp4"
+                if os.path.exists(video_src):
+                    video_dst = f"{videos_save_dir}/iter_{iteration:03d}_{config_file_}.mp4"
+                    shutil.copy2(video_src, video_dst)
+                    print(f"\033[92mCopied video to: {video_dst}\033[0m")
+                else:
+                    print(f"\033[93mVideo not found: {video_src}\033[0m")
 
                 # compute UCB scores for Claude to read
                 config_path = f"{root_dir}/config/{pre_folder}{config_file_}.yaml"

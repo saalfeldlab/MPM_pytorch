@@ -1,0 +1,185 @@
+---
+title: "P2G & G2P Transfers"
+subtitle: "Particle-Grid Interpolation"
+---
+
+## Overview
+
+The key innovation of MPM is the **bidirectional transfer** between particles and grid:
+
+- **P2G (Particle-to-Grid)**: Scatter particle mass and momentum to grid
+- **G2P (Grid-to-Particle)**: Gather updated velocities back to particles
+
+| Transfer | Direction | What is transferred | Formula |
+|----------|-----------|---------------------|---------|
+| **P2G** | Particle → Grid | Mass, momentum | $\Delta m_j = w_j \cdot m_i$, $\Delta p_j = w_j (m_i v_i + Q_i \cdot dx)$ |
+| **G2P** | Grid → Particle | Velocity, affine matrix | $v_i = \sum_j w_j v_j$, $C_i = 4/dx^2 \sum_j w_j v_j \otimes dx$ |
+
+## Quadratic B-Spline Interpolation
+
+Each particle interacts with a **3×3 stencil** of neighboring grid nodes (in 2D).
+
+### Finding the Base Node
+
+For particle at position $\mathbf{x}_i$:
+
+$$
+\mathbf{j}_{\text{base}} = \lfloor \mathbf{x}_i \cdot n_{\text{grid}} - 0.5 \rfloor
+$$
+
+### Fractional Position
+
+$$
+\mathbf{f}_x = \mathbf{x}_i \cdot n_{\text{grid}} - \mathbf{j}_{\text{base}}
+$$
+
+This gives the particle's position within its local cell, with $\mathbf{f}_x \in [0.5, 1.5]$.
+
+### Weight Functions
+
+The quadratic B-spline weights ensure $C^1$ continuity:
+
+| Weight | Formula | Range |
+|--------|---------|-------|
+| $w_0$ | $0.5(1.5 - f_x)^2$ | Node at base |
+| $w_1$ | $0.75 - (f_x - 1)^2$ | Node at base+1 |
+| $w_2$ | $0.5(f_x - 0.5)^2$ | Node at base+2 |
+
+For 2D, the combined weight is:
+
+$$
+w_{jk} = w_j(f_{x,1}) \cdot w_k(f_{x,2})
+$$
+
+::: {.callout-tip}
+## Properties of B-Spline Weights
+- Partition of unity: $\sum_j w_j = 1$
+- Non-negative: $w_j \geq 0$
+- Compact support: Only 9 non-zero weights per particle (2D)
+:::
+
+## P2G Transfer Details
+
+### Mass Transfer
+
+Each particle distributes its mass to neighboring nodes:
+
+$$
+\Delta m_{\mathbf{j}} = w_{\mathbf{j}} \cdot m_i
+$$
+
+### Momentum Transfer (APIC)
+
+The Affine Particle-In-Cell (APIC) method transfers both linear and angular momentum:
+
+$$
+\Delta \mathbf{p}_{\mathbf{j}} = w_{\mathbf{j}} \left( m_i \mathbf{v}_i + \mathbf{Q}_i \cdot \mathbf{d}_{i\mathbf{j}} \right)
+$$
+
+where:
+- $\mathbf{d}_{i\mathbf{j}} = (\mathbf{x}_{\mathbf{j}} - \mathbf{x}_i)$ is the offset vector
+- $\mathbf{Q}_i = \text{stress} + m_i \mathbf{C}_i$ is the affine momentum matrix
+
+### Stress Contribution
+
+The stress tensor is scaled for P2G:
+
+$$
+\text{stress} = -\Delta t \cdot V_p \cdot 4 \cdot \Delta x^{-2} \cdot \boldsymbol{\sigma}
+$$
+
+where $V_p$ is the particle volume.
+
+## G2P Transfer Details
+
+### Velocity Update
+
+$$
+\mathbf{v}_i^{\text{new}} = \sum_{\mathbf{j} \in \mathcal{N}} w_{\mathbf{j}} \cdot \mathbf{v}_{\mathbf{j}}^{\text{grid}}
+$$
+
+### Affine Velocity Matrix (APIC)
+
+The local velocity gradient is reconstructed:
+
+$$
+\mathbf{C}_i^{\text{new}} = 4 \Delta x^{-2} \sum_{\mathbf{j} \in \mathcal{N}} w_{\mathbf{j}} \cdot \mathbf{v}_{\mathbf{j}} \otimes \mathbf{d}_{\mathbf{j}i}
+$$
+
+where $\mathbf{d}_{\mathbf{j}i} = (\mathbf{x}_{\mathbf{j}} - \mathbf{x}_i) / \Delta x$ is the normalized offset.
+
+::: {.callout-note}
+## Why APIC?
+The Affine Particle-In-Cell method:
+- Conserves angular momentum exactly
+- Eliminates numerical damping from traditional PIC/FLIP
+- Provides smoother, more stable simulations
+:::
+
+## GNN Implementation
+
+In this codebase, P2G is implemented using a **Graph Neural Network** for flexibility:
+
+### Graph Structure
+
+```
+Nodes: V = V_particles ∪ V_grid
+Edges: E = {(i, j) : j ∈ 3×3 neighborhood of particle i}
+```
+
+### Node Features
+
+| Node Type | Features |
+|-----------|----------|
+| Particle | $(m_i, v_{i,x}, v_{i,y})$ |
+| Grid | $(0, 0, 0)$ initially |
+
+### Edge Features
+
+| Feature | Description |
+|---------|-------------|
+| `weights_per_edge` | B-spline weight $w_{ij}$ |
+| `affine_per_edge` | Affine matrix $\mathbf{Q}_i$ |
+| `dpos_per_edge` | Offset $(\mathbf{x}_j - \mathbf{x}_i)$ |
+
+### Message Passing
+
+The GNN aggregates particle contributions:
+
+$$
+\mathbf{m}_{\mathbf{j}} = \sum_{i : (i,\mathbf{j}) \in E} w_{i\mathbf{j}} \left( m_i \mathbf{v}_i + \mathbf{Q}_i \cdot \mathbf{d}_{i\mathbf{j}} \right)
+$$
+
+This sum aggregation produces grid mass and momentum.
+
+## Implementation in Code
+
+### P2G (from `MPM_step.py`)
+
+```python
+# Compute base index and fractional position
+base = (X * inv_dx - 0.5).int()
+fx = X * inv_dx - base.float()
+
+# B-spline weights
+w_0 = 0.5 * (1.5 - fx) ** 2
+w_1 = 0.75 - (fx - 1) ** 2
+w_2 = 0.5 * (fx - 0.5) ** 2
+w = torch.stack([w_0, w_1, w_2], dim=1)
+
+# Combined weights for 9 neighbors
+weights_all = w[:, i_indices, 0] * w[:, j_indices, 1]
+```
+
+### G2P (from `MPM_step.py`)
+
+```python
+# Accumulate velocity from grid neighbors
+velocity_contribs = weights_all.unsqueeze(-1) * g_v_all
+new_V = velocity_contribs.sum(dim=1)
+
+# APIC: reconstruct affine velocity matrix
+outer_products = torch.bmm(g_v_flat, dpos_flat)
+weighted_outer = weights_all.unsqueeze(-1).unsqueeze(-1) * outer_products
+new_C = 4 * inv_dx * weighted_outer.sum(dim=1)
+```
