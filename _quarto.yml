@@ -14,8 +14,6 @@ website:
         menu:
           - href: mpm-algorithm.qmd
             text: MPM Algorithm
-          - href: variable-schematic.qmd
-            text: Variable Schematic
           - href: p2g-g2p.qmd
             text: P2G & G2P Transfers
       - text: Materials

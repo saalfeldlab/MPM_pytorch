@@ -299,10 +299,6 @@ window.Quarto = {
  <span class="dropdown-text">MPM Algorithm</span></a>
   </li>  
         <li>
-    <a class="dropdown-item" href="./variable-schematic.html">
- <span class="dropdown-text">Variable Schematic</span></a>
-  </li>  
-        <li>
     <a class="dropdown-item" href="./p2g-g2p.html">
  <span class="dropdown-text">P2G &amp; G2P Transfers</span></a>
   </li>  
@@ -375,7 +371,23 @@ window.Quarto = {
   <li><a href="#affine-velocity-update" id="toc-affine-velocity-update" class="nav-link" data-scroll-target="#affine-velocity-update">Affine Velocity Update</a></li>
   </ul></li>
   <li><a href="#phase-6-advection" id="toc-phase-6-advection" class="nav-link" data-scroll-target="#phase-6-advection">Phase 6: Advection</a></li>
-  <li><a href="#complete-algorithm" id="toc-complete-algorithm" class="nav-link" data-scroll-target="#complete-algorithm">Complete Algorithm</a></li>
+  <li><a href="#complete-variable-flow" id="toc-complete-variable-flow" class="nav-link" data-scroll-target="#complete-variable-flow">Complete Variable Flow</a></li>
+  <li><a href="#variable-reference-table" id="toc-variable-reference-table" class="nav-link" data-scroll-target="#variable-reference-table">Variable Reference Table</a></li>
+  <li><a href="#key-equations-summary" id="toc-key-equations-summary" class="nav-link" data-scroll-target="#key-equations-summary">Key Equations Summary</a>
+  <ul class="collapse">
+  <li><a href="#deformation-update" id="toc-deformation-update" class="nav-link" data-scroll-target="#deformation-update">Deformation Update</a></li>
+  <li><a href="#svd-decomposition-1" id="toc-svd-decomposition-1" class="nav-link" data-scroll-target="#svd-decomposition-1">SVD Decomposition</a></li>
+  <li><a href="#hardening-snow" id="toc-hardening-snow" class="nav-link" data-scroll-target="#hardening-snow">Hardening (Snow)</a></li>
+  <li><a href="#lame-parameters-1" id="toc-lame-parameters-1" class="nav-link" data-scroll-target="#lame-parameters-1">Lame Parameters</a></li>
+  <li><a href="#cauchy-stress-fixed-corotated" id="toc-cauchy-stress-fixed-corotated" class="nav-link" data-scroll-target="#cauchy-stress-fixed-corotated">Cauchy Stress (Fixed Corotated)</a></li>
+  <li><a href="#affine-momentum" id="toc-affine-momentum" class="nav-link" data-scroll-target="#affine-momentum">Affine Momentum</a></li>
+  <li><a href="#p2g-transfer" id="toc-p2g-transfer" class="nav-link" data-scroll-target="#p2g-transfer">P2G Transfer</a></li>
+  <li><a href="#grid-operations-uses-accumulated-values" id="toc-grid-operations-uses-accumulated-values" class="nav-link" data-scroll-target="#grid-operations-uses-accumulated-values">Grid Operations (uses accumulated values)</a></li>
+  <li><a href="#g2p-transfer-apic" id="toc-g2p-transfer-apic" class="nav-link" data-scroll-target="#g2p-transfer-apic">G2P Transfer (APIC)</a></li>
+  <li><a href="#advection" id="toc-advection" class="nav-link" data-scroll-target="#advection">Advection</a></li>
+  </ul></li>
+  <li><a href="#the-affine-term-explained" id="toc-the-affine-term-explained" class="nav-link" data-scroll-target="#the-affine-term-explained">The Affine Term Explained</a></li>
+  <li><a href="#material-specific-behavior" id="toc-material-specific-behavior" class="nav-link" data-scroll-target="#material-specific-behavior">Material-Specific Behavior</a></li>
   </ul>
 </nav>
     </div>
@@ -608,47 +620,460 @@ w_2 &amp;= 0.5(f_x - 0.5)^2
 \mathbf{x}_i^{n+1} = \mathbf{x}_i^n + \Delta t \, \mathbf{v}_i^{n+1}
 \]</span></p>
 </section>
-<section id="complete-algorithm" class="level2">
-<h2 class="anchored" data-anchor-id="complete-algorithm">Complete Algorithm</h2>
-<pre><code>Algorithm: MPM Time Step
-────────────────────────────────────────────────
-Input: Particle states {x, v, C, F, Jp, m, T}
-       Grid parameters: n_grid, dx, dt
-       Material parameters: mu_0, lambda_0
+<section id="complete-variable-flow" class="level2">
+<h2 class="anchored" data-anchor-id="complete-variable-flow">Complete Variable Flow</h2>
+<p>This diagram shows how variables in <code>MPM_step.py</code> correspond to the mathematical quantities in MPM.</p>
+<pre><code>┌─────────────────────────────────────────────────────────────────────────────┐
+│                         MPM TIME STEP VARIABLE FLOW                         │
+└─────────────────────────────────────────────────────────────────────────────┘
 
-1. FOR each particle i:
-   │  F ← (I + dt*C) @ F
-   │  U, Σ, V^T ← SVD(F)
-   │
-   │  IF snow: clamp Σ, update Jp
-   │  IF liquid: F ← sqrt(J)*I
-   │
-   │  Compute stress σ
-   │  Q ← stress + m*C
-   └
+INPUT STATE (per particle)
+┌──────────┬─────────────┬──────────────────────────────────────────────────┐
+│ Variable │ Math Symbol │ Description                                      │
+├──────────┼─────────────┼──────────────────────────────────────────────────┤
+│ X        │ xᵢ          │ Position [n_particles, 2]                        │
+│ V        │ vᵢ          │ Velocity [n_particles, 2]                        │
+│ C        │ Cᵢ          │ Affine velocity matrix [n_particles, 2, 2]       │
+│ F        │ Fᵢ          │ Deformation gradient [n_particles, 2, 2]         │
+│ Jp       │ Jₚ          │ Plastic volume ratio [n_particles, 1]            │
+│ T        │ type        │ Material type (0=liquid, 1=jelly, 2=snow)        │
+│ M        │ mᵢ          │ Mass [n_particles, 1]                            │
+└──────────┴─────────────┴──────────────────────────────────────────────────┘
 
-2. P2G: Clear grid, scatter particle contributions
-   FOR each particle i:
-   │  FOR each neighbor j ∈ N(i):
-   │  │  m_j += w_j * m_i
-   │  │  mv_j += w_j * (m_i*v_i + Q*(x_j - x_i))
-   └  └
-
-3. Grid: Apply physics
-   FOR each grid node j with m_j &gt; 0:
-   │  v_j ← mv_j / m_j + dt*g
-   │  Apply boundary conditions
-   └
-
-4. G2P: Gather grid velocities
-   FOR each particle i:
-   │  v_new ← Σ w_j * v_j
-   │  C_new ← 4/dx² * Σ w_j * v_j ⊗ (x_j - x_i)
-   │  x ← x + dt * v_new
-   └
-
-Output: Updated particle states
-────────────────────────────────────────────────</code></pre>
+                                   │
+                                   ▼
+╔═══════════════════════════════════════════════════════════════════════════╗
+║  STEP 1: DEFORMATION GRADIENT UPDATE                                      ║
+║                                                                           ║
+║    F = (I + dt*C) @ F                                                     ║
+║                                                                           ║
+║  Code: F = (identity + dt * C) @ F                            Line 49    ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+                                   │
+                                   ▼
+┌───────────────────────────────────────────────────────────────────────────┐
+│  STEP 1-&gt;2: MATERIAL-SPECIFIC F REFINEMENT                                │
+│                                                                           │
+│  ┌─────────────────────────────────────────────────────────────────────┐  │
+│  │  SVD DECOMPOSITION                                                  │  │
+│  │                                                                     │  │
+│  │    F = U * Sigma * V^T                                              │  │
+│  │                                                                     │  │
+│  │  Code: U, sig, Vh = torch.linalg.svd(F_reg)            Line 64     │  │
+│  │                                                                     │  │
+│  │  Variables:                                                         │  │
+│  │    U, Vh  -&gt; rotation matrices [n_particles, 2, 2]                  │  │
+│  │    sig    -&gt; singular values (stretches) [n_particles, 2]           │  │
+│  │    J      -&gt; det(F) = sig1*sig2 = torch.prod(sig)                   │  │
+│  └─────────────────────────────────────────────────────────────────────┘  │
+│                                   │                                      │
+│      ┌─────────────────────────────┼─────────────────────────────┐        │
+│      ▼                             ▼                             ▼        │
+│  ┌───────────────┐          ┌───────────────┐          ┌───────────────┐  │
+│  │    LIQUID     │          │     JELLY     │          │     SNOW      │  │
+│  │   (T == 0)    │          │   (T == 1)    │          │   (T == 2)    │  │
+│  ├───────────────┤          ├───────────────┤          ├───────────────┤  │
+│  │ mu = 0        │          │ h = 0.3       │          │ h = exp(10*   │  │
+│  │ (no shear)    │          │ (constant)    │          │    (1-Jp))    │  │
+│  │               │          │               │          │               │  │
+│  │ F = sqrt(J)*I │          │ sig clamped   │          │ sig clamped   │  │
+│  │ (isotropic)   │          │ F = U*Sig*V^T │          │ [0.975,1.0045]│  │
+│  │               │          │               │          │ Jp updated    │  │
+│  └───────────────┘          └───────────────┘          └───────────────┘  │
+│      │                             │                             │        │
+│      └─────────────────────────────┼─────────────────────────────┘        │
+│                                    ▼                                      │
+│  Code references:                                                        │
+│    - Hardening: h = torch.exp(10 * (1.0 - Jp.squeeze()))     Line 51    │
+│    - Jelly h:   h = torch.where(jelly_mask, 0.3, h)          Line 52    │
+│    - Lame:      mu = mu_0 * h, la = lambda_0 * h             Lines 55-56│
+│    - Liquid mu: mu = torch.where(liquid_mask, 0.0, mu)       Line 57    │
+│    - Snow clamp: sig = torch.clamp(sig, 1-2.5e-2, 1+4.5e-3)  Line 98    │
+│    - Jp update: Jp = Jp * plastic_ratio                      Line 102   │
+│    - Liquid F:  F_liquid = identity * sqrt(J)                Line 112   │
+│    - Solid F:   F_solid = U @ sig_diag @ Vh                  Line 113   │
+└───────────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+╔═══════════════════════════════════════════════════════════════════════════╗
+║  STEP 2: STRESS COMPUTATION                                               ║
+║                                                                           ║
+║    R = U * V^T                   (rotation component)                     ║
+║                                                                           ║
+║    stress = 2*mu*(F-R)*F^T + la*J*(J-1)*I   (Cauchy, corotated model)     ║
+║                                                                           ║
+║  Code:                                                                    ║
+║    R = U @ Vh                                                 Line 123   ║
+║    F_minus_R = F - R                                          Line 124   ║
+║    stress = (2*mu*(F-R)@F^T + la*J*(J-1)*I)                  Line 125-126║
+║    stress = (-dt * p_vol * 4 * inv_dx^2) * stress            Line 127    ║
+║                                                                           ║
+║  The scaling factor converts stress to force for P2G transfer             ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+                                   │
+                                   ▼
+┌───────────────────────────────────────────────────────────────────────────┐
+│  STEP 2-&gt;3: AFFINE MOMENTUM COMPUTATION                                   │
+│                                                                           │
+│  ┌────────────────────────────────────────────────────────────────────┐   │
+│  │                                                                    │   │
+│  │     affine = stress + m * C                                        │   │
+│  │                                                                    │   │
+│  │  Code: affine = stress + p_mass.unsqueeze(-1).unsqueeze(-1) * C   │   │
+│  │                                                       Line 162    │   │
+│  │                                                                    │   │
+│  │  Physical interpretation:                                          │   │
+│  │    - stress term: internal forces from deformation                 │   │
+│  │    - m*C term: momentum transport (APIC angular momentum)          │   │
+│  │                                                                    │   │
+│  │  This combined "affine" carries BOTH force AND momentum info       │   │
+│  │  to the grid in a single transfer.                                 │   │
+│  └────────────────────────────────────────────────────────────────────┘   │
+│                                                                           │
+│  Variables at this point:                                                 │
+│  ┌────────────┬─────────────┬─────────────────────────────────────────┐   │
+│  │ Variable   │ Shape       │ Description                             │   │
+│  ├────────────┼─────────────┼─────────────────────────────────────────┤   │
+│  │ stress     │ [N, 2, 2]   │ Scaled stress (force)                   │   │
+│  │ C          │ [N, 2, 2]   │ Affine velocity matrix                  │   │
+│  │ p_mass     │ [N]         │ Particle mass                           │   │
+│  │ affine     │ [N, 2, 2]   │ Combined force + momentum gradient      │   │
+│  └────────────┴─────────────┴─────────────────────────────────────────┘   │
+└───────────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+╔═══════════════════════════════════════════════════════════════════════════╗
+║  STEP 3: P2G TRANSFER (Particle to Grid)                                  ║
+║                                                                           ║
+║  Each particle i CONTRIBUTES to its 9 neighboring grid nodes j:           ║
+║                                                                           ║
+║    contribution to mass:     dm_j = w_j * m_i                             ║
+║    contribution to momentum: dp_j = w_j * (m_i*v_i + Q_i*(x_j - x_i))     ║
+║                                                                           ║
+║  The GNN ACCUMULATES all particle contributions at each grid node:        ║
+║                                                                           ║
+║    m_j = SUM_i dm_j   (total mass at node j)                              ║
+║    p_j = SUM_i dp_j   (total momentum at node j)                          ║
+║                                                                           ║
+║  Code (MPM_P2G.message computes d, GNN aggregation computes SUM):         ║
+║    out_m = mass_j * weights              # dm_j contribution              ║
+║    out_v = weights * (m*v + Q @ dpos)    # dp_j contribution              ║
+║                                                                           ║
+║  After GNN aggregation (Line 214-216):                                    ║
+║    grid_m = accumulated mass m_j     [n_grid, n_grid]                     ║
+║    grid_v = accumulated momentum p_j [n_grid, n_grid, 2] (NOT velocity!)  ║
+║                                                                           ║
+║  Weights: Quadratic B-spline w0, w1, w2                     Lines 178-181 ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+                                   │
+                                   ▼
+╔═══════════════════════════════════════════════════════════════════════════╗
+║  STEP 4: GRID OPERATIONS                                                  ║
+║                                                                           ║
+║    v_j = p_j / m_j               (momentum -&gt; velocity, using accumulated)║
+║    v_j += dt * g                 (gravity)                                ║
+║    Apply boundary conditions     (friction, no-penetration)               ║
+║                                                                           ║
+║  Code:                                                                    ║
+║    grid_v = grid_v / (grid_m + eps)                         Line 226-228  ║
+║    grid_v = grid_v + gravity_force                          Line 232-234  ║
+║    Boundary handling                                        Lines 242-266 ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+                                   │
+                                   ▼
+╔═══════════════════════════════════════════════════════════════════════════╗
+║  STEP 5: G2P TRANSFER                                                     ║
+║                                                                           ║
+║    v_i = SUM_j w_j * v_j              (APIC velocity update)              ║
+║                                                                           ║
+║    C_i = 4/dx^2 * SUM_j w_j * v_j (x) (x_j - x_i)   (affine velocity)     ║
+║                                                                           ║
+║  Code:                                                                    ║
+║    new_V = SUM weights * g_v_all                            Line 304-305  ║
+║    outer_products = g_v @ dpos^T                            Line 309-311  ║
+║    new_C = 4 * inv_dx * SUM weights * outer_products        Line 315      ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+                                   │
+                                   ▼
+╔═══════════════════════════════════════════════════════════════════════════╗
+║  STEP 6: ADVECTION                                                        ║
+║                                                                           ║
+║    x_i = x_i + dt * v_i                                                   ║
+║                                                                           ║
+║  Code: X = X + dt * new_V                                       Line 322  ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+                                   │
+                                   ▼
+OUTPUT STATE: X, V, C, F, Jp (updated)</code></pre>
+</section>
+<section id="variable-reference-table" class="level2">
+<h2 class="anchored" data-anchor-id="variable-reference-table">Variable Reference Table</h2>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 21%">
+<col style="width: 11%">
+<col style="width: 30%">
+<col style="width: 11%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;">Code Variable</th>
+<th style="text-align: left;">Math Symbol</th>
+<th style="text-align: left;">Shape</th>
+<th style="text-align: left;">Physical Meaning</th>
+<th style="text-align: left;">Units</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;"><code>X</code></td>
+<td style="text-align: left;"><span class="math inline">\(\mathbf{x}_i\)</span></td>
+<td style="text-align: left;"><code>[N, 2]</code></td>
+<td style="text-align: left;">Particle position</td>
+<td style="text-align: left;">m</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><code>V</code></td>
+<td style="text-align: left;"><span class="math inline">\(\mathbf{v}_i\)</span></td>
+<td style="text-align: left;"><code>[N, 2]</code></td>
+<td style="text-align: left;">Particle velocity</td>
+<td style="text-align: left;">m/s</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><code>C</code></td>
+<td style="text-align: left;"><span class="math inline">\(\mathbf{C}_i\)</span></td>
+<td style="text-align: left;"><code>[N, 2, 2]</code></td>
+<td style="text-align: left;">Affine velocity matrix (velocity gradient)</td>
+<td style="text-align: left;">1/s</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><code>F</code></td>
+<td style="text-align: left;"><span class="math inline">\(\mathbf{F}_i\)</span></td>
+<td style="text-align: left;"><code>[N, 2, 2]</code></td>
+<td style="text-align: left;">Deformation gradient</td>
+<td style="text-align: left;">-</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><code>Jp</code></td>
+<td style="text-align: left;"><span class="math inline">\(J_p\)</span></td>
+<td style="text-align: left;"><code>[N, 1]</code></td>
+<td style="text-align: left;">Plastic volume ratio (accumulated)</td>
+<td style="text-align: left;">-</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><code>T</code></td>
+<td style="text-align: left;">type</td>
+<td style="text-align: left;"><code>[N, 1]</code></td>
+<td style="text-align: left;">Material type index</td>
+<td style="text-align: left;">-</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><code>M</code></td>
+<td style="text-align: left;"><span class="math inline">\(m_i\)</span></td>
+<td style="text-align: left;"><code>[N, 1]</code></td>
+<td style="text-align: left;">Particle mass</td>
+<td style="text-align: left;">kg</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><code>U</code></td>
+<td style="text-align: left;"><span class="math inline">\(\mathbf{U}\)</span></td>
+<td style="text-align: left;"><code>[N, 2, 2]</code></td>
+<td style="text-align: left;">Left rotation (from SVD)</td>
+<td style="text-align: left;">-</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><code>sig</code></td>
+<td style="text-align: left;"><span class="math inline">\(\boldsymbol{\sigma}\)</span></td>
+<td style="text-align: left;"><code>[N, 2]</code></td>
+<td style="text-align: left;">Singular values (stretches)</td>
+<td style="text-align: left;">-</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><code>Vh</code></td>
+<td style="text-align: left;"><span class="math inline">\(\mathbf{V}^T\)</span></td>
+<td style="text-align: left;"><code>[N, 2, 2]</code></td>
+<td style="text-align: left;">Right rotation transposed</td>
+<td style="text-align: left;">-</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><code>R</code></td>
+<td style="text-align: left;"><span class="math inline">\(\mathbf{R}\)</span></td>
+<td style="text-align: left;"><code>[N, 2, 2]</code></td>
+<td style="text-align: left;">Rotation matrix <span class="math inline">\(\mathbf{U}\mathbf{V}^T\)</span></td>
+<td style="text-align: left;">-</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><code>J</code></td>
+<td style="text-align: left;"><span class="math inline">\(J\)</span></td>
+<td style="text-align: left;"><code>[N]</code></td>
+<td style="text-align: left;">Volume ratio <span class="math inline">\(\det(\mathbf{F})\)</span></td>
+<td style="text-align: left;">-</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><code>h</code></td>
+<td style="text-align: left;"><span class="math inline">\(h\)</span></td>
+<td style="text-align: left;"><code>[N]</code></td>
+<td style="text-align: left;">Hardening factor</td>
+<td style="text-align: left;">-</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><code>mu</code></td>
+<td style="text-align: left;"><span class="math inline">\(\mu\)</span></td>
+<td style="text-align: left;"><code>[N]</code></td>
+<td style="text-align: left;">Shear modulus</td>
+<td style="text-align: left;">Pa</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><code>la</code></td>
+<td style="text-align: left;"><span class="math inline">\(\lambda\)</span></td>
+<td style="text-align: left;"><code>[N]</code></td>
+<td style="text-align: left;">First Lame parameter</td>
+<td style="text-align: left;">Pa</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><code>stress</code></td>
+<td style="text-align: left;"><span class="math inline">\(\boldsymbol{\sigma}\)</span></td>
+<td style="text-align: left;"><code>[N, 2, 2]</code></td>
+<td style="text-align: left;">Cauchy stress (scaled)</td>
+<td style="text-align: left;">N</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><code>affine</code></td>
+<td style="text-align: left;"><span class="math inline">\(\mathbf{Q}\)</span></td>
+<td style="text-align: left;"><code>[N, 2, 2]</code></td>
+<td style="text-align: left;">Affine momentum <span class="math inline">\(\sigma + m\mathbf{C}\)</span></td>
+<td style="text-align: left;">N</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><code>grid_m</code></td>
+<td style="text-align: left;"><span class="math inline">\(m_j\)</span></td>
+<td style="text-align: left;"><code>[G, G]</code></td>
+<td style="text-align: left;">Grid mass (accumulated)</td>
+<td style="text-align: left;">kg</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><code>grid_v</code></td>
+<td style="text-align: left;"><span class="math inline">\(\mathbf{p}_j\)</span></td>
+<td style="text-align: left;"><code>[G, G, 2]</code></td>
+<td style="text-align: left;">Grid momentum (accumulated, NOT velocity!)</td>
+<td style="text-align: left;">kg·m/s</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><code>w</code></td>
+<td style="text-align: left;"><span class="math inline">\(w\)</span></td>
+<td style="text-align: left;"><code>[N, 3, 2]</code></td>
+<td style="text-align: left;">B-spline weights</td>
+<td style="text-align: left;">-</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="key-equations-summary" class="level2">
+<h2 class="anchored" data-anchor-id="key-equations-summary">Key Equations Summary</h2>
+<section id="deformation-update" class="level3">
+<h3 class="anchored" data-anchor-id="deformation-update">Deformation Update</h3>
+<p><span class="math display">\[\mathbf{F}^{n+1} = (\mathbf{I} + \Delta t \, \mathbf{C}^n) \mathbf{F}^n\]</span></p>
+</section>
+<section id="svd-decomposition-1" class="level3">
+<h3 class="anchored" data-anchor-id="svd-decomposition-1">SVD Decomposition</h3>
+<p><span class="math display">\[\mathbf{F} = \mathbf{U} \, \text{diag}(\sigma_1, \sigma_2) \, \mathbf{V}^T\]</span></p>
+</section>
+<section id="hardening-snow" class="level3">
+<h3 class="anchored" data-anchor-id="hardening-snow">Hardening (Snow)</h3>
+<p><span class="math display">\[h = \exp\bigl(10(1 - J_p)\bigr)\]</span></p>
+</section>
+<section id="lame-parameters-1" class="level3">
+<h3 class="anchored" data-anchor-id="lame-parameters-1">Lame Parameters</h3>
+<p><span class="math display">\[\mu = \mu_0 \cdot h, \quad \lambda = \lambda_0 \cdot h\]</span></p>
+</section>
+<section id="cauchy-stress-fixed-corotated" class="level3">
+<h3 class="anchored" data-anchor-id="cauchy-stress-fixed-corotated">Cauchy Stress (Fixed Corotated)</h3>
+<p><span class="math display">\[\boldsymbol{\sigma} = 2\mu (\mathbf{F} - \mathbf{R}) \mathbf{F}^T + \lambda J (J-1) \mathbf{I}\]</span></p>
+</section>
+<section id="affine-momentum" class="level3">
+<h3 class="anchored" data-anchor-id="affine-momentum">Affine Momentum</h3>
+<p><span class="math display">\[\mathbf{Q} = \boldsymbol{\sigma}_{\text{scaled}} + m \, \mathbf{C}\]</span></p>
+</section>
+<section id="p2g-transfer" class="level3">
+<h3 class="anchored" data-anchor-id="p2g-transfer">P2G Transfer</h3>
+<p><strong>Step 1: Each particle contributes to neighboring grid nodes</strong> <span class="math display">\[\delta m_j = w_j \, m_i, \quad \delta \mathbf{p}_j = w_j \bigl(m_i \mathbf{v}_i + \mathbf{Q} \cdot (\mathbf{x}_j - \mathbf{x}_i)\bigr)\]</span></p>
+<p><strong>Step 2: GNN accumulates all contributions at each node</strong> <span class="math display">\[m_j = \sum_i \delta m_j, \quad \mathbf{p}_j = \sum_i \delta \mathbf{p}_j\]</span></p>
+</section>
+<section id="grid-operations-uses-accumulated-values" class="level3">
+<h3 class="anchored" data-anchor-id="grid-operations-uses-accumulated-values">Grid Operations (uses accumulated values)</h3>
+<p><span class="math display">\[\mathbf{v}_j = \mathbf{p}_j / m_j \quad \text{(momentum} \to \text{velocity)}\]</span></p>
+</section>
+<section id="g2p-transfer-apic" class="level3">
+<h3 class="anchored" data-anchor-id="g2p-transfer-apic">G2P Transfer (APIC)</h3>
+<p><span class="math display">\[\mathbf{v}_i = \sum_j w_j \, \mathbf{v}_j, \quad \mathbf{C}_i = \frac{4}{\Delta x^2} \sum_j w_j \, \mathbf{v}_j \otimes (\mathbf{x}_j - \mathbf{x}_i)\]</span></p>
+</section>
+<section id="advection" class="level3">
+<h3 class="anchored" data-anchor-id="advection">Advection</h3>
+<p><span class="math display">\[\mathbf{x}^{n+1} = \mathbf{x}^n + \Delta t \, \mathbf{v}^{n+1}\]</span></p>
+</section>
+</section>
+<section id="the-affine-term-explained" class="level2">
+<h2 class="anchored" data-anchor-id="the-affine-term-explained">The Affine Term Explained</h2>
+<p>The key insight is that <strong>affine = stress + m·C</strong> combines two physical effects:</p>
+<div class="callout callout-style-default callout-important callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+<span class="screen-reader-only">Important</span>Why stress + m·C?
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ol type="1">
+<li><p><strong>stress term</strong>: Internal forces from material deformation. This is what creates elastic/plastic behavior.</p></li>
+<li><p><strong>m·C term</strong>: The APIC (Affine Particle-In-Cell) contribution. This preserves angular momentum and prevents numerical dissipation.</p></li>
+</ol>
+<p>Each particle’s contribution to grid momentum is: <span class="math display">\[\delta \mathbf{p}_j = w_j \cdot \bigl[\underbrace{m_i \mathbf{v}_i}_{\text{linear momentum}} + \underbrace{\mathbf{Q}}_{\text{affine}} \cdot \underbrace{(\mathbf{x}_j - \mathbf{x}_i)}_{\text{dpos}}\bigr]\]</span></p>
+<p>This single transfer carries both <strong>force</strong> (from stress) and <strong>momentum gradient</strong> (from C) information.</p>
+</div>
+</div>
+</section>
+<section id="material-specific-behavior" class="level2">
+<h2 class="anchored" data-anchor-id="material-specific-behavior">Material-Specific Behavior</h2>
+<pre><code>                    ┌───────────────┐
+                    │    F update   │
+                    │ F=(I+dt*C)*F  │
+                    └───────┬───────┘
+                            │
+                    ┌───────▼───────┐
+                    │      SVD      │
+                    │  F = U*Sig*V^T│
+                    └───────┬───────┘
+                            │
+         ┌──────────────────┼──────────────────┐
+         ▼                  ▼                  ▼
+   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
+   │   LIQUID    │   │    JELLY    │   │    SNOW     │
+   │   (T=0)     │   │    (T=1)    │   │    (T=2)    │
+   ├─────────────┤   ├─────────────┤   ├─────────────┤
+   │ mu = 0      │   │ h = 0.3     │   │ h=e^10(1-Jp)│
+   │             │   │ mu = mu0*h  │   │ mu = mu0*h  │
+   │ F = sqrt(J) │   │ F = U*Sig*V │   │ Sig clamped │
+   │     * I     │   │             │   │ Jp updated  │
+   │ (isotropic) │   │             │   │ F = U*Sig*V │
+   └──────┬──────┘   └──────┬──────┘   └──────┬──────┘
+          │                 │                 │
+          └─────────────────┼─────────────────┘
+                            ▼
+                    ┌───────────────┐
+                    │    Stress     │
+                    │ s=2mu(F-R)F^T │
+                    │  +la*J(J-1)I  │
+                    └───────┬───────┘
+                            ▼
+                    ┌───────────────┐
+                    │    Affine     │
+                    │  Q = s + m*C  │
+                    └───────┬───────┘
+                            ▼
+                       P2G transfer</code></pre>
 
 
 </section>

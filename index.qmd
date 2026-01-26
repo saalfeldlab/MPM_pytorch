@@ -9,7 +9,7 @@ date: "2025"
 
 The **Material Point Method (MPM)** is a numerical technique for simulating materials that undergo large deformations, fracture, and complex material interactions. It combines the strengths of both Lagrangian (particle-based) and Eulerian (grid-based) approaches.
 
-This implementation provides a fully differentiable MPM solver in PyTorch, enabling:
+This is a PyTorch implementation based on [taichi_mpm](https://github.com/yuanming-hu/taichi_mpm) by Yuanming Hu. It provides a fully differentiable MPM solver, enabling:
 
 - **Forward simulation** of multi-material interactions (liquids, solids, snow)
 - **Inverse problems** through automatic differentiation
