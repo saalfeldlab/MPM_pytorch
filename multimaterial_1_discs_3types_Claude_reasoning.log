@@ -165,3 +165,25 @@ Iteration 8 analysis complete.
 
 The experiment is progressing well toward the R²>0.99 target. The next iteration will test whether omega_f tuning can provide additional improvement, or if more steps would be needed to reach excellent classification.
 
+
+============================================================
+=== Iteration 9 ===
+============================================================
+**Iteration 9 Summary:**
+
+**Results:** R²=0.984 (good), slope=0.931, training_time=16.2min
+- Best R² so far in this block
+- omega_f reduction (25→20) provided marginal improvement (+0.005 R²)
+
+**Key Findings This Iteration:**
+- omega_f=20 slightly better than 25 for Jp@100frames (0.984 vs 0.979)
+- Loss curve still not fully plateaued at 150k steps
+- Per-frame MSE pattern: high error at early frames (0-40), converges by frame 50
+- Slope=0.931 indicates slight underprediction at high GT values
+
+**Next Iteration (10) Setup:**
+- Parent: Node 9 (R²=0.984, highest UCB=3.105)
+- Mutation: total_steps 150k→200k (1500→2000 steps/frame)
+- Hypothesis: More steps will push R² past 0.99 threshold
+- Config: hidden_dim=512, n_layers=3, omega_f=20, lr=6E-5, 200k steps
+

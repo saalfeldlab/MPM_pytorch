@@ -96,3 +96,15 @@ Observation: **MORE STEPS CONTINUES TO IMPROVE.** R² +0.018 (0.961→0.979), sl
 Visual: GT/Pred spatial patterns match well. Scatter tight along diagonal with some outliers at high GT values (slope=0.93 indicates slight underprediction). Per-frame MSE high at early frames but converges to near-zero by frame 50.
 Next: parent=8, test omega_f 25→20 (lower frequency may help remaining error)
 
+### Iter 9: good
+Node: id=9, parent=8
+Mode/Strategy: exploit
+Config: lr_NNR_f=6E-5, total_steps=150000, hidden_dim_nnr_f=512, n_layers_nnr_f=3, omega_f=20, batch_size=1
+Metrics: final_r2=0.984, final_mse=2.57, slope=0.931, total_params=790529, training_time=16.2min
+Field: field_name=Jp, inr_type=siren_txy, n_frames=100
+Mutation: omega_f 25→20
+Parent rule: UCB selection (Node 9 highest UCB=3.105 after completion)
+Observation: **OMEGA_F REDUCTION MARGINALLY IMPROVED R².** R² +0.005 (0.979→0.984), slope unchanged (0.930→0.931). omega_f=20 slightly better than 25 for Jp@100frames. Approaching R²>0.99 target. Loss curve still not fully plateaued.
+Visual: GT/Pred spatial patterns match well - disc structures clearly visible with correct Jp values. Scatter tight along diagonal (R²=0.984, slope=0.931). Per-frame MSE shows high error at early frames (0-40) but converges to near-zero by frame 50. Some outliers at high GT values (>1.5).
+Next: parent=9, total_steps 150k→200k (2000 steps/frame to push toward R²>0.99)
+

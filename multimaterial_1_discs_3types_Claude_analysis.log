@@ -1,0 +1,17 @@
+field_name: Jp
+inr_type: siren_txy
+final_mse: 1.964808e+00
+final_r2: 0.986905
+slope: 0.947392
+total_params: 790529
+n_particles: 9000
+n_frames: 100
+n_components: 1
+total_steps: 200000
+batch_size: 1
+learning_rate_NNR_f: 6.000000e-05
+hidden_dim_nnr_f: 512
+n_layers_nnr_f: 3
+omega_f: 20.0
+training_time_min: 22.5
+final_omega_f: 20.00

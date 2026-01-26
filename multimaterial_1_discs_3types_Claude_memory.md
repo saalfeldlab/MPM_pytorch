@@ -91,15 +91,25 @@ Observation: **MORE STEPS CONTINUES TO IMPROVE.** R² +0.018 (0.961→0.979), sl
 Visual: GT/Pred spatial patterns match well, scatter tight along diagonal, some outliers at high GT values. Per-frame MSE high at early frames but converges to near-zero by frame 50. Loss curve still improving at 150k steps.
 Next: parent=8, omega_f 25→20 (test if lower frequency helps remaining error)
 
+**Iter 9: good** (R²=0.984, slope=0.931)
+Node: id=9, parent=8
+Mode/Strategy: exploit
+Config: hidden_dim=512, n_layers=3, omega_f=20, lr=6E-5, 150k steps
+Mutation: omega_f 25→20
+Observation: **OMEGA_F REDUCTION MARGINALLY IMPROVED R².** R² +0.005 (0.979→0.984), slope unchanged. omega_f=20 slightly better than 25 for Jp@100frames.
+Visual: GT/Pred match well - disc structures visible with correct Jp values. Scatter R²=0.984, slope=0.931. Per-frame MSE high at early frames (0-40), converges by frame 50.
+Next: parent=9, total_steps 150k→200k (2000 steps/frame to push toward R²>0.99)
+
 ### Emerging Observations
 - Initial config (hidden_dim=64, omega_f=80) catastrophically wrong for Jp@100frames
 - Capacity increase (64→384) + omega_f reduction (80→25) improved R² 2x (0.399→0.835)
 - **LR BOUNDARY MAPPED**: 1E-5(0.835) < 4E-5(0.913) < 6E-5(0.942) > 8E-5(0.892). Optimal=6E-5.
 - Prior knowledge confirmed: multimaterial tolerates 1.5x higher LR than prior 4E-5 baseline
 - **HIDDEN_DIM CEILING REVISED**: At 50k steps: 384(0.942) > 512(0.918). At 100k steps: 512(0.961) - steps matter more than capacity!
-- R² trajectory: 0.399 → 0.835 → 0.913 → 0.942 → 0.892 → 0.918 → 0.961 → **0.979** (new peak at Node 8)
-- Slope trajectory: 0.049 → 0.257 → 0.683 → 0.825 → 0.863 → 0.822 → 0.890 → **0.930** (new peak at Node 8)
-- **STEPS PER FRAME SCALING CONFIRMED**: 500 steps/frame→R²=0.918, 1000→0.961, **1500→0.979**. Approaching 0.99!
-- Training time scaling: 8.6min (50k) → 10.4min (100k) → 16.8min (150k). Linear with steps.
-- Next: test omega_f=20 to see if lower frequency helps with remaining error (currently slope=0.930 indicates slight underprediction)
+- R² trajectory: 0.399 → 0.835 → 0.913 → 0.942 → 0.892 → 0.918 → 0.961 → 0.979 → **0.984** (new peak at Node 9)
+- Slope trajectory: 0.049 → 0.257 → 0.683 → 0.825 → 0.863 → 0.822 → 0.890 → 0.930 → **0.931**
+- **STEPS PER FRAME SCALING CONFIRMED**: 500 steps/frame→R²=0.918, 1000→0.961, 1500→0.979/0.984. Approaching 0.99!
+- **OMEGA_F MAP for Jp@100frames**: omega_f=25(0.979) < omega_f=20(0.984). Lower frequency slightly better.
+- Training time scaling: 8.6min (50k) → 10.4min (100k) → 16.2-16.8min (150k). Linear with steps.
+- Next: increase total_steps to 200k (2000 steps/frame) to push toward R²>0.99
 
