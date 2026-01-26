@@ -6,6 +6,8 @@ Cédric Allier
 
 Janelia Research Campus, Howard Hughes Medical Institute
 
+**[Documentation](https://allierc.github.io/MPM_pytorch/)** - Algorithm details, variable schematics, and implementation notes
+
 ![Simulation Demo](assets/cubes.gif)
 
 ```python
