@@ -1151,6 +1151,8 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
             time_input_all = torch.arange(0, n_frames, dtype=torch.float32, device=device).unsqueeze(1) / n_frames
             pred_all_video = nnr_f(time_input_all).reshape(n_frames, n_particles, n_components)
         pred_np_video = pred_all_video.cpu().numpy()
+        # Apply slope correction to match static plot visualization
+        pred_np_video = (pred_np_video - intercept) / slope if slope != 0 else pred_np_video
 
     # Compute global vmin/vmax from GT for consistent coloring
     if n_components == 4:
