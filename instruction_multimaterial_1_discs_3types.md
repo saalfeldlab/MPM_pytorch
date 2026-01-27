@@ -94,6 +94,11 @@ Observation: [one line]
 Next: parent=P
 ```
 
+**`Next: parent=P` specifies the parent for iteration N+1:**
+- Default: `Next: parent=N` (current iteration ID) - the next iteration builds on this one
+- Only use `Next: parent=root` at block boundaries when UCB is reset
+- Example: After Iter 3, write `Next: parent=3` so Iter 4 uses node 3 as parent
+
 ### Step 4: Select parent node in UCB tree
 
 - Read `ucb_scores.txt`
