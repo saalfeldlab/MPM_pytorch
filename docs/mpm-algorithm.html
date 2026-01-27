@@ -387,7 +387,6 @@ window.Quarto = {
   <li><a href="#advection" id="toc-advection" class="nav-link" data-scroll-target="#advection">Advection</a></li>
   </ul></li>
   <li><a href="#the-affine-term-explained" id="toc-the-affine-term-explained" class="nav-link" data-scroll-target="#the-affine-term-explained">The Affine Term Explained</a></li>
-  <li><a href="#material-specific-behavior" id="toc-material-specific-behavior" class="nav-link" data-scroll-target="#material-specific-behavior">Material-Specific Behavior</a></li>
   </ul>
 </nav>
     </div>
@@ -684,14 +683,19 @@ INPUT STATE (per particle)
 │      └─────────────────────────────┼─────────────────────────────┘        │
 │                                    ▼                                      │
 │  Code references:                                                        │
-│    - Hardening: h = torch.exp(10 * (1.0 - Jp.squeeze()))     Line 51    │
-│    - Jelly h:   h = torch.where(jelly_mask, 0.3, h)          Line 52    │
-│    - Lame:      mu = mu_0 * h, la = lambda_0 * h             Lines 55-56│
-│    - Liquid mu: mu = torch.where(liquid_mask, 0.0, mu)       Line 57    │
-│    - Snow clamp: sig = torch.clamp(sig, 1-2.5e-2, 1+4.5e-3)  Line 98    │
-│    - Jp update: Jp = Jp * plastic_ratio                      Line 102   │
-│    - Liquid F:  F_liquid = identity * sqrt(J)                Line 112   │
-│    - Solid F:   F_solid = U @ sig_diag @ Vh                  Line 113   │
+│    LIQUID:                                                               │
+│      - mu = 0:   mu = torch.where(liquid_mask, 0.0, mu)      Line 57    │
+│      - F:        F_liquid = identity * sqrt(J)               Line 112   │
+│    JELLY:                                                                │
+│      - h = 0.3:  h = torch.where(jelly_mask, 0.3, h)         Line 52    │
+│      - F:        F_solid = U @ sig_diag @ Vh                 Line 113   │
+│    SNOW:                                                                 │
+│      - h:        h = torch.exp(10 * (1.0 - Jp.squeeze()))    Line 51    │
+│      - clamp:    sig = torch.clamp(sig, 1-2.5e-2, 1+4.5e-3)  Line 98    │
+│      - Jp:       Jp = Jp * plastic_ratio                     Line 102   │
+│      - F:        F_solid = U @ sig_diag @ Vh                 Line 113   │
+│    ALL:                                                                  │
+│      - Lame:     mu = mu_0 * h, la = lambda_0 * h            Lines 55-56│
 └───────────────────────────────────────────────────────────────────────────┘
                                    │
                                    ▼
@@ -1034,46 +1038,6 @@ OUTPUT STATE: X, V, C, F, Jp (updated)</code></pre>
 <p>This single transfer carries both <strong>force</strong> (from stress) and <strong>momentum gradient</strong> (from C) information.</p>
 </div>
 </div>
-</section>
-<section id="material-specific-behavior" class="level2">
-<h2 class="anchored" data-anchor-id="material-specific-behavior">Material-Specific Behavior</h2>
-<pre><code>                    ┌───────────────┐
-                    │    F update   │
-                    │ F=(I+dt*C)*F  │
-                    └───────┬───────┘
-                            │
-                    ┌───────▼───────┐
-                    │      SVD      │
-                    │  F = U*Sig*V^T│
-                    └───────┬───────┘
-                            │
-         ┌──────────────────┼──────────────────┐
-         ▼                  ▼                  ▼
-   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
-   │   LIQUID    │   │    JELLY    │   │    SNOW     │
-   │   (T=0)     │   │    (T=1)    │   │    (T=2)    │
-   ├─────────────┤   ├─────────────┤   ├─────────────┤
-   │ mu = 0      │   │ h = 0.3     │   │ h=e^10(1-Jp)│
-   │             │   │ mu = mu0*h  │   │ mu = mu0*h  │
-   │ F = sqrt(J) │   │ F = U*Sig*V │   │ Sig clamped │
-   │     * I     │   │             │   │ Jp updated  │
-   │ (isotropic) │   │             │   │ F = U*Sig*V │
-   └──────┬──────┘   └──────┬──────┘   └──────┬──────┘
-          │                 │                 │
-          └─────────────────┼─────────────────┘
-                            ▼
-                    ┌───────────────┐
-                    │    Stress     │
-                    │ s=2mu(F-R)F^T │
-                    │  +la*J(J-1)I  │
-                    └───────┬───────┘
-                            ▼
-                    ┌───────────────┐
-                    │    Affine     │
-                    │  Q = s + m*C  │
-                    └───────┬───────┘
-                            ▼
-                       P2G transfer</code></pre>
 
 
 </section>

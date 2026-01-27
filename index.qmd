@@ -7,13 +7,9 @@ date: "2025"
 
 ## Introduction
 
+MPM-Pytorch is a differentiable implementation based on [taichi_mpm](https://github.com/yuanming-hu/taichi_mpm) by Yuanming Hu. It provides a fully differentiable MPM solver, enabling:
+
 The **Material Point Method (MPM)** is a numerical technique for simulating materials that undergo large deformations, fracture, and complex material interactions. It combines the strengths of both Lagrangian (particle-based) and Eulerian (grid-based) approaches.
-
-This is a PyTorch implementation based on [taichi_mpm](https://github.com/yuanming-hu/taichi_mpm) by Yuanming Hu. It provides a fully differentiable MPM solver, enabling:
-
-- **Forward simulation** of multi-material interactions (liquids, solids, snow)
-- **Inverse problems** through automatic differentiation
-- **Neural network integration** via Graph Neural Networks for P2G transfer
 
 ## Hybrid Lagrangian-Eulerian Approach
 

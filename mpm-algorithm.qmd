@@ -222,14 +222,19 @@ INPUT STATE (per particle)
 │      └─────────────────────────────┼─────────────────────────────┘        │
 │                                    ▼                                      │
 │  Code references:                                                        │
-│    - Hardening: h = torch.exp(10 * (1.0 - Jp.squeeze()))     Line 51    │
-│    - Jelly h:   h = torch.where(jelly_mask, 0.3, h)          Line 52    │
-│    - Lame:      mu = mu_0 * h, la = lambda_0 * h             Lines 55-56│
-│    - Liquid mu: mu = torch.where(liquid_mask, 0.0, mu)       Line 57    │
-│    - Snow clamp: sig = torch.clamp(sig, 1-2.5e-2, 1+4.5e-3)  Line 98    │
-│    - Jp update: Jp = Jp * plastic_ratio                      Line 102   │
-│    - Liquid F:  F_liquid = identity * sqrt(J)                Line 112   │
-│    - Solid F:   F_solid = U @ sig_diag @ Vh                  Line 113   │
+│    LIQUID:                                                               │
+│      - mu = 0:   mu = torch.where(liquid_mask, 0.0, mu)      Line 57    │
+│      - F:        F_liquid = identity * sqrt(J)               Line 112   │
+│    JELLY:                                                                │
+│      - h = 0.3:  h = torch.where(jelly_mask, 0.3, h)         Line 52    │
+│      - F:        F_solid = U @ sig_diag @ Vh                 Line 113   │
+│    SNOW:                                                                 │
+│      - h:        h = torch.exp(10 * (1.0 - Jp.squeeze()))    Line 51    │
+│      - clamp:    sig = torch.clamp(sig, 1-2.5e-2, 1+4.5e-3)  Line 98    │
+│      - Jp:       Jp = Jp * plastic_ratio                     Line 102   │
+│      - F:        F_solid = U @ sig_diag @ Vh                 Line 113   │
+│    ALL:                                                                  │
+│      - Lame:     mu = mu_0 * h, la = lambda_0 * h            Lines 55-56│
 └───────────────────────────────────────────────────────────────────────────┘
                                    │
                                    ▼
@@ -423,45 +428,3 @@ $$\delta \mathbf{p}_j = w_j \cdot \bigl[\underbrace{m_i \mathbf{v}_i}_{\text{lin
 
 This single transfer carries both **force** (from stress) and **momentum gradient** (from C) information.
 :::
-
-## Material-Specific Behavior
-
-```
-                    ┌───────────────┐
-                    │    F update   │
-                    │ F=(I+dt*C)*F  │
-                    └───────┬───────┘
-                            │
-                    ┌───────▼───────┐
-                    │      SVD      │
-                    │  F = U*Sig*V^T│
-                    └───────┬───────┘
-                            │
-         ┌──────────────────┼──────────────────┐
-         ▼                  ▼                  ▼
-   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
-   │   LIQUID    │   │    JELLY    │   │    SNOW     │
-   │   (T=0)     │   │    (T=1)    │   │    (T=2)    │
-   ├─────────────┤   ├─────────────┤   ├─────────────┤
-   │ mu = 0      │   │ h = 0.3     │   │ h=e^10(1-Jp)│
-   │             │   │ mu = mu0*h  │   │ mu = mu0*h  │
-   │ F = sqrt(J) │   │ F = U*Sig*V │   │ Sig clamped │
-   │     * I     │   │             │   │ Jp updated  │
-   │ (isotropic) │   │             │   │ F = U*Sig*V │
-   └──────┬──────┘   └──────┬──────┘   └──────┬──────┘
-          │                 │                 │
-          └─────────────────┼─────────────────┘
-                            ▼
-                    ┌───────────────┐
-                    │    Stress     │
-                    │ s=2mu(F-R)F^T │
-                    │  +la*J(J-1)I  │
-                    └───────┬───────┘
-                            ▼
-                    ┌───────────────┐
-                    │    Affine     │
-                    │  Q = s + m*C  │
-                    └───────┬───────┘
-                            ▼
-                       P2G transfer
-```
