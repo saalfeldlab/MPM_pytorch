@@ -873,7 +873,7 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
                     # 4-component field (F, S, C): show 2x2 panels for GT and Pred
                     comp_labels = ['00', '01', '10', '11']
                     gt_frame = gt_np[frame_idx, :, :]  # (n_particles, 4)
-                    pred_frame = pred_np_corrected[frame_idx, :, :]  # corrected predictions
+                    pred_frame = pred_np_corrected[frame_idx, :, :]  # slope-corrected predictions
 
                     cmap_name = 'coolwarm' if field_name in ['F', 'C'] else 'hot'
 
@@ -915,7 +915,7 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
                 else:
                     # Single component field (Jp): original layout
                     gt_frame = gt_np[frame_idx, :, 0]
-                    pred_frame = pred_np_corrected[frame_idx, :, 0]
+                    pred_frame = pred_np_corrected[frame_idx, :, 0]  # slope-corrected predictions
 
                     # Use 98th percentile of GT values for vmin/vmax
                     cmap_name = 'viridis'
