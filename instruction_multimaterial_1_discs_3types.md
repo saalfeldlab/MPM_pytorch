@@ -186,7 +186,8 @@ graph_model:
   omega_f: 30.0 # range: 1.0 to 100.0 (SIREN frequency)
   omega_f_learning: False # or True
   learning_rate_omega_f: 1.0E-6 # if omega_f_learning=True
-  nnr_f_xy_period: 1.0 # spatial normalization for siren_txy
+  nnr_f_xy_period: 1.0 # spatial scaling (higher = expects slower spatial variation)
+  nnr_f_T_period: 1.0 # time scaling (higher = expects slower temporal variation), prior: 10.0
   # NGP-specific - DO NOT USE (implementation incomplete)
   # ngp_n_levels: 16  # NOT READY
   # ngp_log2_hashmap_size: 19  # NOT READY
@@ -605,10 +606,22 @@ Key implementation points:
 
 **Input normalization** (critical for `siren_txy`):
 
-- Time: $t_{norm} = t / n\_frames$ → [0, 1]
+- Time: $t_{norm} = t / n\_frames / \text{nnr\_f\_T\_period}$
 - Spatial: $(x, y)_{norm} = (x, y) / \text{nnr\_f\_xy\_period}$
 
-The `omega_f` parameter controls frequency capacity - higher values capture finer spatial/temporal detail but risk training instability. The `nnr_f_xy_period` parameter scales spatial coordinates relative to time, effectively controlling the ratio of spatial-to-temporal frequency sensitivity. Smaller `nnr_f_xy_period` → higher effective spatial frequency.
+The `omega_f` parameter controls frequency capacity - higher values capture finer spatial/temporal detail but risk training instability.
+
+**Coordinate scaling parameters** (named "period" because they stretch the input range):
+- `nnr_f_xy_period`: Divides spatial coordinates by this value. Larger period → inputs span smaller range → network sees slower spatial variation. Default: 1.0
+- `nnr_f_T_period`: Divides time coordinate by this value. Larger period → inputs span smaller range → network sees slower temporal variation. Default: 1.0
+
+**Intuition**: Think of it as "how many cycles fit in the data". Period=10 means the network treats the full time range as 1/10th of its natural period, so it expects 10× slower variation.
+
+**Tuning guidelines:**
+- **Physical prior**: Fields typically change less in time than in space → use `nnr_f_T_period > nnr_f_xy_period` (e.g., 10.0 vs 1.0)
+- Smoother temporal dynamics → increase `nnr_f_T_period` (e.g., 2.0-10.0)
+- Smoother spatial patterns → increase `nnr_f_xy_period`
+- These allow independent tuning of spatial vs temporal sensitivity without changing `omega_f`
 
 **InstantNGP (Hash Encoding)** ⚠️ **NOT READY - DO NOT USE**:
 
@@ -695,7 +708,7 @@ Examples:
 **Critical constraints discovered**:
 
 - **n_layers**: Jp and C require EXACTLY 3 layers (both 2 and 4 degrade). F tolerates 2-5. S prefers 4.
-- **hidden_dim ceilings**: S@1280 (1536 fails), Jp@384 (256 AND 512 both degrade), C scales with frames
+- **hidden_dim ceilings**: S@1280 (1536 fails), Jp@384 (256 AND 512 both degrade at 50k steps, but 512 works with 200k steps - Block 1 multimaterial), C scales with frames
 - **omega_f**: Field-specific and frame-dependent. More frames → lower optimal omega_f.
 - **Data scaling**: F scales excellently (no diminishing returns to 1000f). Jp benefits. C hurts (mitigate with capacity). S fails entirely.
 - **S field instability**: EXTREME stochastic variance (R² 0.08-0.80 same config). Use gradient clipping max_norm=1.0.
@@ -709,7 +722,7 @@ Examples:
 - Too high → oscillation, NaN
 - Too low → slow convergence, underfitting
 - Optimal range: 1E-6 to 1E-4 for most fields
-- **DATASET-SPECIFIC LR (Block 1 multimaterial finding)**: multimaterial_1_discs_3types tolerates 2x higher LR than prior knowledge. Jp optimal LR=8E-5 (not 4E-5). Always probe LR upper boundary on new datasets.
+- **DATASET-SPECIFIC LR (Block 1 multimaterial finding)**: multimaterial_1_discs_3types tolerates 1.5x higher LR than prior knowledge. Jp optimal LR=6E-5 (not 4E-5). LR boundary: 6E-5 optimal, 7E-5 and 8E-5 both regress. Always probe LR upper boundary on new datasets.
 
 **Capacity vs Overfitting**:
 
@@ -725,7 +738,7 @@ Examples:
 **Training data scaling (Block 2 finding, updated Block 5, Block 10)**:
 
 - total_steps should scale with n_training_frames
-- Approximate rule: steps_per_frame ≈ 1000 for R²>0.99 (Block 5 refinement), Jp needs 2000 steps/frame
+- Approximate rule: steps_per_frame ≈ 1000 for R²>0.99 (Block 5 refinement), Jp needs 2000 steps/frame (confirmed Block 1 multimaterial)
 - 48 frames → 50k steps OK; 100 frames → 100k steps sufficient (F field R²=0.999)
 - **DATA SCALING BENEFIT (Block 5)**: More training frames IMPROVES accuracy (100 frames R²=0.9998 > 48 frames R²=0.9995 for F)
 - **OVERFITTING RISK (Block 10)**: Too many steps causes overfitting. Jp@200frames: 400k OK (0.989), 500k OVERFITS (0.939). Never exceed 2500 steps/frame.
@@ -740,11 +753,17 @@ Examples:
 - Low (1-10): smooth, low-frequency signals
 - Medium (20-50): typical for MPM fields
 - High (>50): high-frequency detail, unstable training
-- **Field-specific optimal omega_f (Block 2 finding, updated Block 10)**: F field optimal at omega_f=15-25, Jp optimal at 20-25 (200 frames) or 30-35 (48 frames). More frames → lower optimal omega_f.
+- **Field-specific optimal omega_f (Block 2 finding, updated Block 10, Block 1 multimaterial)**: F field optimal at omega_f=15-25, Jp optimal at 20-25 (200 frames) or 30-35 (48 frames). More frames → lower optimal omega_f.
 - **Jp@200frames omega_f map (Block 10)**: 35(0.786) << 30(0.982) < 25(0.985) ≈ 20(0.989) > 15(0.978). Optimal=20-25.
+- **Jp@100frames omega_f map (Block 1 multimaterial, 9000 particles)**: 25(0.979) < 20(0.984) < 15(0.988). Optimal=15. More particles may favor lower omega_f.
 - **F@200frames boundaries (Block 11)**: omega_f [15-40] viable (15=0.9996, 20=0.9998, 25=0.9997, 40=0.9991). lr [3E-5 to 1E-4] viable. lr=2E-4 FAILS.
+- **F@100frames omega_f LOCAL MAXIMUM (Block 2 multimaterial)**: F has NARROW omega_f window at 100 frames: 15(0.957) < 18(0.989) < 25(0.985) < 20(0.998). omega_f=20 is LOCAL MAXIMUM. Even ±2 deviation causes significant degradation. More sensitive than Jp.
+- **F@100frames optimal config (Block 2 multimaterial)**: 256×4-5, omega_f=20, lr=3E-5, 150k steps (1500 steps/frame). R²=0.998. F tolerates n_layers 4-5 equally (unlike Jp ceiling at 3).
 - **C@200frames omega_f map (Block 12)**: 15(0.993) < 20(0.990) < 25(0.994) < 27(0.992) < 30(0.989). Peak at omega_f=25 (NOT 20 like F). Non-monotonic.
 - **C depth ceiling (Block 12)**: C field is depth-sensitive like Jp. n_layers=4 regresses (0.987 vs 0.994 at n_layers=3). Optimal depth=3.
+- **C@100frames COMPLETE PARAMETER MAPPING (Block 3 multimaterial)**: All parameters have LOCAL MAXIMA - no further tuning possible. Maps: omega_f: 22(0.985) < 25(0.989) > 28(0.979). hidden_dim: 512(0.984) < 640(0.989) > 768(0.977). n_layers: 2(0.968) < 3(0.989) > 4(0.982). lr: 2E-5(0.983) < 3E-5(0.989) > 4E-5(0.982). R²=0.989 is architectural ceiling.
+- **C LR-DEPTH INTERACTION (Block 3 multimaterial)**: Shallow networks (3L) prefer lower lr (3E-5), deep networks (4L) prefer higher lr (4E-5). However 3L@optimal (0.989) always beats 4L@optimal (0.986). Depth penalty cannot be overcome via LR tuning.
+- **C capacity ceiling at 640 (Block 3 multimaterial)**: hidden_dim=640 is LOCAL MAXIMUM - both 512 (0.984) and 768 (0.977) degrade. C field does NOT benefit from more capacity. Contrast with F (scales) and S (needs 1280).
 - **S field capacity ceiling (Block 13)**: S requires MUCH more capacity than other fields. Optimal: 1280×4 (R²=0.801). Capacity scaling: 256→0.389, 512→0.638, 1024→0.646, 1280→0.801, 1536→0.145 (FAILS). S also requires omega_f=50, lr=2E-5 (NO tolerance for lr=3E-5).
 - **S field gradient clipping (Block 17)**: CRITICAL - S field REQUIRES gradient clipping max_norm=1.0 for stable training. Clipping map: 0.25→0.810, 0.5→[0.828,0.181], 1.0→[0.785,0.787,0.732]. max_norm>1.5 causes catastrophic failure (R²<0.13). max_norm=1.0 is MOST STABLE (mean R²=0.768±0.031).
 - **SIREN normalization incompatibility (Block 17)**: LayerNorm, BatchNorm INCOMPATIBLE with SIREN architecture. LayerNorm causes R²=0.022 (catastrophic). SIREN relies on omega-scaled initialization which normalization destroys.
@@ -798,4 +817,5 @@ Examples:
 - Network size: double or half
 - Training steps: ×1.5 or ×2
 - omega_f: ±10 or ×1.5
-- nnr_f_xy_period: ×2 or ÷2 (spatial frequency scaling)
+- nnr_f_xy_period: ×2 or ÷2 (higher = slower spatial variation expected)
+- nnr_f_T_period: ×2 or ÷2 (higher = slower temporal variation expected)

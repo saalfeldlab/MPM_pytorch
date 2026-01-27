@@ -483,6 +483,7 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
     outermost_linear_nnr_f = getattr(model_config, 'outermost_linear_nnr_f', True)
     omega_f = getattr(model_config, 'omega_f', 1024)
     nnr_f_xy_period = getattr(model_config, 'nnr_f_xy_period', 1.0)
+    nnr_f_T_period = getattr(model_config, 'nnr_f_T_period', 1.0)
 
     # get training config parameters
     training_config = config.training
@@ -590,8 +591,8 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
     elif inr_type == 'siren_txy':
         # input: (t, x, y)
         start_idx, end_idx, _ = field_indices['pos']
-        particle_pos = torch.tensor(x_list[:, :, start_idx:end_idx], dtype=torch.float32, device=device)  / nnr_f_xy_period# (n_particles, 2)
-        time_input = torch.arange(0, n_frames, dtype=torch.float32, device=device).unsqueeze(1) / n_frames
+        particle_pos = torch.tensor(x_list[:, :, start_idx:end_idx], dtype=torch.float32, device=device) / nnr_f_xy_period  # (n_particles, 2)
+        time_input = torch.arange(0, n_frames, dtype=torch.float32, device=device).unsqueeze(1) / n_frames / nnr_f_T_period
 
 
     steps_til_summary = total_steps // 10
@@ -651,7 +652,7 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
         elif inr_type == 'siren_txy':
             # sample batch_size time frames, predict all particles for each frame
             sample_ids = np.random.choice(n_frames, batch_size, replace=False)
-            t_norm = torch.tensor(sample_ids / n_frames, dtype=torch.float32, device=device)  # (batch_size,)
+            t_norm = torch.tensor(sample_ids / n_frames / nnr_f_T_period, dtype=torch.float32, device=device)  # (batch_size,)
             # expand to all particles: (batch_size, n_particles, 3)
             t_expanded = t_norm[:, None, None].expand(batch_size, n_particles, 1)
             pos_expanded = particle_pos[sample_ids, :, :]  # (batch_size, n_particles, 2) - use positions at sampled frames

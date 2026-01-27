@@ -154,7 +154,8 @@ class GraphModelConfig(BaseModel):
     omega_f_learning: bool = False  # make omega learnable during training
     use_layer_norm: bool = False  # add layer normalization to SIREN network
 
-    nnr_f_xy_period: float = 1.0
+    nnr_f_xy_period: float = 1.0  # Spatial scaling (higher = expects slower spatial variation)
+    nnr_f_T_period: float = 1.0  # Time scaling (higher = expects slower temporal variation)
 
     # InstantNGP (hash encoding) parameters
     ngp_n_levels: int = 24
