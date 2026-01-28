@@ -6,10 +6,8 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="author" content="Cedric Allier">
-<meta name="dcterms.date" content="2024-12-31">
 
-<title>MPM PyTorch</title>
+<title>LLM-Guided INR Optimization – MPM PyTorch</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -49,6 +47,9 @@ ul.task-list li input[type="checkbox"] {
 <link href="site_libs/bootstrap/bootstrap-ffa9a6279353761231ec249df0a7fdd3.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script src="site_libs/quarto-contrib/videojs/video.min.js"></script>
 <link href="site_libs/quarto-contrib/videojs/video-js.css" rel="stylesheet">
+<script src="site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
+<link href="site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
+<link href="site_libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -77,6 +78,9 @@ ul.task-list li input[type="checkbox"] {
   }
 }</script>
 <style>html{ scroll-behavior: smooth; }</style>
+<script src="site_libs/quarto-diagram/mermaid.min.js"></script>
+<script src="site_libs/quarto-diagram/mermaid-init.js"></script>
+<link href="site_libs/quarto-diagram/mermaid.css" rel="stylesheet">
 
   <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
@@ -290,7 +294,7 @@ window.Quarto = {
           <div class="collapse navbar-collapse" id="navbarCollapse">
             <ul class="navbar-nav navbar-nav-scroll me-auto">
   <li class="nav-item">
-    <a class="nav-link active" href="./index.html" aria-current="page"> 
+    <a class="nav-link" href="./index.html"> 
 <span class="menu-text">Home</span></a>
   </li>  
   <li class="nav-item dropdown ">
@@ -328,7 +332,7 @@ window.Quarto = {
 <span class="menu-text">Implementation</span></a>
   </li>  
   <li class="nav-item">
-    <a class="nav-link" href="./llm-exploration.html"> 
+    <a class="nav-link active" href="./llm-exploration.html" aria-current="page"> 
 <span class="menu-text">LLM Exploration</span></a>
   </li>  
 </ul>
@@ -349,20 +353,26 @@ window.Quarto = {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#introduction" id="toc-introduction" class="nav-link active" data-scroll-target="#introduction">Introduction</a></li>
-  <li><a href="#hybrid-lagrangian-eulerian-approach" id="toc-hybrid-lagrangian-eulerian-approach" class="nav-link" data-scroll-target="#hybrid-lagrangian-eulerian-approach">Hybrid Lagrangian-Eulerian Approach</a></li>
-  <li><a href="#particle-state-variables" id="toc-particle-state-variables" class="nav-link" data-scroll-target="#particle-state-variables">Particle State Variables</a></li>
-  <li><a href="#material-types" id="toc-material-types" class="nav-link" data-scroll-target="#material-types">Material Types</a></li>
-  <li><a href="#key-equations" id="toc-key-equations" class="nav-link" data-scroll-target="#key-equations">Key Equations</a>
+  <li><a href="#overview" id="toc-overview" class="nav-link active" data-scroll-target="#overview">Overview</a></li>
+  <li><a href="#siren-architecture" id="toc-siren-architecture" class="nav-link" data-scroll-target="#siren-architecture">SIREN Architecture</a>
   <ul class="collapse">
-  <li><a href="#deformation-gradient-update" id="toc-deformation-gradient-update" class="nav-link" data-scroll-target="#deformation-gradient-update">Deformation Gradient Update</a></li>
-  <li><a href="#cauchy-stress-neo-hookean" id="toc-cauchy-stress-neo-hookean" class="nav-link" data-scroll-target="#cauchy-stress-neo-hookean">Cauchy Stress (Neo-Hookean)</a></li>
-  <li><a href="#particle-advection" id="toc-particle-advection" class="nav-link" data-scroll-target="#particle-advection">Particle Advection</a></li>
+  <li><a href="#input-output-mapping" id="toc-input-output-mapping" class="nav-link" data-scroll-target="#input-output-mapping">Input-Output Mapping</a></li>
+  <li><a href="#frequency-parameter-omega_f" id="toc-frequency-parameter-omega_f" class="nav-link" data-scroll-target="#frequency-parameter-omega_f">Frequency Parameter (omega_f)</a></li>
+  <li><a href="#period-parameters-for-siren_txy" id="toc-period-parameters-for-siren_txy" class="nav-link" data-scroll-target="#period-parameters-for-siren_txy">Period Parameters (for <code>siren_txy</code>)</a></li>
+  <li><a href="#tunable-parameters" id="toc-tunable-parameters" class="nav-link" data-scroll-target="#tunable-parameters">Tunable Parameters</a></li>
   </ul></li>
-  <li><a href="#d-simulation-gallery" id="toc-d-simulation-gallery" class="nav-link" data-scroll-target="#d-simulation-gallery">2D Simulation Gallery</a></li>
-  <li><a href="#d-simulation-gallery-1" id="toc-d-simulation-gallery-1" class="nav-link" data-scroll-target="#d-simulation-gallery-1">3D Simulation Gallery</a></li>
-  <li><a href="#documentation" id="toc-documentation" class="nav-link" data-scroll-target="#documentation">Documentation</a></li>
-  <li><a href="#references" id="toc-references" class="nav-link" data-scroll-target="#references">References</a></li>
+  <li><a href="#field-specific-results" id="toc-field-specific-results" class="nav-link" data-scroll-target="#field-specific-results">Field-Specific Results</a>
+  <ul class="collapse">
+  <li><a href="#j_p-plastic-deformation-block-1" id="toc-j_p-plastic-deformation-block-1" class="nav-link" data-scroll-target="#j_p-plastic-deformation-block-1"><span class="math inline">\(J_p\)</span> — Plastic Deformation (Block 1)</a></li>
+  <li><a href="#mathbff-deformation-gradient-block-2" id="toc-mathbff-deformation-gradient-block-2" class="nav-link" data-scroll-target="#mathbff-deformation-gradient-block-2"><span class="math inline">\(\mathbf{F}\)</span> — Deformation Gradient (Block 2)</a></li>
+  <li><a href="#mathbfc-affine-velocity-block-3" id="toc-mathbfc-affine-velocity-block-3" class="nav-link" data-scroll-target="#mathbfc-affine-velocity-block-3"><span class="math inline">\(\mathbf{C}\)</span> — Affine Velocity (Block 3)</a></li>
+  <li><a href="#mathbfs-stress-block-4-in-progress" id="toc-mathbfs-stress-block-4-in-progress" class="nav-link" data-scroll-target="#mathbfs-stress-block-4-in-progress"><span class="math inline">\(\mathbf{S}\)</span> — Stress (Block 4, In Progress)</a></li>
+  </ul></li>
+  <li><a href="#key-discoveries" id="toc-key-discoveries" class="nav-link" data-scroll-target="#key-discoveries">Key Discoveries</a>
+  <ul class="collapse">
+  <li><a href="#established-principles" id="toc-established-principles" class="nav-link" data-scroll-target="#established-principles">Established Principles</a></li>
+  </ul></li>
+  <li><a href="#exploration-progress" id="toc-exploration-progress" class="nav-link" data-scroll-target="#exploration-progress">Exploration Progress</a></li>
   </ul>
 </nav>
     </div>
@@ -372,27 +382,15 @@ window.Quarto = {
 
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
-<h1 class="title">MPM PyTorch</h1>
-<p class="subtitle lead">Material Point Method with Differentiable Physics</p>
+<h1 class="title">LLM-Guided INR Optimization</h1>
+<p class="subtitle lead">SIREN network parameter tuning for MPM field representation</p>
 </div>
 
 
 
 <div class="quarto-title-meta">
 
-    <div>
-    <div class="quarto-title-meta-heading">Author</div>
-    <div class="quarto-title-meta-contents">
-             <p>Cedric Allier </p>
-          </div>
-  </div>
     
-    <div>
-    <div class="quarto-title-meta-heading">Published</div>
-    <div class="quarto-title-meta-contents">
-      <p class="date">December 31, 2024</p>
-    </div>
-  </div>
   
     
   </div>
@@ -402,258 +400,475 @@ window.Quarto = {
 </header>
 
 
-<section id="introduction" class="level2">
-<h2 class="anchored" data-anchor-id="introduction">Introduction</h2>
-<p>MPM-Pytorch is a differentiable implementation based on <a href="https://github.com/yuanming-hu/taichi_mpm">taichi_mpm</a> by Yuanming Hu. It provides a fully differentiable MPM solver, enabling:</p>
-<p>The <strong>Material Point Method (MPM)</strong> is a numerical technique for simulating materials that undergo large deformations, fracture, and complex material interactions. It combines the strengths of both Lagrangian (particle-based) and Eulerian (grid-based) approaches.</p>
+<section id="overview" class="level2">
+<h2 class="anchored" data-anchor-id="overview">Overview</h2>
+<p>This page documents an ongoing <strong>LLM-in-the-loop exploration</strong> to optimize SIREN (Sinusoidal Representation Network) parameters for representing MPM particle fields over time. The exploration uses UCB tree search to systematically tune hyperparameters for each field type.</p>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+<span class="screen-reader-only">Note</span>Goal
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Find optimal SIREN configurations to accurately represent time-varying particle fields (<span class="math inline">\(J_p\)</span>, <span class="math inline">\(\mathbf{F}\)</span>, <span class="math inline">\(\mathbf{C}\)</span>, <span class="math inline">\(\mathbf{S}\)</span>) for 9000 particles over 100 frames.</p>
+</div>
+</div>
 </section>
-<section id="hybrid-lagrangian-eulerian-approach" class="level2">
-<h2 class="anchored" data-anchor-id="hybrid-lagrangian-eulerian-approach">Hybrid Lagrangian-Eulerian Approach</h2>
-<p>MPM uses a hybrid approach where:</p>
-<ol type="1">
-<li><strong>Particles</strong> carry material state (mass, velocity, deformation history)</li>
-<li><strong>Grid</strong> handles momentum transfer and boundary conditions</li>
-</ol>
+<section id="siren-architecture" class="level2">
+<h2 class="anchored" data-anchor-id="siren-architecture">SIREN Architecture</h2>
+<p>SIREN (Sinusoidal Representation Network) uses sine activations instead of ReLU, enabling smooth derivatives for representing continuous fields:</p>
+<p><span class="math display">\[\phi(x) = \sin(\omega_0 \cdot Wx + b)\]</span></p>
+<section id="input-output-mapping" class="level3">
+<h3 class="anchored" data-anchor-id="input-output-mapping">Input-Output Mapping</h3>
+<p>The INR maps normalized time and particle index to field values:</p>
+<p><span class="math display">\[
+\text{SIREN}: (t/T, \, \text{id}/N) \rightarrow \text{field}_{\text{id}}(t)
+\]</span></p>
+<p>where <span class="math inline">\(T\)</span> = number of frames and <span class="math inline">\(N\)</span> = number of particles. Both inputs are normalized to [0, 1].</p>
+<p>Three input variants are supported:</p>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 23%">
 <col style="width: 26%">
-<col style="width: 50%">
+<col style="width: 20%">
+<col style="width: 23%">
+<col style="width: 29%">
 </colgroup>
 <thead>
 <tr class="header">
-<th style="text-align: center;">Step</th>
-<th>Phase</th>
-<th>Description</th>
+<th>Variant</th>
+<th>Input</th>
+<th>Output</th>
+<th>Use Case</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td style="text-align: center;">1</td>
-<td><strong>Update F</strong></td>
-<td>Deformation gradient update: <span class="math inline">\(\mathbf{F} \leftarrow (\mathbf{I} + \Delta t \mathbf{C}) \mathbf{F}\)</span></td>
+<td><code>siren_id</code></td>
+<td><span class="math inline">\((t, \text{id})\)</span></td>
+<td>Field value for one particle</td>
+<td>✅ <strong>Used for all results below</strong></td>
 </tr>
 <tr class="even">
-<td style="text-align: center;">2</td>
-<td><strong>Compute Stress</strong></td>
-<td>Cauchy stress from constitutive model</td>
+<td><code>siren_t</code></td>
+<td><span class="math inline">\(t\)</span> only</td>
+<td>All particles at once</td>
+<td>Faster but less flexible</td>
 </tr>
 <tr class="odd">
-<td style="text-align: center;">3</td>
-<td><strong>P2G Transfer</strong></td>
-<td>Scatter mass &amp; momentum to grid</td>
-</tr>
-<tr class="even">
-<td style="text-align: center;">4</td>
-<td><strong>Grid Operations</strong></td>
-<td>Apply gravity, boundary conditions</td>
-</tr>
-<tr class="odd">
-<td style="text-align: center;">5</td>
-<td><strong>G2P Transfer</strong></td>
-<td>Gather velocities back to particles</td>
-</tr>
-<tr class="even">
-<td style="text-align: center;">6</td>
-<td><strong>Advect</strong></td>
-<td>Update particle positions: <span class="math inline">\(\mathbf{x} \leftarrow \mathbf{x} + \Delta t \mathbf{v}\)</span></td>
+<td><code>siren_txy</code></td>
+<td><span class="math inline">\((t, x, y)\)</span></td>
+<td>Lagrangian positions</td>
+<td>Position-aware encoding</td>
 </tr>
 </tbody>
 </table>
-<p>The cycle repeats for each timestep.</p>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Note
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>All results on this page use <code>inr_type: siren_id</code> — the network learns a mapping from (time, particle_index) to field values, treating each particle as a separate entity identified by its index.</p>
+</div>
+</div>
 </section>
-<section id="particle-state-variables" class="level2">
-<h2 class="anchored" data-anchor-id="particle-state-variables">Particle State Variables</h2>
-<p>Each particle <span class="math inline">\(i\)</span> carries the following quantities:</p>
+<section id="frequency-parameter-omega_f" class="level3">
+<h3 class="anchored" data-anchor-id="frequency-parameter-omega_f">Frequency Parameter (omega_f)</h3>
+<p>The <code>omega_f</code> parameter controls the network’s frequency capacity — higher values capture finer spatial/temporal detail but risk training instability:</p>
 <table class="caption-top table">
-<colgroup>
-<col style="width: 19%">
-<col style="width: 23%">
-<col style="width: 26%">
-<col style="width: 30%">
-</colgroup>
 <thead>
 <tr class="header">
-<th>Symbol</th>
-<th>Variable</th>
-<th>Dimension</th>
-<th>Description</th>
+<th>omega_f</th>
+<th>Behavior</th>
+<th>Recommended For</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><span class="math inline">\(\mathbf{x}_i\)</span></td>
-<td>Position</td>
-<td><span class="math inline">\(d\)</span></td>
-<td>Spatial location (2D or 3D)</td>
+<td>1–10</td>
+<td>Smooth, low-frequency</td>
+<td>Simple fields (Jp)</td>
 </tr>
 <tr class="even">
-<td><span class="math inline">\(\mathbf{v}_i\)</span></td>
-<td>Velocity</td>
-<td><span class="math inline">\(d\)</span></td>
-<td>Material velocity</td>
+<td>10–30</td>
+<td>Medium detail</td>
+<td>Most fields (F, C)</td>
 </tr>
 <tr class="odd">
-<td><span class="math inline">\(\mathbf{C}_i\)</span></td>
-<td>Affine velocity</td>
-<td><span class="math inline">\(d \times d\)</span></td>
-<td>Local velocity gradient (APIC)</td>
-</tr>
-<tr class="even">
-<td><span class="math inline">\(\mathbf{F}_i\)</span></td>
-<td>Deformation gradient</td>
-<td><span class="math inline">\(d \times d\)</span></td>
-<td>Tracks total deformation</td>
-</tr>
-<tr class="odd">
-<td><span class="math inline">\(J_i\)</span></td>
-<td>Plastic deformation</td>
-<td><span class="math inline">\(1\)</span></td>
-<td>Accumulated plastic volume change</td>
-</tr>
-<tr class="even">
-<td><span class="math inline">\(m_i\)</span></td>
-<td>Mass</td>
-<td><span class="math inline">\(1\)</span></td>
-<td>Particle mass</td>
-</tr>
-<tr class="odd">
-<td><span class="math inline">\(T_i\)</span></td>
-<td>Material type</td>
-<td><span class="math inline">\(1\)</span></td>
-<td>0=liquid, 1=jelly, 2=snow</td>
+<td>30–100</td>
+<td>High-frequency detail</td>
+<td>Complex fields (S), unstable</td>
 </tr>
 </tbody>
 </table>
+<p><strong>Key finding</strong>: <code>omega_f</code> is <strong>field-specific</strong> and <strong>frame-dependent</strong>. More particles → lower optimal <code>omega_f</code>.</p>
 </section>
-<section id="material-types" class="level2">
-<h2 class="anchored" data-anchor-id="material-types">Material Types</h2>
-<p>MPM PyTorch supports three material types with distinct behaviors:</p>
+<section id="period-parameters-for-siren_txy" class="level3">
+<h3 class="anchored" data-anchor-id="period-parameters-for-siren_txy">Period Parameters (for <code>siren_txy</code>)</h3>
+<p>When using position-based input <code>(t, x, y)</code>, two scaling parameters control how the network interprets coordinates:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 39%">
+<col style="width: 32%">
+<col style="width: 28%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Parameter</th>
+<th>Formula</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>nnr_f_T_period</code></td>
+<td><span class="math inline">\(t_{\text{norm}} = t / T / \text{period}\)</span></td>
+<td>Higher → expects slower temporal variation</td>
+</tr>
+<tr class="even">
+<td><code>nnr_f_xy_period</code></td>
+<td><span class="math inline">\((x,y)_{\text{norm}} = (x,y) / \text{period}\)</span></td>
+<td>Higher → expects slower spatial variation</td>
+</tr>
+</tbody>
+</table>
+<p><em>Intuition</em>: Period=10 means the network treats the full range as 1/10th of its natural period.</p>
+</section>
+<section id="tunable-parameters" class="level3">
+<h3 class="anchored" data-anchor-id="tunable-parameters">Tunable Parameters</h3>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Parameter</th>
+<th>Description</th>
+<th>Search Range</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>n_training_frames</code></td>
+<td>Frames encoded in SIREN</td>
+<td>100</td>
+</tr>
+<tr class="even">
+<td><code>hidden_dim</code></td>
+<td>Width of hidden layers</td>
+<td>256–1280</td>
+</tr>
+<tr class="odd">
+<td><code>n_layers</code></td>
+<td>Number of hidden layers</td>
+<td>2–5</td>
+</tr>
+<tr class="even">
+<td><code>omega_f</code></td>
+<td>SIREN frequency multiplier</td>
+<td>5–50</td>
+</tr>
+<tr class="odd">
+<td><code>lr_NNR_f</code></td>
+<td>Learning rate</td>
+<td>1E-5–1E-4</td>
+</tr>
+<tr class="even">
+<td><code>total_steps</code></td>
+<td>Training iterations</td>
+<td>100k–200k</td>
+</tr>
+</tbody>
+</table>
+<hr>
+</section>
+</section>
+<section id="field-specific-results" class="level2">
+<h2 class="anchored" data-anchor-id="field-specific-results">Field-Specific Results</h2>
+<section id="j_p-plastic-deformation-block-1" class="level3">
+<h3 class="anchored" data-anchor-id="j_p-plastic-deformation-block-1"><span class="math inline">\(J_p\)</span> — Plastic Deformation (Block 1)</h3>
+<p><code>n_training_frames: 100</code> | <code>n_particles: 9000</code></p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+<span class="screen-reader-only">Tip</span>Best Configuration
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><strong>R² = 0.996</strong> with <code>512×3 @ omega=5-10, lr=4E-5, 200k steps</code> (15.4 min)</p>
+<p>Speed Pareto: <code>384×3 @ omega=10</code> achieves R²=0.995 in 12.2 min</p>
+</div>
+</div>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Finding</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Optimal omega_f</td>
+<td>5–10 (LOWER than prior=15)</td>
+</tr>
+<tr class="even">
+<td>Optimal depth</td>
+<td>3 layers (ceiling)</td>
+</tr>
+<tr class="odd">
+<td>Optimal lr</td>
+<td>4E-5</td>
+</tr>
+</tbody>
+</table>
 <div class="tabset-margin-container"></div><div class="panel-tabset">
-<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-1-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-1-1" role="tab" aria-controls="tabset-1-1" aria-selected="true" href="">Liquid</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-1-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-1-2" role="tab" aria-controls="tabset-1-2" aria-selected="false" href="">Jelly (Elastic Solid)</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-1-3-tab" data-bs-toggle="tab" data-bs-target="#tabset-1-3" role="tab" aria-controls="tabset-1-3" aria-selected="false" href="">Snow</a></li></ul>
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-1-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-1-1" role="tab" aria-controls="tabset-1-1" aria-selected="true" href="">Video</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-1-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-1-2" role="tab" aria-controls="tabset-1-2" aria-selected="false" href="">Final Field</a></li></ul>
 <div class="tab-content">
 <div id="tabset-1-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-1-1-tab">
-<ul>
-<li>No shear resistance (<span class="math inline">\(\mu = 0\)</span>)</li>
-<li>Isotropic deformation: <span class="math inline">\(\mathbf{F} = \sqrt{J} \, \mathbf{I}\)</span></li>
-<li>Optional surface tension</li>
-</ul>
+<div class="quarto-video"><video id="video_shortcode_videojs_video1" class="video-js vjs-default-skin vjs-fluid" controls="" preload="auto" data-setup="{}" title=""><source src="log/Claude_exploration/instruction_multimaterial_1_discs_3types/videos/iter_012_multimaterial_1_discs_3types_Claude.mp4"></video></div>
 </div>
 <div id="tabset-1-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-1-2-tab">
-<ul>
-<li>Fixed stiffness (<span class="math inline">\(h = 0.3\)</span>)</li>
-<li>Full elastic response</li>
-<li>Preserves shape memory</li>
-</ul>
-</div>
-<div id="tabset-1-3" class="tab-pane" role="tabpanel" aria-labelledby="tabset-1-3-tab">
-<ul>
-<li>Plastic deformation with clamped singular values</li>
-<li>Hardening/softening based on <span class="math inline">\(J_p\)</span></li>
-<li>Captures compression and fracture</li>
-</ul>
+<p><a href="log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_Jp_20260127_164039.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1"><img src="log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_Jp_20260127_164039.png" class="img-fluid"></a></p>
 </div>
 </div>
 </div>
+<hr>
 </section>
-<section id="key-equations" class="level2">
-<h2 class="anchored" data-anchor-id="key-equations">Key Equations</h2>
-<section id="deformation-gradient-update" class="level3">
-<h3 class="anchored" data-anchor-id="deformation-gradient-update">Deformation Gradient Update</h3>
-<p><span class="math display">\[
-\mathbf{F}_i^{n+1} = (\mathbf{I} + \Delta t \, \mathbf{C}_i^n) \mathbf{F}_i^n
-\]</span></p>
-</section>
-<section id="cauchy-stress-neo-hookean" class="level3">
-<h3 class="anchored" data-anchor-id="cauchy-stress-neo-hookean">Cauchy Stress (Neo-Hookean)</h3>
-<p><span class="math display">\[
-\boldsymbol{\sigma} = 2\mu (\mathbf{F} - \mathbf{R}) \mathbf{F}^T + \lambda J (J-1) \mathbf{I}
-\]</span></p>
-<p>where <span class="math inline">\(\mathbf{R} = \mathbf{U}\mathbf{V}^T\)</span> is the rotation from SVD of <span class="math inline">\(\mathbf{F}\)</span>.</p>
-</section>
-<section id="particle-advection" class="level3">
-<h3 class="anchored" data-anchor-id="particle-advection">Particle Advection</h3>
-<p><span class="math display">\[
-\mathbf{x}_i^{n+1} = \mathbf{x}_i^n + \Delta t \, \mathbf{v}_i^{n+1}
-\]</span></p>
-</section>
-</section>
-<section id="d-simulation-gallery" class="level2">
-<h2 class="anchored" data-anchor-id="d-simulation-gallery">2D Simulation Gallery</h2>
-<div class="tabset-margin-container"></div><div class="panel-tabset">
-<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-2-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-2-1" role="tab" aria-controls="tabset-2-1" aria-selected="true" href="">Multi-Material (3 types)</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-2-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-2-2" role="tab" aria-controls="tabset-2-2" aria-selected="false" href="">Collision</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-2-3-tab" data-bs-toggle="tab" data-bs-target="#tabset-2-3" role="tab" aria-controls="tabset-2-3" aria-selected="false" href="">Pincer</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-2-4-tab" data-bs-toggle="tab" data-bs-target="#tabset-2-4" role="tab" aria-controls="tabset-2-4" aria-selected="false" href="">Cells</a></li></ul>
-<div class="tab-content">
-<div id="tabset-2-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-2-1-tab">
-<p>9 discs of different materials (liquid, jelly, snow) falling under gravity.</p>
-<div class="quarto-video"><video id="video_shortcode_videojs_video1" class="video-js vjs-default-skin vjs-fluid" controls="" preload="auto" data-setup="{}" title=""><source src="graphs_data/multimaterial/multimaterial_1_discs_3types/input_fig.mp4"></video></div>
+<section id="mathbff-deformation-gradient-block-2" class="level3">
+<h3 class="anchored" data-anchor-id="mathbff-deformation-gradient-block-2"><span class="math inline">\(\mathbf{F}\)</span> — Deformation Gradient (Block 2)</h3>
+<p><code>n_training_frames: 100</code> | <code>n_particles: 9000</code></p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
 </div>
-<div id="tabset-2-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-2-2-tab">
-<p>Two discs of different materials colliding.</p>
-<div class="quarto-video"><video id="video_shortcode_videojs_video2" class="video-js vjs-default-skin vjs-fluid" controls="" preload="auto" data-setup="{}" title=""><source src="graphs_data/multimaterial/multimaterial_1_scenario_collision/input_multimaterial_1_scenario_collision.mp4"></video></div>
-</div>
-<div id="tabset-2-3" class="tab-pane" role="tabpanel" aria-labelledby="tabset-2-3-tab">
-<p>Liquid and jelly discs squeezing a center jelly disc.</p>
-<div class="quarto-video"><video id="video_shortcode_videojs_video3" class="video-js vjs-default-skin vjs-fluid" controls="" preload="auto" data-setup="{}" title=""><source src="graphs_data/multimaterial/multimaterial_1_scenario_pincer/input_multimaterial_1_scenario_pincer.mp4"></video></div>
-</div>
-<div id="tabset-2-4" class="tab-pane" role="tabpanel" aria-labelledby="tabset-2-4-tab">
-<p>Soft cell-like bodies with expansion, simulating biological tissue.</p>
-<div class="quarto-video"><video id="video_shortcode_videojs_video4" class="video-js vjs-default-skin vjs-fluid" controls="" preload="auto" data-setup="{}" title=""><source src="graphs_data/cell/cells_1/input_cells_1.mp4"></video></div>
+<div class="callout-title-container flex-fill">
+<span class="screen-reader-only">Tip</span>Best Configuration
 </div>
 </div>
-</div>
-</section>
-<section id="d-simulation-gallery-1" class="level2">
-<h2 class="anchored" data-anchor-id="d-simulation-gallery-1">3D Simulation Gallery</h2>
-<div class="tabset-margin-container"></div><div class="panel-tabset">
-<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-3-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-3-1" role="tab" aria-controls="tabset-3-1" aria-selected="true" href="">Falling Cubes</a></li></ul>
-<div class="tab-content">
-<div id="tabset-3-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-3-1-tab">
-<p>27 cubes of particles falling in a 3D box (35,937 particles on 128x128x128 grid).</p>
-<div class="quarto-video"><video id="video_shortcode_videojs_video5" class="video-js vjs-default-skin vjs-fluid" controls="" preload="auto" data-setup="{}" title=""><source src="graphs_data/multimaterial/multimaterial_1_3D/input_no_id.mp4"></video></div>
+<div class="callout-body-container callout-body">
+<p><strong>R² = 0.998</strong> with <code>256×4 @ omega=12, lr=4E-5 to 6E-5, 150k steps</code> (8.1 min)</p>
 </div>
 </div>
-</div>
-</section>
-<section id="documentation" class="level2">
-<h2 class="anchored" data-anchor-id="documentation">Documentation</h2>
 <table class="caption-top table">
 <thead>
 <tr class="header">
-<th>Page</th>
-<th>Content</th>
+<th>Finding</th>
+<th>Value</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><a href="./mpm-algorithm.html">MPM Algorithm</a></td>
-<td>Complete algorithm overview</td>
+<td>Optimal omega_f</td>
+<td>12 (SHARP optimum, ±1 degrades)</td>
 </tr>
 <tr class="even">
-<td><a href="./p2g-g2p.html">P2G &amp; G2P Transfers</a></td>
-<td>Particle-grid interpolation</td>
+<td>Optimal depth</td>
+<td>4 layers (different from Jp)</td>
 </tr>
 <tr class="odd">
-<td><a href="./materials.html">Material Types</a></td>
-<td>Liquid, jelly, snow behaviors</td>
+<td>Optimal lr</td>
+<td>Wide tolerance [4E-5, 6E-5]</td>
 </tr>
 <tr class="even">
-<td><a href="./constitutive.html">Constitutive Models</a></td>
-<td>Stress computation</td>
-</tr>
-<tr class="odd">
-<td><a href="./implementation.html">Implementation</a></td>
-<td>Code walkthrough</td>
+<td>Capacity ceiling</td>
+<td>256 (384 hurts performance)</td>
 </tr>
 </tbody>
 </table>
+<div class="tabset-margin-container"></div><div class="panel-tabset">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-2-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-2-1" role="tab" aria-controls="tabset-2-1" aria-selected="true" href="">Video</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-2-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-2-2" role="tab" aria-controls="tabset-2-2" aria-selected="false" href="">Final Field</a></li></ul>
+<div class="tab-content">
+<div id="tabset-2-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-2-1-tab">
+<div class="quarto-video"><video id="video_shortcode_videojs_video2" class="video-js vjs-default-skin vjs-fluid" controls="" preload="auto" data-setup="{}" title=""><source src="log/Claude_exploration/instruction_multimaterial_1_discs_3types/videos/iter_024_multimaterial_1_discs_3types_Claude.mp4"></video></div>
+</div>
+<div id="tabset-2-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-2-2-tab">
+<p><a href="log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_F_20260127_192429.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2"><img src="log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_F_20260127_192429.png" class="img-fluid"></a></p>
+</div>
+</div>
+</div>
+<hr>
 </section>
-<section id="references" class="level2">
-<h2 class="anchored" data-anchor-id="references">References</h2>
-<ul>
-<li>Stomakhin et al.&nbsp;(2013). “A material point method for snow simulation”</li>
-<li>Hu et al.&nbsp;(2018). “A moving least squares material point method with displacement discontinuity and two-way rigid body coupling”</li>
-<li>Jiang et al.&nbsp;(2015). “The affine particle-in-cell method”</li>
-</ul>
+<section id="mathbfc-affine-velocity-block-3" class="level3">
+<h3 class="anchored" data-anchor-id="mathbfc-affine-velocity-block-3"><span class="math inline">\(\mathbf{C}\)</span> — Affine Velocity (Block 3)</h3>
+<p><code>n_training_frames: 100</code> | <code>n_particles: 9000</code></p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+<span class="screen-reader-only">Tip</span>Best Configuration
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><strong>R² = 0.994</strong> with <code>640×3 @ omega=25, lr=2E-5, 150k steps</code> (15.7 min)</p>
+</div>
+</div>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Finding</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Optimal omega_f</td>
+<td>25 (unchanged from prior, NO lower shift)</td>
+</tr>
+<tr class="even">
+<td>Optimal depth</td>
+<td>3 layers (same as Jp)</td>
+</tr>
+<tr class="odd">
+<td>Optimal lr</td>
+<td>2E-5 (LOWER than Jp/F)</td>
+</tr>
+<tr class="even">
+<td>Capacity ceiling</td>
+<td>640 (between F@256 and S@1280)</td>
+</tr>
+</tbody>
+</table>
+<div class="tabset-margin-container"></div><div class="panel-tabset">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-3-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-3-1" role="tab" aria-controls="tabset-3-1" aria-selected="true" href="">Video</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-3-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-3-2" role="tab" aria-controls="tabset-3-2" aria-selected="false" href="">Final Field</a></li></ul>
+<div class="tab-content">
+<div id="tabset-3-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-3-1-tab">
+<div class="quarto-video"><video id="video_shortcode_videojs_video3" class="video-js vjs-default-skin vjs-fluid" controls="" preload="auto" data-setup="{}" title=""><source src="log/Claude_exploration/instruction_multimaterial_1_discs_3types/videos/iter_036_multimaterial_1_discs_3types_Claude.mp4"></video></div>
+</div>
+<div id="tabset-3-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-3-2-tab">
+<p><a href="log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_C_20260128_095041.png" class="lightbox" data-gallery="quarto-lightbox-gallery-3"><img src="log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_C_20260128_095041.png" class="img-fluid"></a></p>
+</div>
+</div>
+</div>
+<hr>
+</section>
+<section id="mathbfs-stress-block-4-in-progress" class="level3">
+<h3 class="anchored" data-anchor-id="mathbfs-stress-block-4-in-progress"><span class="math inline">\(\mathbf{S}\)</span> — Stress (Block 4, In Progress)</h3>
+<p><code>n_training_frames: 100</code> | <code>n_particles: 9000</code></p>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+<span class="screen-reader-only">Warning</span>Currently Exploring
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Block 4 is testing S field with prior optimal: <code>1280×4 @ omega=50, lr=2E-5</code></p>
+<p>Open questions: - Does S@9000p need lower omega_f like Jp/F? - Does S@9000p require same extreme capacity (1280)? - Does S@9000p show same stochastic variance?</p>
+</div>
+</div>
+<hr>
+</section>
+</section>
+<section id="key-discoveries" class="level2">
+<h2 class="anchored" data-anchor-id="key-discoveries">Key Discoveries</h2>
+<div class="cell" data-layout-align="default">
+<div class="cell-output-display">
+<div>
+<p></p><figure class="figure"><p></p>
+<div>
+<pre class="mermaid mermaid-js">flowchart TD
+    A[Field Type] --&gt; B[Jp]
+    A --&gt; C[F]
+    A --&gt; D[C]
+    A --&gt; E[S]
+
+    B --&gt; B1[omega=5-10]
+    B --&gt; B2[512×3]
+    B --&gt; B3[R²=0.996]
+
+    C --&gt; C1[omega=12]
+    C --&gt; C2[256×4]
+    C --&gt; C3[R²=0.998]
+
+    D --&gt; D1[omega=25]
+    D --&gt; D2[640×3]
+    D --&gt; D3[R²=0.994]
+
+    E --&gt; E1[omega=50?]
+    E --&gt; E2[1280×4?]
+    E --&gt; E3[In progress]
+
+    style B fill:#c8e6c9
+    style C fill:#c8e6c9
+    style D fill:#c8e6c9
+    style E fill:#fff9c4
+</pre>
+</div>
+<p></p></figure><p></p>
+</div>
+</div>
+</div>
+<section id="established-principles" class="level3">
+<h3 class="anchored" data-anchor-id="established-principles">Established Principles</h3>
+<ol type="1">
+<li><strong>Field-specific architectures required</strong>: Jp, F, C need DIFFERENT optimal configs on same dataset</li>
+<li><strong>omega_f scales with field complexity</strong>: Jp(5-10) &lt; F(12) &lt; C(25) &lt; S(50?)</li>
+<li><strong>Capacity requirements vary</strong>: F(256) &lt; Jp(512) &lt; C(640) &lt; S(1280?)</li>
+<li><strong>Learning rate sensitivity differs</strong>: F has wide tolerance, C needs slower learning</li>
+</ol>
+<hr>
+</section>
+</section>
+<section id="exploration-progress" class="level2">
+<h2 class="anchored" data-anchor-id="exploration-progress">Exploration Progress</h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Block</th>
+<th>Field</th>
+<th>n_training_frames</th>
+<th>Iterations</th>
+<th>Status</th>
+<th>Best R²</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td>Jp</td>
+<td>100</td>
+<td>1–12</td>
+<td>Complete</td>
+<td>0.996</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td>F</td>
+<td>100</td>
+<td>13–24</td>
+<td>Complete</td>
+<td>0.998</td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td>C</td>
+<td>100</td>
+<td>25–36</td>
+<td>Complete</td>
+<td>0.994</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td>S</td>
+<td>100</td>
+<td>37–48</td>
+<td>In progress</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
 
 
 </section>
@@ -1089,8 +1304,38 @@ window.Quarto = {
 <script>videojs(video_shortcode_videojs_video1);</script>
 <script>videojs(video_shortcode_videojs_video2);</script>
 <script>videojs(video_shortcode_videojs_video3);</script>
-<script>videojs(video_shortcode_videojs_video4);</script>
-<script>videojs(video_shortcode_videojs_video5);</script>
+<script>var lightboxQuarto = GLightbox({"closeEffect":"zoom","descPosition":"bottom","loop":false,"openEffect":"zoom","selector":".lightbox"});
+(function() {
+  let previousOnload = window.onload;
+  window.onload = () => {
+    if (previousOnload) {
+      previousOnload();
+    }
+    lightboxQuarto.on('slide_before_load', (data) => {
+      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
+      const href = trigger.getAttribute('href');
+      if (href !== null) {
+        const imgEl = window.document.querySelector(`a[href="${href}"] img`);
+        if (imgEl !== null) {
+          const srcAttr = imgEl.getAttribute("src");
+          if (srcAttr && srcAttr.startsWith("data:")) {
+            slideConfig.href = srcAttr;
+          }
+        }
+      } 
+    });
+  
+    lightboxQuarto.on('slide_after_load', (data) => {
+      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(slideNode);
+      }
+    });
+  
+  };
+  
+})();
+          </script>
 
 
 

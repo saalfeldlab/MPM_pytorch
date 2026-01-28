@@ -1,0 +1,229 @@
+---
+title: "LLM-Guided INR Optimization"
+subtitle: "SIREN network parameter tuning for MPM field representation"
+---
+
+## Overview
+
+This page documents an ongoing **LLM-in-the-loop exploration** to optimize SIREN (Sinusoidal Representation Network) parameters for representing MPM particle fields over time. The exploration uses UCB tree search to systematically tune hyperparameters for each field type.
+
+::: {.callout-note}
+## Goal
+Find optimal SIREN configurations to accurately represent time-varying particle fields ($J_p$, $\mathbf{F}$, $\mathbf{C}$, $\mathbf{S}$) for 9000 particles over 100 frames.
+:::
+
+## SIREN Architecture
+
+SIREN (Sinusoidal Representation Network) uses sine activations instead of ReLU, enabling smooth derivatives for representing continuous fields:
+
+$$\phi(x) = \sin(\omega_0 \cdot Wx + b)$$
+
+### Input-Output Mapping
+
+The INR maps normalized time and particle index to field values:
+
+$$
+\text{SIREN}: (t/T, \, \text{id}/N) \rightarrow \text{field}_{\text{id}}(t)
+$$
+
+where $T$ = number of frames and $N$ = number of particles. Both inputs are normalized to [0, 1].
+
+Three input variants are supported:
+
+| Variant | Input | Output | Use Case |
+|---------|-------|--------|----------|
+| `siren_id` | $(t, \text{id})$ | Field value for one particle | ✅ **Used for all results below** |
+| `siren_t` | $t$ only | All particles at once | Faster but less flexible |
+| `siren_txy` | $(t, x, y)$ | Lagrangian positions | Position-aware encoding |
+
+::: {.callout-note}
+All results on this page use `inr_type: siren_id` — the network learns a mapping from (time, particle_index) to field values, treating each particle as a separate entity identified by its index.
+:::
+
+### Frequency Parameter (omega_f)
+
+The `omega_f` parameter controls the network's frequency capacity — higher values capture finer spatial/temporal detail but risk training instability:
+
+| omega_f | Behavior | Recommended For |
+|---------|----------|-----------------|
+| 1–10 | Smooth, low-frequency | Simple fields (Jp) |
+| 10–30 | Medium detail | Most fields (F, C) |
+| 30–100 | High-frequency detail | Complex fields (S), unstable |
+
+**Key finding**: `omega_f` is **field-specific** and **frame-dependent**. More particles → lower optimal `omega_f`.
+
+### Period Parameters (for `siren_txy`)
+
+When using position-based input `(t, x, y)`, two scaling parameters control how the network interprets coordinates:
+
+| Parameter | Formula | Effect |
+|-----------|---------|--------|
+| `nnr_f_T_period` | $t_{\text{norm}} = t / T / \text{period}$ | Higher → expects slower temporal variation |
+| `nnr_f_xy_period` | $(x,y)_{\text{norm}} = (x,y) / \text{period}$ | Higher → expects slower spatial variation |
+
+*Intuition*: Period=10 means the network treats the full range as 1/10th of its natural period.
+
+### Tunable Parameters
+
+| Parameter | Description | Search Range |
+|-----------|-------------|--------------|
+| `n_training_frames` | Frames encoded in SIREN | 100 |
+| `hidden_dim` | Width of hidden layers | 256–1280 |
+| `n_layers` | Number of hidden layers | 2–5 |
+| `omega_f` | SIREN frequency multiplier | 5–50 |
+| `lr_NNR_f` | Learning rate | 1E-5–1E-4 |
+| `total_steps` | Training iterations | 100k–200k |
+
+---
+
+## Field-Specific Results
+
+### $J_p$ — Plastic Deformation (Block 1)
+
+`n_training_frames: 100` | `n_particles: 9000`
+
+::: {.callout-tip}
+## Best Configuration
+**R² = 0.996** with `512×3 @ omega=5-10, lr=4E-5, 200k steps` (15.4 min)
+
+Speed Pareto: `384×3 @ omega=10` achieves R²=0.995 in 12.2 min
+:::
+
+| Finding | Value |
+|---------|-------|
+| Optimal omega_f | 5–10 (LOWER than prior=15) |
+| Optimal depth | 3 layers (ceiling) |
+| Optimal lr | 4E-5 |
+
+::: {.panel-tabset}
+
+#### Video
+{{< video log/Claude_exploration/instruction_multimaterial_1_discs_3types/videos/iter_012_multimaterial_1_discs_3types_Claude.mp4 >}}
+
+#### Final Field
+![](log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_Jp_20260127_164039.png){.lightbox}
+
+:::
+
+---
+
+### $\mathbf{F}$ — Deformation Gradient (Block 2)
+
+`n_training_frames: 100` | `n_particles: 9000`
+
+::: {.callout-tip}
+## Best Configuration
+**R² = 0.998** with `256×4 @ omega=12, lr=4E-5 to 6E-5, 150k steps` (8.1 min)
+:::
+
+| Finding | Value |
+|---------|-------|
+| Optimal omega_f | 12 (SHARP optimum, ±1 degrades) |
+| Optimal depth | 4 layers (different from Jp) |
+| Optimal lr | Wide tolerance [4E-5, 6E-5] |
+| Capacity ceiling | 256 (384 hurts performance) |
+
+::: {.panel-tabset}
+
+#### Video
+{{< video log/Claude_exploration/instruction_multimaterial_1_discs_3types/videos/iter_024_multimaterial_1_discs_3types_Claude.mp4 >}}
+
+#### Final Field
+![](log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_F_20260127_192429.png){.lightbox}
+
+:::
+
+---
+
+### $\mathbf{C}$ — Affine Velocity (Block 3)
+
+`n_training_frames: 100` | `n_particles: 9000`
+
+::: {.callout-tip}
+## Best Configuration
+**R² = 0.994** with `640×3 @ omega=25, lr=2E-5, 150k steps` (15.7 min)
+:::
+
+| Finding | Value |
+|---------|-------|
+| Optimal omega_f | 25 (unchanged from prior, NO lower shift) |
+| Optimal depth | 3 layers (same as Jp) |
+| Optimal lr | 2E-5 (LOWER than Jp/F) |
+| Capacity ceiling | 640 (between F@256 and S@1280) |
+
+::: {.panel-tabset}
+
+#### Video
+{{< video log/Claude_exploration/instruction_multimaterial_1_discs_3types/videos/iter_036_multimaterial_1_discs_3types_Claude.mp4 >}}
+
+#### Final Field
+![](log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_C_20260128_095041.png){.lightbox}
+
+:::
+
+---
+
+### $\mathbf{S}$ — Stress (Block 4, In Progress)
+
+`n_training_frames: 100` | `n_particles: 9000`
+
+::: {.callout-warning}
+## Currently Exploring
+Block 4 is testing S field with prior optimal: `1280×4 @ omega=50, lr=2E-5`
+
+Open questions:
+- Does S@9000p need lower omega_f like Jp/F?
+- Does S@9000p require same extreme capacity (1280)?
+- Does S@9000p show same stochastic variance?
+:::
+
+---
+
+## Key Discoveries
+
+```{mermaid}
+flowchart TD
+    A[Field Type] --> B[Jp]
+    A --> C[F]
+    A --> D[C]
+    A --> E[S]
+
+    B --> B1[omega=5-10]
+    B --> B2[512×3]
+    B --> B3[R²=0.996]
+
+    C --> C1[omega=12]
+    C --> C2[256×4]
+    C --> C3[R²=0.998]
+
+    D --> D1[omega=25]
+    D --> D2[640×3]
+    D --> D3[R²=0.994]
+
+    E --> E1[omega=50?]
+    E --> E2[1280×4?]
+    E --> E3[In progress]
+
+    style B fill:#c8e6c9
+    style C fill:#c8e6c9
+    style D fill:#c8e6c9
+    style E fill:#fff9c4
+```
+
+### Established Principles
+
+1. **Field-specific architectures required**: Jp, F, C need DIFFERENT optimal configs on same dataset
+2. **omega_f scales with field complexity**: Jp(5-10) < F(12) < C(25) < S(50?)
+3. **Capacity requirements vary**: F(256) < Jp(512) < C(640) < S(1280?)
+4. **Learning rate sensitivity differs**: F has wide tolerance, C needs slower learning
+
+---
+
+## Exploration Progress
+
+| Block | Field | n_training_frames | Iterations | Status | Best R² |
+|-------|-------|-------------------|------------|--------|---------|
+| 1 | Jp | 100 | 1–12 | Complete | 0.996 |
+| 2 | F | 100 | 13–24 | Complete | 0.998 |
+| 3 | C | 100 | 25–36 | Complete | 0.994 |
+| 4 | S | 100 | 37–48 | In progress | — |

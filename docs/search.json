@@ -105,118 +105,6 @@
     "text": "Density and Mass\nDifferent materials can have different densities:\n# Config example\nsimulation:\n  MPM_rho_list: [1000, 1200, 400]  # [liquid, jelly, snow] kg/m³\nParticle mass is computed as:\n\\[\nm_i = \\rho_{T_i} \\cdot V_p\n\\]\nwhere \\(V_p = (\\Delta x / 2)^2\\) is the particle volume."
   },
   {
-    "objectID": "implementation.html",
-    "href": "implementation.html",
-    "title": "Implementation",
-    "section": "",
-    "text": "MPM_pytorch/\n├── run_MPM.py                     # Main entry point\n├── config/                        # YAML configuration files\n│   └── multimaterial/            # Multi-material scenarios\n├── src/MPM_pytorch/\n│   ├── generators/\n│   │   ├── graph_data_generator.py   # Data generation\n│   │   ├── MPM_step.py               # Core MPM algorithm\n│   │   └── utils.py                  # Initialization helpers\n│   ├── models/\n│   │   ├── graph_trainer.py          # Training loops\n│   │   └── utils.py                  # Model utilities\n│   └── utils.py                      # General utilities\n└── graphs_data/                   # Generated simulation data"
-  },
-  {
-    "objectID": "implementation.html#code-structure",
-    "href": "implementation.html#code-structure",
-    "title": "Implementation",
-    "section": "",
-    "text": "MPM_pytorch/\n├── run_MPM.py                     # Main entry point\n├── config/                        # YAML configuration files\n│   └── multimaterial/            # Multi-material scenarios\n├── src/MPM_pytorch/\n│   ├── generators/\n│   │   ├── graph_data_generator.py   # Data generation\n│   │   ├── MPM_step.py               # Core MPM algorithm\n│   │   └── utils.py                  # Initialization helpers\n│   ├── models/\n│   │   ├── graph_trainer.py          # Training loops\n│   │   └── utils.py                  # Model utilities\n│   └── utils.py                      # General utilities\n└── graphs_data/                   # Generated simulation data"
-  },
-  {
-    "objectID": "implementation.html#key-files",
-    "href": "implementation.html#key-files",
-    "title": "Implementation",
-    "section": "Key Files",
-    "text": "Key Files\n\nMPM_step.py - Core Algorithm\nThe heart of the simulation. Contains:\n\nMPM_step(): Complete time step\ncompute_surface_tension_stress(): Liquid surface tension\n\n\n\ngraph_data_generator.py - Simulation Runner\nOrchestrates the full simulation:\n\ndata_generate_MPM_2D(): 2D simulation loop\nInitialization of particle states\nFrame-by-frame stepping\nVisualization output"
-  },
-  {
-    "objectID": "implementation.html#mpm-step-implementation",
-    "href": "implementation.html#mpm-step-implementation",
-    "title": "Implementation",
-    "section": "MPM Step Implementation",
-    "text": "MPM Step Implementation\n\nFunction Signature\ndef MPM_step(\n    model_MPM,      # GNN model for P2G\n    X, V, C, F, Jp, T, M,  # Particle states\n    n_particles, n_grid,   # Dimensions\n    dt, dx, inv_dx,        # Time/space steps\n    mu_0, lambda_0,        # Material parameters\n    p_vol, offsets, particle_offsets,\n    expansion_factor, gravity, friction,\n    frame,\n    surface_tension_coeff, tension_scaling,\n    enable_surface_tension, debug_surface,\n    device\n):\n\n\nPhase 1: Deformation Update\n# Material masks\nliquid_mask = (T.squeeze() == 0)\njelly_mask = (T.squeeze() == 1)\nsnow_mask = (T.squeeze() == 2)\n\n# Update deformation gradient\nidentity = torch.eye(2, device=device).unsqueeze(0)\nF = (identity + dt * C) @ F\n\n# Hardening factor\nh = torch.exp(10 * (1.0 - Jp.squeeze()))\nh = torch.where(jelly_mask, 0.3, h)  # Fixed for jelly\n\n# Lame parameters\nmu = mu_0 * h\nla = lambda_0 * h\nmu = torch.where(liquid_mask, 0.0, mu)  # No shear for liquid\n\n\nPhase 2: SVD and Plasticity\n# SVD decomposition\nU, sig, Vh = torch.linalg.svd(F + 1e-6 * identity)\n\n# Sign corrections for proper rotations\ndet_U = torch.det(U)\nneg_det_U = det_U &lt; 0\nif neg_det_U.any():\n    U[neg_det_U, :, -1] *= -1\n    sig[neg_det_U, -1] *= -1\n\n# Snow plasticity: clamp singular values\nsig = torch.where(\n    snow_mask.unsqueeze(1),\n    torch.clamp(sig, min=1-2.5e-2, max=1+4.5e-3),\n    sig\n)\n\n# Update plastic deformation\nJp = Jp * torch.prod(original_sig / sig, dim=1, keepdim=True)\n\n\nPhase 3: Stress Computation\n# Volume ratio\nJ = torch.prod(sig, dim=1)\nJ = torch.clamp(J, min=1e-4)\n\n# Rotation matrix\nR = U @ Vh\n\n# Cauchy stress (fixed corotated)\nF_minus_R = F - R\nstress = (2 * mu.unsqueeze(-1).unsqueeze(-1) * F_minus_R @ F.transpose(-2, -1) +\n          identity * (la * J * (J - 1)).unsqueeze(-1).unsqueeze(-1))\n\n# Scale for P2G transfer\nstress = (-dt * p_vol * 4 * inv_dx * inv_dx) * stress\n\n# Affine momentum\naffine = stress + p_mass.unsqueeze(-1).unsqueeze(-1) * C\n\n\nPhase 4: P2G Transfer\n# Base grid node\nbase = (X * inv_dx - 0.5).int()\nfx = X * inv_dx - base.float()\n\n# B-spline weights\nw_0 = 0.5 * (1.5 - fx) ** 2\nw_1 = 0.75 - (fx - 1) ** 2\nw_2 = 0.5 * (fx - 0.5) ** 2\nw = torch.stack([w_0, w_1, w_2], dim=1)\n\n# Combined weights for 9 neighbors\nweights_all = w[:, i_indices, 0] * w[:, j_indices, 1]\n\n# Build graph for GNN\ndataset = data.Data(\n    x=x_,\n    edge_index=edge_index,\n    weights_per_edge=weights_per_edge,\n    affine_per_edge=affine_per_edge,\n    dpos_per_edge=dpos_per_edge\n)\n\n# GNN forward pass\ngrid_output = model_MPM(dataset)[0:n_grid**2]\ngrid_m = grid_output[:, 0].view(n_grid, n_grid)\ngrid_v = grid_output[:, 1:3].view(n_grid, n_grid, 2)\n\n\nPhase 5: Grid Operations\n# Momentum to velocity\nvalid_mass_mask = grid_m &gt; 0\ngrid_v = torch.where(\n    valid_mass_mask.unsqueeze(-1),\n    grid_v / (grid_m.unsqueeze(-1) + 1e-10),\n    grid_v\n)\n\n# Apply gravity\ngravity_force = torch.tensor([0.0, dt * gravity], device=device)\ngrid_v = grid_v + gravity_force\n\n# Boundary conditions\ngrid_v[:, :, 0] = torch.where(left_mask & (grid_v[:, :, 0] &lt; 0), 0.0, grid_v[:, :, 0])\ngrid_v[:, :, 0] = torch.where(right_mask & (grid_v[:, :, 0] &gt; 0), 0.0, grid_v[:, :, 0])\n# ... similar for y-component\n\n\nPhase 6: G2P Transfer\n# Gather velocities from 9 neighbors\nvelocity_contribs = weights_all.unsqueeze(-1) * g_v_all\nnew_V = velocity_contribs.sum(dim=1)\n\n# APIC: reconstruct affine velocity matrix\ng_v_flat = g_v_all.reshape(-1, 2, 1)\ndpos_flat = dpos_all.reshape(-1, 1, 2)\nouter_products = torch.bmm(g_v_flat, dpos_flat).reshape(n_particles, 9, 2, 2)\nweighted_outer = weights_all.unsqueeze(-1).unsqueeze(-1) * outer_products\nnew_C = 4 * inv_dx * weighted_outer.sum(dim=1)\n\n# Advection\nX = X + dt * new_V"
-  },
-  {
-    "objectID": "implementation.html#data-generation",
-    "href": "implementation.html#data-generation",
-    "title": "Implementation",
-    "section": "Data Generation",
-    "text": "Data Generation\n\nInitialization (graph_data_generator.py)\ndef data_generate_MPM_2D(config, ...):\n    # Grid parameters\n    n_grid = simulation_config.n_grid\n    dx, inv_dx = 1 / n_grid, float(n_grid)\n\n    # Material parameters\n    E, nu = 0.1e4 / young_coeff, 0.2\n    mu_0 = E / (2 * (1 + nu))\n    lambda_0 = E * nu / ((1 + nu) * (1 - 2 * nu))\n\n    # Initialize particles\n    N, X, V, C, F, T, Jp, M, S, ID = init_MPM_shapes(...)\n\n    # Simulation loop\n    for frame in range(n_frames):\n        X, V, C, F, Jp, T, M, stress, grid_m, grid_v = MPM_step(\n            model_MPM, X, V, C, F, Jp, T, M,\n            n_particles, n_grid, dt, dx, inv_dx,\n            mu_0, lambda_0, p_vol, offsets, particle_offsets,\n            expansion_factor, gravity, friction, frame,\n            surface_tension_coeff, tension_scaling,\n            enable_surface_tension, debug_surface,\n            device\n        )\n\n        # Save frame data\n        x_list.append(...)"
-  },
-  {
-    "objectID": "implementation.html#configuration",
-    "href": "implementation.html#configuration",
-    "title": "Implementation",
-    "section": "Configuration",
-    "text": "Configuration\nExample YAML config:\ndescription: \"Multi-material simulation with 3 types\"\ndataset: \"multimaterial/multimaterial_1_discs_3types\"\n\nsimulation:\n  n_particles: 9600\n  n_particle_types: 3\n  n_grid: 128\n  n_frames: 2000\n  delta_t: 1.0E-4\n\n  # Material parameters\n  MPM_n_objects: 3\n  MPM_object_type: [0, 1, 2]  # liquid, jelly, snow\n  MPM_rho_list: [1000, 1200, 400]\n  MPM_young_coeff: 1.0\n  MPM_gravity: -200\n  MPM_friction: 0.5\n  MPM_expansion_factor: 1.0\n  MPM_surface_tension: 0.0\n\ntraining:\n  n_runs: 1\n  device: auto"
-  },
-  {
-    "objectID": "implementation.html#running-simulations",
-    "href": "implementation.html#running-simulations",
-    "title": "Implementation",
-    "section": "Running Simulations",
-    "text": "Running Simulations\n# Generate data\npython run_MPM.py -o generate multimaterial_1_discs_3types\n\n# Train INR model\npython run_MPM.py -o train_INR multimaterial_1_discs_3types\n\n# Claude-guided exploration\npython run_MPM.py -o train_INR_Claude multimaterial_1_discs_3types iterations=100"
-  },
-  {
-    "objectID": "constitutive.html",
-    "href": "constitutive.html",
-    "title": "Constitutive Models",
-    "section": "",
-    "text": "The constitutive model relates deformation (\\(\\mathbf{F}\\)) to stress (\\(\\boldsymbol{\\sigma}\\)). MPM PyTorch uses a fixed corotated hyperelastic model with material-specific modifications."
-  },
-  {
-    "objectID": "constitutive.html#overview",
-    "href": "constitutive.html#overview",
-    "title": "Constitutive Models",
-    "section": "",
-    "text": "The constitutive model relates deformation (\\(\\mathbf{F}\\)) to stress (\\(\\boldsymbol{\\sigma}\\)). MPM PyTorch uses a fixed corotated hyperelastic model with material-specific modifications."
-  },
-  {
-    "objectID": "constitutive.html#deformation-gradient",
-    "href": "constitutive.html#deformation-gradient",
-    "title": "Constitutive Models",
-    "section": "Deformation Gradient",
-    "text": "Deformation Gradient\nThe deformation gradient \\(\\mathbf{F}\\) is a \\(d \\times d\\) matrix (2×2 in 2D) that maps from reference to deformed configuration:\n\\[\nd\\mathbf{x} = \\mathbf{F} \\cdot d\\mathbf{X}\n\\]\n\nUpdate Rule\n\\[\n\\mathbf{F}^{n+1} = (\\mathbf{I} + \\Delta t \\, \\mathbf{C}^n) \\, \\mathbf{F}^n\n\\]\nwhere \\(\\mathbf{C}\\) is the affine velocity matrix (velocity gradient).\n\n\nSVD Decomposition\nFor stress computation and plasticity:\n\\[\n\\mathbf{F} = \\mathbf{U} \\, \\boldsymbol{\\Sigma} \\, \\mathbf{V}^T\n\\]\n\n\n\nComponent\nSize\nInterpretation\n\n\n\n\n\\(\\mathbf{U}\\)\n\\(d \\times d\\)\nLeft rotation\n\n\n\\(\\boldsymbol{\\Sigma}\\)\n\\(d \\times d\\)\nStretch (diagonal)\n\n\n\\(\\mathbf{V}^T\\)\n\\(d \\times d\\)\nRight rotation\n\n\n\n\n\nKey Quantities\n\n\n\nSymbol\nFormula\nMeaning\n\n\n\n\n\\(J\\)\n\\(\\det(\\mathbf{F}) = \\prod_k \\sigma_k\\)\nVolume ratio\n\n\n\\(\\mathbf{R}\\)\n\\(\\mathbf{U}\\mathbf{V}^T\\)\nRotation component"
-  },
-  {
-    "objectID": "constitutive.html#fixed-corotated-model",
-    "href": "constitutive.html#fixed-corotated-model",
-    "title": "Constitutive Models",
-    "section": "Fixed Corotated Model",
-    "text": "Fixed Corotated Model\nThe stress depends on how much \\(\\mathbf{F}\\) deviates from a pure rotation.\n\nFirst Piola-Kirchhoff Stress\n\\[\n\\mathbf{P} = 2\\mu (\\mathbf{F} - \\mathbf{R}) + \\lambda (J - 1) J \\mathbf{F}^{-T}\n\\]\n\n\nCauchy Stress (Used in Code)\n\\[\n\\boldsymbol{\\sigma} = \\frac{1}{J} \\mathbf{P} \\mathbf{F}^T = 2\\mu (\\mathbf{F} - \\mathbf{R}) \\mathbf{F}^T + \\lambda J (J-1) \\mathbf{I}\n\\]\n\n\nComponents\n\n\n\n\n\n\n\nTerm\nPhysical Meaning\n\n\n\n\n\\(2\\mu (\\mathbf{F} - \\mathbf{R}) \\mathbf{F}^T\\)\nShear resistance (shape recovery)\n\n\n\\(\\lambda J (J-1) \\mathbf{I}\\)\nBulk resistance (volume recovery)\n\n\n\n\n\n\n\n\n\nNoteWhy “Corotated”?\n\n\n\nThe model measures deformation relative to the rotation \\(\\mathbf{R}\\), making it frame-invariant and stable under large rotations."
-  },
-  {
-    "objectID": "constitutive.html#hardening-model",
-    "href": "constitutive.html#hardening-model",
-    "title": "Constitutive Models",
-    "section": "Hardening Model",
-    "text": "Hardening Model\nMaterial stiffness varies with plastic history through the hardening factor \\(h\\):\n\\[\nh = \\exp(10 (1 - J_p))\n\\]\n\nEffect on Lame Parameters\n\\[\n\\mu = \\mu_0 \\cdot h, \\quad \\lambda = \\lambda_0 \\cdot h\n\\]\n\n\nPhysical Interpretation\n\n\n\nState\n\\(J_p\\)\n\\(h\\)\nMaterial\n\n\n\n\nCompressed\n\\(&lt; 1\\)\n\\(&gt; 1\\)\nStiffer\n\n\nReference\n\\(= 1\\)\n\\(= 1\\)\nNormal\n\n\nExpanded\n\\(&gt; 1\\)\n\\(&lt; 1\\)\nSofter"
-  },
-  {
-    "objectID": "constitutive.html#plasticity-snow-only",
-    "href": "constitutive.html#plasticity-snow-only",
-    "title": "Constitutive Models",
-    "section": "Plasticity (Snow Only)",
-    "text": "Plasticity (Snow Only)\nSnow undergoes irreversible plastic deformation when stretched or compressed beyond limits.\n\nYield Surface\nThe singular values are constrained:\n\\[\n\\sigma_k \\in [1 - \\epsilon_c, 1 + \\epsilon_s]\n\\]\n\n\n\nParameter\nValue\nMeaning\n\n\n\n\n\\(\\epsilon_c\\)\n0.025\nCompression limit\n\n\n\\(\\epsilon_s\\)\n0.0045\nStretch limit\n\n\n\n\n\nPlastic Flow\nWhen singular values exceed limits:\n\nClamp to valid range: \\(\\sigma_k^{\\text{new}} = \\text{clamp}(\\sigma_k, ...)\\)\nUpdate plastic deformation: \\(J_p \\leftarrow J_p \\cdot \\prod_k \\frac{\\sigma_k^{\\text{old}}}{\\sigma_k^{\\text{new}}}\\)\nReconstruct: \\(\\mathbf{F} \\leftarrow \\mathbf{U} \\, \\text{diag}(\\sigma_k^{\\text{new}}) \\, \\mathbf{V}^T\\)"
-  },
-  {
-    "objectID": "constitutive.html#stress-scaling-for-mpm",
-    "href": "constitutive.html#stress-scaling-for-mpm",
-    "title": "Constitutive Models",
-    "section": "Stress Scaling for MPM",
-    "text": "Stress Scaling for MPM\nThe stress is scaled for P2G momentum transfer:\n\\[\n\\text{stress} = -\\Delta t \\cdot V_p \\cdot 4 \\cdot \\Delta x^{-2} \\cdot \\boldsymbol{\\sigma}\n\\]\n\nAffine Momentum\nThe final quantity transferred to grid:\n\\[\n\\mathbf{Q} = \\text{stress} + m \\, \\mathbf{C}\n\\]"
-  },
-  {
-    "objectID": "constitutive.html#implementation",
-    "href": "constitutive.html#implementation",
-    "title": "Constitutive Models",
-    "section": "Implementation",
-    "text": "Implementation\n# SVD decomposition\nU, sig, Vh = torch.linalg.svd(F_reg)\n\n# Rotation matrix\nR = U @ Vh\n\n# Cauchy stress (fixed corotated)\nF_minus_R = F - R\nstress = (2 * mu * F_minus_R @ F.transpose(-2, -1) +\n          identity * (la * J * (J - 1)))\n\n# Scale for P2G\nstress = (-dt * p_vol * 4 * inv_dx * inv_dx) * stress\n\n# Affine momentum\naffine = stress + p_mass * C"
-  },
-  {
-    "objectID": "constitutive.html#energy-density",
-    "href": "constitutive.html#energy-density",
-    "title": "Constitutive Models",
-    "section": "Energy Density",
-    "text": "Energy Density\nThe stored elastic energy (for reference):\n\\[\n\\Psi = \\mu \\|\\mathbf{F} - \\mathbf{R}\\|_F^2 + \\frac{\\lambda}{2}(J-1)^2\n\\]\nThis energy is minimized when: - \\(\\mathbf{F} = \\mathbf{R}\\) (pure rotation, no stretch) - \\(J = 1\\) (no volume change)"
-  },
-  {
     "objectID": "index.html",
     "href": "index.html",
     "title": "MPM PyTorch",
@@ -285,6 +173,160 @@
     "title": "MPM PyTorch",
     "section": "References",
     "text": "References\n\nStomakhin et al. (2013). “A material point method for snow simulation”\nHu et al. (2018). “A moving least squares material point method with displacement discontinuity and two-way rigid body coupling”\nJiang et al. (2015). “The affine particle-in-cell method”"
+  },
+  {
+    "objectID": "constitutive.html",
+    "href": "constitutive.html",
+    "title": "Constitutive Models",
+    "section": "",
+    "text": "The constitutive model relates deformation (\\(\\mathbf{F}\\)) to stress (\\(\\boldsymbol{\\sigma}\\)). MPM PyTorch uses a fixed corotated hyperelastic model with material-specific modifications."
+  },
+  {
+    "objectID": "constitutive.html#overview",
+    "href": "constitutive.html#overview",
+    "title": "Constitutive Models",
+    "section": "",
+    "text": "The constitutive model relates deformation (\\(\\mathbf{F}\\)) to stress (\\(\\boldsymbol{\\sigma}\\)). MPM PyTorch uses a fixed corotated hyperelastic model with material-specific modifications."
+  },
+  {
+    "objectID": "constitutive.html#deformation-gradient",
+    "href": "constitutive.html#deformation-gradient",
+    "title": "Constitutive Models",
+    "section": "Deformation Gradient",
+    "text": "Deformation Gradient\nThe deformation gradient \\(\\mathbf{F}\\) is a \\(d \\times d\\) matrix (2×2 in 2D) that maps from reference to deformed configuration:\n\\[\nd\\mathbf{x} = \\mathbf{F} \\cdot d\\mathbf{X}\n\\]\n\nUpdate Rule\n\\[\n\\mathbf{F}^{n+1} = (\\mathbf{I} + \\Delta t \\, \\mathbf{C}^n) \\, \\mathbf{F}^n\n\\]\nwhere \\(\\mathbf{C}\\) is the affine velocity matrix (velocity gradient).\n\n\nSVD Decomposition\nFor stress computation and plasticity:\n\\[\n\\mathbf{F} = \\mathbf{U} \\, \\boldsymbol{\\Sigma} \\, \\mathbf{V}^T\n\\]\n\n\n\nComponent\nSize\nInterpretation\n\n\n\n\n\\(\\mathbf{U}\\)\n\\(d \\times d\\)\nLeft rotation\n\n\n\\(\\boldsymbol{\\Sigma}\\)\n\\(d \\times d\\)\nStretch (diagonal)\n\n\n\\(\\mathbf{V}^T\\)\n\\(d \\times d\\)\nRight rotation\n\n\n\n\n\nKey Quantities\n\n\n\nSymbol\nFormula\nMeaning\n\n\n\n\n\\(J\\)\n\\(\\det(\\mathbf{F}) = \\prod_k \\sigma_k\\)\nVolume ratio\n\n\n\\(\\mathbf{R}\\)\n\\(\\mathbf{U}\\mathbf{V}^T\\)\nRotation component"
+  },
+  {
+    "objectID": "constitutive.html#fixed-corotated-model",
+    "href": "constitutive.html#fixed-corotated-model",
+    "title": "Constitutive Models",
+    "section": "Fixed Corotated Model",
+    "text": "Fixed Corotated Model\nThe stress depends on how much \\(\\mathbf{F}\\) deviates from a pure rotation.\n\nFirst Piola-Kirchhoff Stress\n\\[\n\\mathbf{P} = 2\\mu (\\mathbf{F} - \\mathbf{R}) + \\lambda (J - 1) J \\mathbf{F}^{-T}\n\\]\n\n\nCauchy Stress (Used in Code)\n\\[\n\\boldsymbol{\\sigma} = \\frac{1}{J} \\mathbf{P} \\mathbf{F}^T = 2\\mu (\\mathbf{F} - \\mathbf{R}) \\mathbf{F}^T + \\lambda J (J-1) \\mathbf{I}\n\\]\n\n\nComponents\n\n\n\n\n\n\n\nTerm\nPhysical Meaning\n\n\n\n\n\\(2\\mu (\\mathbf{F} - \\mathbf{R}) \\mathbf{F}^T\\)\nShear resistance (shape recovery)\n\n\n\\(\\lambda J (J-1) \\mathbf{I}\\)\nBulk resistance (volume recovery)\n\n\n\n\n\n\n\n\n\nNoteWhy “Corotated”?\n\n\n\nThe model measures deformation relative to the rotation \\(\\mathbf{R}\\), making it frame-invariant and stable under large rotations."
+  },
+  {
+    "objectID": "constitutive.html#hardening-model",
+    "href": "constitutive.html#hardening-model",
+    "title": "Constitutive Models",
+    "section": "Hardening Model",
+    "text": "Hardening Model\nMaterial stiffness varies with plastic history through the hardening factor \\(h\\):\n\\[\nh = \\exp(10 (1 - J_p))\n\\]\n\nEffect on Lame Parameters\n\\[\n\\mu = \\mu_0 \\cdot h, \\quad \\lambda = \\lambda_0 \\cdot h\n\\]\n\n\nPhysical Interpretation\n\n\n\nState\n\\(J_p\\)\n\\(h\\)\nMaterial\n\n\n\n\nCompressed\n\\(&lt; 1\\)\n\\(&gt; 1\\)\nStiffer\n\n\nReference\n\\(= 1\\)\n\\(= 1\\)\nNormal\n\n\nExpanded\n\\(&gt; 1\\)\n\\(&lt; 1\\)\nSofter"
+  },
+  {
+    "objectID": "constitutive.html#plasticity-snow-only",
+    "href": "constitutive.html#plasticity-snow-only",
+    "title": "Constitutive Models",
+    "section": "Plasticity (Snow Only)",
+    "text": "Plasticity (Snow Only)\nSnow undergoes irreversible plastic deformation when stretched or compressed beyond limits.\n\nYield Surface\nThe singular values are constrained:\n\\[\n\\sigma_k \\in [1 - \\epsilon_c, 1 + \\epsilon_s]\n\\]\n\n\n\nParameter\nValue\nMeaning\n\n\n\n\n\\(\\epsilon_c\\)\n0.025\nCompression limit\n\n\n\\(\\epsilon_s\\)\n0.0045\nStretch limit\n\n\n\n\n\nPlastic Flow\nWhen singular values exceed limits:\n\nClamp to valid range: \\(\\sigma_k^{\\text{new}} = \\text{clamp}(\\sigma_k, ...)\\)\nUpdate plastic deformation: \\(J_p \\leftarrow J_p \\cdot \\prod_k \\frac{\\sigma_k^{\\text{old}}}{\\sigma_k^{\\text{new}}}\\)\nReconstruct: \\(\\mathbf{F} \\leftarrow \\mathbf{U} \\, \\text{diag}(\\sigma_k^{\\text{new}}) \\, \\mathbf{V}^T\\)"
+  },
+  {
+    "objectID": "constitutive.html#stress-scaling-for-mpm",
+    "href": "constitutive.html#stress-scaling-for-mpm",
+    "title": "Constitutive Models",
+    "section": "Stress Scaling for MPM",
+    "text": "Stress Scaling for MPM\nThe stress is scaled for P2G momentum transfer:\n\\[\n\\text{stress} = -\\Delta t \\cdot V_p \\cdot 4 \\cdot \\Delta x^{-2} \\cdot \\boldsymbol{\\sigma}\n\\]\n\nAffine Momentum\nThe final quantity transferred to grid:\n\\[\n\\mathbf{Q} = \\text{stress} + m \\, \\mathbf{C}\n\\]"
+  },
+  {
+    "objectID": "constitutive.html#implementation",
+    "href": "constitutive.html#implementation",
+    "title": "Constitutive Models",
+    "section": "Implementation",
+    "text": "Implementation\n# SVD decomposition\nU, sig, Vh = torch.linalg.svd(F_reg)\n\n# Rotation matrix\nR = U @ Vh\n\n# Cauchy stress (fixed corotated)\nF_minus_R = F - R\nstress = (2 * mu * F_minus_R @ F.transpose(-2, -1) +\n          identity * (la * J * (J - 1)))\n\n# Scale for P2G\nstress = (-dt * p_vol * 4 * inv_dx * inv_dx) * stress\n\n# Affine momentum\naffine = stress + p_mass * C"
+  },
+  {
+    "objectID": "constitutive.html#energy-density",
+    "href": "constitutive.html#energy-density",
+    "title": "Constitutive Models",
+    "section": "Energy Density",
+    "text": "Energy Density\nThe stored elastic energy (for reference):\n\\[\n\\Psi = \\mu \\|\\mathbf{F} - \\mathbf{R}\\|_F^2 + \\frac{\\lambda}{2}(J-1)^2\n\\]\nThis energy is minimized when: - \\(\\mathbf{F} = \\mathbf{R}\\) (pure rotation, no stretch) - \\(J = 1\\) (no volume change)"
+  },
+  {
+    "objectID": "implementation.html",
+    "href": "implementation.html",
+    "title": "Implementation",
+    "section": "",
+    "text": "MPM_pytorch/\n├── run_MPM.py                     # Main entry point\n├── config/                        # YAML configuration files\n│   └── multimaterial/            # Multi-material scenarios\n├── src/MPM_pytorch/\n│   ├── generators/\n│   │   ├── graph_data_generator.py   # Data generation\n│   │   ├── MPM_step.py               # Core MPM algorithm\n│   │   └── utils.py                  # Initialization helpers\n│   ├── models/\n│   │   ├── graph_trainer.py          # Training loops\n│   │   └── utils.py                  # Model utilities\n│   └── utils.py                      # General utilities\n└── graphs_data/                   # Generated simulation data"
+  },
+  {
+    "objectID": "implementation.html#code-structure",
+    "href": "implementation.html#code-structure",
+    "title": "Implementation",
+    "section": "",
+    "text": "MPM_pytorch/\n├── run_MPM.py                     # Main entry point\n├── config/                        # YAML configuration files\n│   └── multimaterial/            # Multi-material scenarios\n├── src/MPM_pytorch/\n│   ├── generators/\n│   │   ├── graph_data_generator.py   # Data generation\n│   │   ├── MPM_step.py               # Core MPM algorithm\n│   │   └── utils.py                  # Initialization helpers\n│   ├── models/\n│   │   ├── graph_trainer.py          # Training loops\n│   │   └── utils.py                  # Model utilities\n│   └── utils.py                      # General utilities\n└── graphs_data/                   # Generated simulation data"
+  },
+  {
+    "objectID": "implementation.html#key-files",
+    "href": "implementation.html#key-files",
+    "title": "Implementation",
+    "section": "Key Files",
+    "text": "Key Files\n\nMPM_step.py - Core Algorithm\nThe heart of the simulation. Contains:\n\nMPM_step(): Complete time step\ncompute_surface_tension_stress(): Liquid surface tension\n\n\n\ngraph_data_generator.py - Simulation Runner\nOrchestrates the full simulation:\n\ndata_generate_MPM_2D(): 2D simulation loop\nInitialization of particle states\nFrame-by-frame stepping\nVisualization output"
+  },
+  {
+    "objectID": "implementation.html#mpm-step-implementation",
+    "href": "implementation.html#mpm-step-implementation",
+    "title": "Implementation",
+    "section": "MPM Step Implementation",
+    "text": "MPM Step Implementation\n\nFunction Signature\ndef MPM_step(\n    model_MPM,      # GNN model for P2G\n    X, V, C, F, Jp, T, M,  # Particle states\n    n_particles, n_grid,   # Dimensions\n    dt, dx, inv_dx,        # Time/space steps\n    mu_0, lambda_0,        # Material parameters\n    p_vol, offsets, particle_offsets,\n    expansion_factor, gravity, friction,\n    frame,\n    surface_tension_coeff, tension_scaling,\n    enable_surface_tension, debug_surface,\n    device\n):\n\n\nPhase 1: Deformation Update\n# Material masks\nliquid_mask = (T.squeeze() == 0)\njelly_mask = (T.squeeze() == 1)\nsnow_mask = (T.squeeze() == 2)\n\n# Update deformation gradient\nidentity = torch.eye(2, device=device).unsqueeze(0)\nF = (identity + dt * C) @ F\n\n# Hardening factor\nh = torch.exp(10 * (1.0 - Jp.squeeze()))\nh = torch.where(jelly_mask, 0.3, h)  # Fixed for jelly\n\n# Lame parameters\nmu = mu_0 * h\nla = lambda_0 * h\nmu = torch.where(liquid_mask, 0.0, mu)  # No shear for liquid\n\n\nPhase 2: SVD and Plasticity\n# SVD decomposition\nU, sig, Vh = torch.linalg.svd(F + 1e-6 * identity)\n\n# Sign corrections for proper rotations\ndet_U = torch.det(U)\nneg_det_U = det_U &lt; 0\nif neg_det_U.any():\n    U[neg_det_U, :, -1] *= -1\n    sig[neg_det_U, -1] *= -1\n\n# Snow plasticity: clamp singular values\nsig = torch.where(\n    snow_mask.unsqueeze(1),\n    torch.clamp(sig, min=1-2.5e-2, max=1+4.5e-3),\n    sig\n)\n\n# Update plastic deformation\nJp = Jp * torch.prod(original_sig / sig, dim=1, keepdim=True)\n\n\nPhase 3: Stress Computation\n# Volume ratio\nJ = torch.prod(sig, dim=1)\nJ = torch.clamp(J, min=1e-4)\n\n# Rotation matrix\nR = U @ Vh\n\n# Cauchy stress (fixed corotated)\nF_minus_R = F - R\nstress = (2 * mu.unsqueeze(-1).unsqueeze(-1) * F_minus_R @ F.transpose(-2, -1) +\n          identity * (la * J * (J - 1)).unsqueeze(-1).unsqueeze(-1))\n\n# Scale for P2G transfer\nstress = (-dt * p_vol * 4 * inv_dx * inv_dx) * stress\n\n# Affine momentum\naffine = stress + p_mass.unsqueeze(-1).unsqueeze(-1) * C\n\n\nPhase 4: P2G Transfer\n# Base grid node\nbase = (X * inv_dx - 0.5).int()\nfx = X * inv_dx - base.float()\n\n# B-spline weights\nw_0 = 0.5 * (1.5 - fx) ** 2\nw_1 = 0.75 - (fx - 1) ** 2\nw_2 = 0.5 * (fx - 0.5) ** 2\nw = torch.stack([w_0, w_1, w_2], dim=1)\n\n# Combined weights for 9 neighbors\nweights_all = w[:, i_indices, 0] * w[:, j_indices, 1]\n\n# Build graph for GNN\ndataset = data.Data(\n    x=x_,\n    edge_index=edge_index,\n    weights_per_edge=weights_per_edge,\n    affine_per_edge=affine_per_edge,\n    dpos_per_edge=dpos_per_edge\n)\n\n# GNN forward pass\ngrid_output = model_MPM(dataset)[0:n_grid**2]\ngrid_m = grid_output[:, 0].view(n_grid, n_grid)\ngrid_v = grid_output[:, 1:3].view(n_grid, n_grid, 2)\n\n\nPhase 5: Grid Operations\n# Momentum to velocity\nvalid_mass_mask = grid_m &gt; 0\ngrid_v = torch.where(\n    valid_mass_mask.unsqueeze(-1),\n    grid_v / (grid_m.unsqueeze(-1) + 1e-10),\n    grid_v\n)\n\n# Apply gravity\ngravity_force = torch.tensor([0.0, dt * gravity], device=device)\ngrid_v = grid_v + gravity_force\n\n# Boundary conditions\ngrid_v[:, :, 0] = torch.where(left_mask & (grid_v[:, :, 0] &lt; 0), 0.0, grid_v[:, :, 0])\ngrid_v[:, :, 0] = torch.where(right_mask & (grid_v[:, :, 0] &gt; 0), 0.0, grid_v[:, :, 0])\n# ... similar for y-component\n\n\nPhase 6: G2P Transfer\n# Gather velocities from 9 neighbors\nvelocity_contribs = weights_all.unsqueeze(-1) * g_v_all\nnew_V = velocity_contribs.sum(dim=1)\n\n# APIC: reconstruct affine velocity matrix\ng_v_flat = g_v_all.reshape(-1, 2, 1)\ndpos_flat = dpos_all.reshape(-1, 1, 2)\nouter_products = torch.bmm(g_v_flat, dpos_flat).reshape(n_particles, 9, 2, 2)\nweighted_outer = weights_all.unsqueeze(-1).unsqueeze(-1) * outer_products\nnew_C = 4 * inv_dx * weighted_outer.sum(dim=1)\n\n# Advection\nX = X + dt * new_V"
+  },
+  {
+    "objectID": "implementation.html#data-generation",
+    "href": "implementation.html#data-generation",
+    "title": "Implementation",
+    "section": "Data Generation",
+    "text": "Data Generation\n\nInitialization (graph_data_generator.py)\ndef data_generate_MPM_2D(config, ...):\n    # Grid parameters\n    n_grid = simulation_config.n_grid\n    dx, inv_dx = 1 / n_grid, float(n_grid)\n\n    # Material parameters\n    E, nu = 0.1e4 / young_coeff, 0.2\n    mu_0 = E / (2 * (1 + nu))\n    lambda_0 = E * nu / ((1 + nu) * (1 - 2 * nu))\n\n    # Initialize particles\n    N, X, V, C, F, T, Jp, M, S, ID = init_MPM_shapes(...)\n\n    # Simulation loop\n    for frame in range(n_frames):\n        X, V, C, F, Jp, T, M, stress, grid_m, grid_v = MPM_step(\n            model_MPM, X, V, C, F, Jp, T, M,\n            n_particles, n_grid, dt, dx, inv_dx,\n            mu_0, lambda_0, p_vol, offsets, particle_offsets,\n            expansion_factor, gravity, friction, frame,\n            surface_tension_coeff, tension_scaling,\n            enable_surface_tension, debug_surface,\n            device\n        )\n\n        # Save frame data\n        x_list.append(...)"
+  },
+  {
+    "objectID": "implementation.html#configuration",
+    "href": "implementation.html#configuration",
+    "title": "Implementation",
+    "section": "Configuration",
+    "text": "Configuration\nExample YAML config:\ndescription: \"Multi-material simulation with 3 types\"\ndataset: \"multimaterial/multimaterial_1_discs_3types\"\n\nsimulation:\n  n_particles: 9600\n  n_particle_types: 3\n  n_grid: 128\n  n_frames: 2000\n  delta_t: 1.0E-4\n\n  # Material parameters\n  MPM_n_objects: 3\n  MPM_object_type: [0, 1, 2]  # liquid, jelly, snow\n  MPM_rho_list: [1000, 1200, 400]\n  MPM_young_coeff: 1.0\n  MPM_gravity: -200\n  MPM_friction: 0.5\n  MPM_expansion_factor: 1.0\n  MPM_surface_tension: 0.0\n\ntraining:\n  n_runs: 1\n  device: auto"
+  },
+  {
+    "objectID": "implementation.html#running-simulations",
+    "href": "implementation.html#running-simulations",
+    "title": "Implementation",
+    "section": "Running Simulations",
+    "text": "Running Simulations\n# Generate data\npython run_MPM.py -o generate multimaterial_1_discs_3types\n\n# Train INR model\npython run_MPM.py -o train_INR multimaterial_1_discs_3types\n\n# Claude-guided exploration\npython run_MPM.py -o train_INR_Claude multimaterial_1_discs_3types iterations=100"
+  },
+  {
+    "objectID": "llm-exploration.html",
+    "href": "llm-exploration.html",
+    "title": "LLM-Guided INR Optimization",
+    "section": "",
+    "text": "This page documents an ongoing LLM-in-the-loop exploration to optimize SIREN (Sinusoidal Representation Network) parameters for representing MPM particle fields over time. The exploration uses UCB tree search to systematically tune hyperparameters for each field type.\n\n\n\n\n\n\nNoteGoal\n\n\n\nFind optimal SIREN configurations to accurately represent time-varying particle fields (\\(J_p\\), \\(\\mathbf{F}\\), \\(\\mathbf{C}\\), \\(\\mathbf{S}\\)) for 9000 particles over 100 frames."
+  },
+  {
+    "objectID": "llm-exploration.html#overview",
+    "href": "llm-exploration.html#overview",
+    "title": "LLM-Guided INR Optimization",
+    "section": "",
+    "text": "This page documents an ongoing LLM-in-the-loop exploration to optimize SIREN (Sinusoidal Representation Network) parameters for representing MPM particle fields over time. The exploration uses UCB tree search to systematically tune hyperparameters for each field type.\n\n\n\n\n\n\nNoteGoal\n\n\n\nFind optimal SIREN configurations to accurately represent time-varying particle fields (\\(J_p\\), \\(\\mathbf{F}\\), \\(\\mathbf{C}\\), \\(\\mathbf{S}\\)) for 9000 particles over 100 frames."
+  },
+  {
+    "objectID": "llm-exploration.html#siren-architecture",
+    "href": "llm-exploration.html#siren-architecture",
+    "title": "LLM-Guided INR Optimization",
+    "section": "SIREN Architecture",
+    "text": "SIREN Architecture\nSIREN (Sinusoidal Representation Network) uses sine activations instead of ReLU, enabling smooth derivatives for representing continuous fields:\n\\[\\phi(x) = \\sin(\\omega_0 \\cdot Wx + b)\\]\n\nInput-Output Mapping\nThe INR maps normalized time and particle index to field values:\n\\[\n\\text{SIREN}: (t/T, \\, \\text{id}/N) \\rightarrow \\text{field}_{\\text{id}}(t)\n\\]\nwhere \\(T\\) = number of frames and \\(N\\) = number of particles. Both inputs are normalized to [0, 1].\nThree input variants are supported:\n\n\n\n\n\n\n\n\n\nVariant\nInput\nOutput\nUse Case\n\n\n\n\nsiren_id\n\\((t, \\text{id})\\)\nField value for one particle\n✅ Used for all results below\n\n\nsiren_t\n\\(t\\) only\nAll particles at once\nFaster but less flexible\n\n\nsiren_txy\n\\((t, x, y)\\)\nLagrangian positions\nPosition-aware encoding\n\n\n\n\n\n\n\n\n\nNote\n\n\n\nAll results on this page use inr_type: siren_id — the network learns a mapping from (time, particle_index) to field values, treating each particle as a separate entity identified by its index.\n\n\n\n\nFrequency Parameter (omega_f)\nThe omega_f parameter controls the network’s frequency capacity — higher values capture finer spatial/temporal detail but risk training instability:\n\n\n\nomega_f\nBehavior\nRecommended For\n\n\n\n\n1–10\nSmooth, low-frequency\nSimple fields (Jp)\n\n\n10–30\nMedium detail\nMost fields (F, C)\n\n\n30–100\nHigh-frequency detail\nComplex fields (S), unstable\n\n\n\nKey finding: omega_f is field-specific and frame-dependent. More particles → lower optimal omega_f.\n\n\nPeriod Parameters (for siren_txy)\nWhen using position-based input (t, x, y), two scaling parameters control how the network interprets coordinates:\n\n\n\n\n\n\n\n\nParameter\nFormula\nEffect\n\n\n\n\nnnr_f_T_period\n\\(t_{\\text{norm}} = t / T / \\text{period}\\)\nHigher → expects slower temporal variation\n\n\nnnr_f_xy_period\n\\((x,y)_{\\text{norm}} = (x,y) / \\text{period}\\)\nHigher → expects slower spatial variation\n\n\n\nIntuition: Period=10 means the network treats the full range as 1/10th of its natural period.\n\n\nTunable Parameters\n\n\n\nParameter\nDescription\nSearch Range\n\n\n\n\nn_training_frames\nFrames encoded in SIREN\n100\n\n\nhidden_dim\nWidth of hidden layers\n256–1280\n\n\nn_layers\nNumber of hidden layers\n2–5\n\n\nomega_f\nSIREN frequency multiplier\n5–50\n\n\nlr_NNR_f\nLearning rate\n1E-5–1E-4\n\n\ntotal_steps\nTraining iterations\n100k–200k"
+  },
+  {
+    "objectID": "llm-exploration.html#field-specific-results",
+    "href": "llm-exploration.html#field-specific-results",
+    "title": "LLM-Guided INR Optimization",
+    "section": "Field-Specific Results",
+    "text": "Field-Specific Results\n\n\\(J_p\\) — Plastic Deformation (Block 1)\nn_training_frames: 100 | n_particles: 9000\n\n\n\n\n\n\nTipBest Configuration\n\n\n\nR² = 0.996 with 512×3 @ omega=5-10, lr=4E-5, 200k steps (15.4 min)\nSpeed Pareto: 384×3 @ omega=10 achieves R²=0.995 in 12.2 min\n\n\n\n\n\nFinding\nValue\n\n\n\n\nOptimal omega_f\n5–10 (LOWER than prior=15)\n\n\nOptimal depth\n3 layers (ceiling)\n\n\nOptimal lr\n4E-5\n\n\n\n\nVideoFinal Field\n\n\n\n\n\n\n\n\n\n\n\n\n\\(\\mathbf{F}\\) — Deformation Gradient (Block 2)\nn_training_frames: 100 | n_particles: 9000\n\n\n\n\n\n\nTipBest Configuration\n\n\n\nR² = 0.998 with 256×4 @ omega=12, lr=4E-5 to 6E-5, 150k steps (8.1 min)\n\n\n\n\n\nFinding\nValue\n\n\n\n\nOptimal omega_f\n12 (SHARP optimum, ±1 degrades)\n\n\nOptimal depth\n4 layers (different from Jp)\n\n\nOptimal lr\nWide tolerance [4E-5, 6E-5]\n\n\nCapacity ceiling\n256 (384 hurts performance)\n\n\n\n\nVideoFinal Field\n\n\n\n\n\n\n\n\n\n\n\n\n\\(\\mathbf{C}\\) — Affine Velocity (Block 3)\nn_training_frames: 100 | n_particles: 9000\n\n\n\n\n\n\nTipBest Configuration\n\n\n\nR² = 0.994 with 640×3 @ omega=25, lr=2E-5, 150k steps (15.7 min)\n\n\n\n\n\nFinding\nValue\n\n\n\n\nOptimal omega_f\n25 (unchanged from prior, NO lower shift)\n\n\nOptimal depth\n3 layers (same as Jp)\n\n\nOptimal lr\n2E-5 (LOWER than Jp/F)\n\n\nCapacity ceiling\n640 (between F@256 and S@1280)\n\n\n\n\nVideoFinal Field\n\n\n\n\n\n\n\n\n\n\n\n\n\\(\\mathbf{S}\\) — Stress (Block 4, In Progress)\nn_training_frames: 100 | n_particles: 9000\n\n\n\n\n\n\nWarningCurrently Exploring\n\n\n\nBlock 4 is testing S field with prior optimal: 1280×4 @ omega=50, lr=2E-5\nOpen questions: - Does S@9000p need lower omega_f like Jp/F? - Does S@9000p require same extreme capacity (1280)? - Does S@9000p show same stochastic variance?"
+  },
+  {
+    "objectID": "llm-exploration.html#key-discoveries",
+    "href": "llm-exploration.html#key-discoveries",
+    "title": "LLM-Guided INR Optimization",
+    "section": "Key Discoveries",
+    "text": "Key Discoveries\n\n\n\n\n\nflowchart TD\n    A[Field Type] --&gt; B[Jp]\n    A --&gt; C[F]\n    A --&gt; D[C]\n    A --&gt; E[S]\n\n    B --&gt; B1[omega=5-10]\n    B --&gt; B2[512×3]\n    B --&gt; B3[R²=0.996]\n\n    C --&gt; C1[omega=12]\n    C --&gt; C2[256×4]\n    C --&gt; C3[R²=0.998]\n\n    D --&gt; D1[omega=25]\n    D --&gt; D2[640×3]\n    D --&gt; D3[R²=0.994]\n\n    E --&gt; E1[omega=50?]\n    E --&gt; E2[1280×4?]\n    E --&gt; E3[In progress]\n\n    style B fill:#c8e6c9\n    style C fill:#c8e6c9\n    style D fill:#c8e6c9\n    style E fill:#fff9c4\n\n\n\n\n\n\n\nEstablished Principles\n\nField-specific architectures required: Jp, F, C need DIFFERENT optimal configs on same dataset\nomega_f scales with field complexity: Jp(5-10) &lt; F(12) &lt; C(25) &lt; S(50?)\nCapacity requirements vary: F(256) &lt; Jp(512) &lt; C(640) &lt; S(1280?)\nLearning rate sensitivity differs: F has wide tolerance, C needs slower learning"
+  },
+  {
+    "objectID": "llm-exploration.html#exploration-progress",
+    "href": "llm-exploration.html#exploration-progress",
+    "title": "LLM-Guided INR Optimization",
+    "section": "Exploration Progress",
+    "text": "Exploration Progress\n\n\n\nBlock\nField\nn_training_frames\nIterations\nStatus\nBest R²\n\n\n\n\n1\nJp\n100\n1–12\nComplete\n0.996\n\n\n2\nF\n100\n13–24\nComplete\n0.998\n\n\n3\nC\n100\n25–36\nComplete\n0.994\n\n\n4\nS\n100\n37–48\nIn progress\n—"
   },
   {
     "objectID": "mpm-algorithm.html",

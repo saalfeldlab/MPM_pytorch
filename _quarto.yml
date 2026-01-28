@@ -24,6 +24,8 @@ website:
             text: Constitutive Models
       - href: implementation.qmd
         text: Implementation
+      - href: llm-exploration.qmd
+        text: LLM Exploration
     tools:
       - icon: github
         href: https://github.com/allierc/MPM_pytorch
