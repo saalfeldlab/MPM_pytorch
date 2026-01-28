@@ -764,8 +764,46 @@ Note
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>Block 4 is testing S field with prior optimal: <code>1280×4 @ omega=50, lr=2E-5</code></p>
-<p>Open questions: - Does S@9000p need lower omega_f like Jp/F? - Does S@9000p require same extreme capacity (1280)? - Does S@9000p show same stochastic variance?</p>
+<p><strong>Best so far: R² = 0.574</strong> with <code>1280×3 @ omega=35, lr=2E-5, 200k steps</code> (60.1 min)</p>
+<p>Key findings (iterations 37-39):</p>
+<ul>
+<li>Prior optimal config (1280×4, omega=50) <strong>FAILED</strong> on this dataset (R²=0.175)</li>
+<li>C-optimal config (640×3, omega=25) performed WORSE (R²=0.130)</li>
+<li><strong>Depth=3 + high capacity critical</strong>: 1280×3 @ omega=35 achieved R²=0.574</li>
+</ul>
+</div>
+</div>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Finding</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Depth ceiling</td>
+<td>3 layers (not 4 like prior)</td>
+</tr>
+<tr class="even">
+<td>Capacity requirement</td>
+<td>1280 (confirmed, 640 fails)</td>
+</tr>
+<tr class="odd">
+<td>Optimal omega_f</td>
+<td>~35 (lower than prior 50)</td>
+</tr>
+</tbody>
+</table>
+<div class="tabset-margin-container"></div><div class="panel-tabset">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-4-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-4-1" role="tab" aria-controls="tabset-4-1" aria-selected="true" href="">Video</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-4-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-4-2" role="tab" aria-controls="tabset-4-2" aria-selected="false" href="">Final Field</a></li></ul>
+<div class="tab-content">
+<div id="tabset-4-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-4-1-tab">
+<div class="quarto-video"><video id="video_shortcode_videojs_video4" class="video-js vjs-default-skin vjs-fluid" controls="" preload="auto" data-setup="{}" title=""><source src="log/Claude_exploration/instruction_multimaterial_1_discs_3types/videos/iter_039_multimaterial_1_discs_3types_Claude.mp4"></video></div>
+</div>
+<div id="tabset-4-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-4-2-tab">
+<p><a href="log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_S_20260128_132852.png" class="lightbox" data-gallery="quarto-lightbox-gallery-4"><img src="log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_S_20260128_132852.png" class="img-fluid"></a></p>
+</div>
 </div>
 </div>
 <hr>
@@ -796,9 +834,9 @@ Note
     D --&gt; D2[640×3]
     D --&gt; D3[R²=0.994]
 
-    E --&gt; E1[omega=50?]
-    E --&gt; E2[1280×4?]
-    E --&gt; E3[In progress]
+    E --&gt; E1[omega=35]
+    E --&gt; E2[1280×3]
+    E --&gt; E3[R²=0.574]
 
     style B fill:#c8e6c9
     style C fill:#c8e6c9
@@ -813,10 +851,12 @@ Note
 <section id="established-principles" class="level3">
 <h3 class="anchored" data-anchor-id="established-principles">Established Principles</h3>
 <ol type="1">
-<li><strong>Field-specific architectures required</strong>: Jp, F, C need DIFFERENT optimal configs on same dataset</li>
-<li><strong>omega_f scales with field complexity</strong>: Jp(5-10) &lt; F(12) &lt; C(25) &lt; S(50?)</li>
-<li><strong>Capacity requirements vary</strong>: F(256) &lt; Jp(512) &lt; C(640) &lt; S(1280?)</li>
-<li><strong>Learning rate sensitivity differs</strong>: F has wide tolerance, C needs slower learning</li>
+<li><strong>Field-specific architectures required</strong>: Jp, F, C, S need DIFFERENT optimal configs on same dataset</li>
+<li><strong>omega_f scales with field complexity</strong>: Jp(5-10) &lt; F(12) &lt; C(25) &lt; S(35)</li>
+<li><strong>Capacity requirements vary</strong>: F(256) &lt; Jp(512) &lt; C(640) &lt; S(1280)</li>
+<li><strong>Learning rate sensitivity differs</strong>: F has wide tolerance, C/S need slower learning</li>
+<li><strong>Depth varies by field</strong>: Jp(3), F(4), C(3), S(3) — only F benefits from 4 layers</li>
+<li><strong>Prior configs don’t transfer</strong>: S field prior optimal (1280×4, omega=50) failed on new dataset</li>
 </ol>
 <hr>
 </section>
@@ -865,7 +905,7 @@ Note
 <td>100</td>
 <td>37–48</td>
 <td>In progress</td>
-<td>—</td>
+<td>0.574</td>
 </tr>
 </tbody>
 </table>
@@ -1304,6 +1344,7 @@ Note
 <script>videojs(video_shortcode_videojs_video1);</script>
 <script>videojs(video_shortcode_videojs_video2);</script>
 <script>videojs(video_shortcode_videojs_video3);</script>
+<script>videojs(video_shortcode_videojs_video4);</script>
 <script>var lightboxQuarto = GLightbox({"closeEffect":"zoom","descPosition":"bottom","loop":false,"openEffect":"zoom","selector":".lightbox"});
 (function() {
   let previousOnload = window.onload;

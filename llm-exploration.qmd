@@ -169,12 +169,29 @@ Speed Pareto: `384×3 @ omega=10` achieves R²=0.995 in 12.2 min
 
 ::: {.callout-warning}
 ## Currently Exploring
-Block 4 is testing S field with prior optimal: `1280×4 @ omega=50, lr=2E-5`
+**Best so far: R² = 0.574** with `1280×3 @ omega=35, lr=2E-5, 200k steps` (60.1 min)
 
-Open questions:
-- Does S@9000p need lower omega_f like Jp/F?
-- Does S@9000p require same extreme capacity (1280)?
-- Does S@9000p show same stochastic variance?
+Key findings (iterations 37-39):
+
+- Prior optimal config (1280×4, omega=50) **FAILED** on this dataset (R²=0.175)
+- C-optimal config (640×3, omega=25) performed WORSE (R²=0.130)
+- **Depth=3 + high capacity critical**: 1280×3 @ omega=35 achieved R²=0.574
+:::
+
+| Finding | Value |
+|---------|-------|
+| Depth ceiling | 3 layers (not 4 like prior) |
+| Capacity requirement | 1280 (confirmed, 640 fails) |
+| Optimal omega_f | ~35 (lower than prior 50) |
+
+::: {.panel-tabset}
+
+#### Video
+{{< video log/Claude_exploration/instruction_multimaterial_1_discs_3types/videos/iter_039_multimaterial_1_discs_3types_Claude.mp4 >}}
+
+#### Final Field
+![](log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_S_20260128_132852.png){.lightbox}
+
 :::
 
 ---
@@ -200,9 +217,9 @@ flowchart TD
     D --> D2[640×3]
     D --> D3[R²=0.994]
 
-    E --> E1[omega=50?]
-    E --> E2[1280×4?]
-    E --> E3[In progress]
+    E --> E1[omega=35]
+    E --> E2[1280×3]
+    E --> E3[R²=0.574]
 
     style B fill:#c8e6c9
     style C fill:#c8e6c9
@@ -212,10 +229,12 @@ flowchart TD
 
 ### Established Principles
 
-1. **Field-specific architectures required**: Jp, F, C need DIFFERENT optimal configs on same dataset
-2. **omega_f scales with field complexity**: Jp(5-10) < F(12) < C(25) < S(50?)
-3. **Capacity requirements vary**: F(256) < Jp(512) < C(640) < S(1280?)
-4. **Learning rate sensitivity differs**: F has wide tolerance, C needs slower learning
+1. **Field-specific architectures required**: Jp, F, C, S need DIFFERENT optimal configs on same dataset
+2. **omega_f scales with field complexity**: Jp(5-10) < F(12) < C(25) < S(35)
+3. **Capacity requirements vary**: F(256) < Jp(512) < C(640) < S(1280)
+4. **Learning rate sensitivity differs**: F has wide tolerance, C/S need slower learning
+5. **Depth varies by field**: Jp(3), F(4), C(3), S(3) — only F benefits from 4 layers
+6. **Prior configs don't transfer**: S field prior optimal (1280×4, omega=50) failed on new dataset
 
 ---
 
@@ -226,4 +245,4 @@ flowchart TD
 | 1 | Jp | 100 | 1–12 | Complete | 0.996 |
 | 2 | F | 100 | 13–24 | Complete | 0.998 |
 | 3 | C | 100 | 25–36 | Complete | 0.994 |
-| 4 | S | 100 | 37–48 | In progress | — |
+| 4 | S | 100 | 37–48 | In progress | 0.574 |
