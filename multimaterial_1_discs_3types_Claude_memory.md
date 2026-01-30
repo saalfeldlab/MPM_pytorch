@@ -5,111 +5,126 @@
 ### Regime Comparison Table
 | Block | INR Type | Field | n_frames | Best R² | Best slope | Optimal lr_NNR_f | Optimal hidden_dim | Optimal n_layers | Optimal omega_f | Optimal total_steps | Training time (min) | Key finding |
 |-------|----------|-------|----------|---------|------------|------------------|--------------------|--------------------|-----------------|---------------------|---------------------|-------------|
+| 1     | siren_txy | Jp   | 100      | 0.996   | 0.976      | 4E-5             | 512 (or 384 speed) | 3                  | 5-10            | 200000              | 15.4 (or 12.2)      | omega_f=[5-10] optimal, lower than prior (15). 384×3 is speed Pareto. |
+| 2     | siren_txy | F    | 100      | 0.998   | 0.998      | 4E-5 to 6E-5     | 256                | 4                  | 12              | 150000              | 8.1                 | omega_f=12 sharp optimum. Wide lr tolerance. Capacity ceiling at 256. |
+| 3     | siren_txy | C    | 100      | 0.994   | 0.989      | 2E-5             | 640                | 3                  | 25              | 150000              | 15.7                | omega_f=25 unchanged from prior. Lower lr=2E-5 optimal. Capacity ceiling at 640. |
+| 4     | siren_txy | S    | 100      | 0.729   | 0.824      | 2E-5             | 1280               | 3                  | 48              | 300000              | 166.2               | S depth=3 (NOT 4). omega_f=48 (no lower shift). R²=0.729 ceiling. |
+| 5     | siren_txy | F    | 200      | 0.9997  | 0.9995     | 5E-5             | 256                | 4                  | 9-10            | 300000 (200k speed)  | 32.4 (27.6 speed)   | omega_f shifts 12→9 at 200f. lr narrows to 5E-5. Period params must stay 1.0. |
 
 ### Established Principles
+1. **omega_f for Jp@9000particles**: Optimal at [5-10], LOWER than prior (15). More particles → lower omega_f.
+2. **omega_f for F@9000particles**: Optimal at 12 (100f) or 9-10 (200f). SHARP optimum. More frames → lower omega_f.
+3. **omega_f for C@9000particles**: Optimal at 25 - SAME as prior. C does NOT follow lower omega_f trend.
+4. **omega_f for S@9000particles**: Optimal at 48 - similar to prior (50). S does NOT follow lower omega_f trend. Pattern: high-complexity fields (C, S) maintain omega_f, low-complexity (Jp, F) shift lower on more particles.
+5. **n_layers**: Jp, C, S require EXACTLY 3 layers. F requires EXACTLY 4 layers.
+6. **Speed Pareto for Jp**: 384×3@omega=10 achieves R²=0.995 in 12.2min.
+7. **lr for Jp**: 4E-5 optimal, 5E-5 regresses.
+8. **lr for F@100f**: WIDE tolerance [4E-5, 6E-5]. **lr for F@200f**: 5E-5 optimal (narrower tolerance).
+9. **lr for C**: 2E-5 optimal. LOWER than Jp/F.
+10. **lr for S**: 2E-5 hard-locked. lr=3E-5 catastrophic.
+11. **F capacity ceiling**: 256×4 saturates F at both 100f and 200f. 384×4 severely overparameterized (0.970 vs 0.9997).
+12. **C capacity ceiling**: 640×3 saturates C.
+13. **S capacity**: 1280×3 required. No speed Pareto.
+14. **Field-specific architectures**: Each field requires DIFFERENT optimal config on same dataset.
+15. **Field difficulty ranking (this dataset)**: F(0.998+) > Jp(0.996) > C(0.994) >> S(0.729). Same ordering as prior.
+16. **F data scaling**: No diminishing returns from 100→200 frames when omega_f re-tuned (12→9). Consistent with prior.
+17. **Period parameters for F**: nnr_f_T_period=1.0 and nnr_f_xy_period=1.0 MANDATORY. T_period=2.0 causes catastrophic degradation (R²=0.790). xy_period=2.0 causes significant degradation (R²=0.987). Temporal smoothing 6× more damaging than spatial.
+18. **F omega_f-frames scaling**: omega_f decreases ~2-3 per 100-frame increase on this dataset.
+19. **lr-frames scaling for F**: More frames → narrower lr tolerance. 100f: [4-6]E-5 viable. 200f: only 5E-5 optimal.
 
 ### Open Questions
-- What is the minimum hidden_dim for Jp@100frames with 9000 particles?
-- Is omega_f=80 ever appropriate for any field/frame combination?
+1. Does Jp maintain R²≈0.996 at 200 frames? Does omega_f=[5-10] hold or shift lower?
+2. Would siren_id outperform siren_txy for any field on this dataset?
+3. Can code modifications (loss function, scheduler) break S ceiling above 0.73?
+4. Does C hurt from more data on this dataset (as it did on prior)?
+5. Does Jp lr=4E-5 hold at 200 frames or shift (like F shifted to 5E-5)?
 
 ---
 
-## Previous Block Summary
+## Previous Block Summary (Block 5)
 
-(No previous block)
+Block 5 (F@200frames@9000p): FULLY CHARACTERIZED. Best: R²=0.9997 with 256×4@omega=9@lr=5E-5@300k steps, 32.4min. Speed Pareto: 200k steps (R²=0.9988, 27.6min). omega_f shifted from 12→[9-10] confirming "more frames → lower omega_f". lr narrowed to 5E-5 only. Capacity ceiling at 256 re-confirmed. Period params must stay at 1.0 — T_period=2.0 catastrophic (0.790), xy_period=2.0 significant degradation (0.987). Branching rate: 25%.
 
 ---
 
-## Current Block (Block 1)
+## Current Block (Block 6)
 
 ### Block Info
-Field: Jp, INR Type: siren_txy, n_frames: 100
-Iterations: 1-12
-Dataset: multimaterial_1_discs_3types (9000 particles, 9 objects, 3 material types)
+Field: Jp, INR: siren_txy, n_frames: 200, n_particles: 9000
+Iterations: 61-72
 
 ### Hypothesis
-Prior knowledge suggests Jp@100frames needs hidden_dim≈384, omega_f≈25-30, lr≈4E-5. Starting config (hidden_dim=64, omega_f=80) is severely under-capacity and over-frequency. Expect dramatic improvement with capacity increase.
+Jp@100frames achieved R²=0.996 with 512×3@omega=7@lr=4E-5@200k steps. Test data scaling to 200 frames:
+1. Does Jp@200 maintain R²≈0.996? Prior dataset says beneficial but diminishing returns.
+2. Does omega_f=[5-10] hold at 200f? F shifted from 12→9 at 200f, so Jp may shift from 7→5.
+3. Does 512×3 capacity suffice or need increase?
+4. Does lr=4E-5 hold or need adjustment? F shifted to 5E-5 at 200f.
+5. Prior: Jp needs 2000 steps/frame → 400k steps at 200f. But overfitting risk above 2500 steps/frame.
+
+Start: 512×3, omega_f=5, lr=4E-5, total_steps=400000 (2000 steps/frame), batch_size=1.
 
 ### Iterations This Block
 
-**Iter 1: poor** (R²=0.399, slope=0.049)
-Node: id=1, parent=root
-Config: hidden_dim=64, n_layers=3, omega_f=80, lr=1E-5, 50k steps
-Observation: Severe underfitting - model predicts near-constant. hidden_dim=64 is grossly inadequate.
-Next: parent=1, hidden_dim 64→384, omega_f 80→25
+**Iter 61: good** (R²=0.995, slope=0.978, 67.8min)
+Node: id=61, parent=root
+Config: 512×3, omega_f=5, lr=4E-5, steps=400k, batch=1, 200 frames
+Mutation: Block baseline — Jp@200f with omega_f=5
+Observation: Jp@200f maintains R²=0.995 (vs 0.996 at 100f). omega_f=5 viable. Training time 67.8min — long.
+Next: parent=61
 
-**Iter 2: moderate** (R²=0.835, slope=0.257)
-Node: id=2, parent=1
-Config: hidden_dim=384, n_layers=3, omega_f=25, lr=1E-5, 50k steps
-Mutation: hidden_dim 64→384, omega_f 80→25
-Observation: Capacity increase improved R² (0.399→0.835), but slope=0.257 indicates severe underprediction.
-Next: parent=2, lr 1E-5→4E-5
+**Iter 62: good** (R²=0.994, slope=0.963, 67.7min)
+Node: id=62, parent=61
+Config: 512×3, omega_f=7, lr=4E-5, steps=400k, batch=1, 200 frames
+Mutation: [omega_f]: 5.0 → 7.0
+Observation: omega_f=7 mild regression from omega_f=5 (R²=0.994 vs 0.995). At 200f, lower omega_f slightly better.
+Next: parent=62
 
-**Iter 3: moderate** (R²=0.913, slope=0.683)
-Node: id=3, parent=2
-Config: hidden_dim=384, n_layers=3, omega_f=25, lr=4E-5, 50k steps
-Mutation: lr 1E-5→4E-5
-Observation: LR increase improved R² (+0.078) and slope dramatically (+0.426). Model now predicting values, not constant.
-Next: parent=3, probe LR upper boundary: lr 4E-5→6E-5
+**Iter 63: good** (R²=0.988, slope=0.934, 46.1min)
+Node: id=63, parent=62
+Config: 512×3, omega_f=7, lr=4E-5, steps=300k, batch=1, 200 frames
+Mutation: [total_steps]: 400000 → 300000
+Observation: Steps 400k→300k drops R² from 0.994→0.988. 1500 steps/frame insufficient for Jp@200f. Saves 21.6min but costs quality.
+Next: parent=63
 
-**Iter 4: moderate** (R²=0.942, slope=0.825)
-Node: id=4, parent=3
-Config: hidden_dim=384, n_layers=3, omega_f=25, lr=6E-5, 50k steps
-Mutation: lr 4E-5→6E-5
-Observation: LR increase improved R² (+0.029) and slope (+0.142). Scatter shows underprediction at high GT values. Per-frame MSE higher at early frames.
-Visual: GT/Pred spatial patterns similar, some artifacts in Pred, slope<1 visible in scatter.
-Next: parent=4, continue LR probe: lr 6E-5→8E-5
+**Iter 64: good** (R²=0.992, slope=0.946, 54.3min)
+Node: id=64, parent=63
+Config: 512×3, omega_f=7, lr=5E-5, steps=300k, batch=1, 200 frames
+Mutation: [learning_rate_NNR_f]: 4E-5 → 5E-5
+Observation: lr 4E-5→5E-5 improves R² 0.988→0.992 at 300k steps. Higher lr partially compensates for fewer steps.
+Next: parent=64
 
-**Iter 5: moderate** (R²=0.892, slope=0.863)
-Node: id=5, parent=4
-Config: hidden_dim=384, n_layers=3, omega_f=25, lr=8E-5, 50k steps
-Mutation: lr 6E-5→8E-5
-Observation: **LR BOUNDARY FOUND.** R² regressed (0.942→0.892) while slope improved (0.825→0.863). lr=8E-5 overshoots. Optimal lr=6E-5.
-Next: parent=4, increase hidden_dim 384→512 to improve capacity
+**Iter 65: good** (R²=0.992, slope=0.960, 46.1min)
+Node: id=65, parent=64
+Config: 512×3, omega_f=5, lr=5E-5, steps=300k, batch=1, 200 frames
+Mutation: [omega_f]: 7.0 → 5.0
+Observation: omega_f 7→5 at 300k/lr=5E-5: R² ties (0.992) but slope improves (0.946→0.960). omega_f=5 wins on magnitude fidelity.
+Next: parent=65
 
-**Iter 6: moderate** (R²=0.918, slope=0.822)
-Node: id=6, parent=4
-Config: hidden_dim=512, n_layers=3, omega_f=25, lr=6E-5, 50k steps
-Mutation: hidden_dim 384→512
-Observation: **CAPACITY INCREASE REGRESSED R²** (0.942→0.918). 512 may overfit or need more steps. hidden_dim=384 optimal confirmed.
-Visual: GT/Pred similar but artifacts. Per-frame MSE higher at early frames.
-Next: parent=6, total_steps 50k→100k (need 1000 steps/frame)
+**Iter 66: good** (R²=0.992, slope=0.950, 49.5min)
+Node: id=66, parent=65
+Config: 512×3, omega_f=3.0, lr=5E-5, steps=300k, batch=1, 200 frames
+Mutation: [omega_f]: 5.0 → 3.0 (failure-probe)
+Observation: omega_f=3 failure-probe — R² unchanged (0.992), slope slightly worse (0.960→0.950). Lower boundary NOT found. omega_f extremely flat [3-7] at 300k steps.
+Visual: GT/Pred spatial match good. Scatter spread at GT>1.5. Loss still trending down at 300k.
+Next: parent=66
 
-**Iter 7: moderate** (R²=0.961, slope=0.890)
-Node: id=7, parent=6
-Config: hidden_dim=512, n_layers=3, omega_f=25, lr=6E-5, 100k steps
-Mutation: total_steps 50k→100k
-Observation: **STEPS INCREASE HIGHLY EFFECTIVE.** R² improved +0.043, slope +0.068. hidden_dim=512 works well with 1000 steps/frame.
-Next: parent=7, total_steps 100k→150k (test if more steps push R²>0.99)
-
-**Iter 8: good** (R²=0.979, slope=0.930)
-Node: id=8, parent=7
-Mode/Strategy: exploit
-Config: hidden_dim=512, n_layers=3, omega_f=25, lr=6E-5, 150k steps
-Mutation: total_steps 100k→150k
-Observation: **MORE STEPS CONTINUES TO IMPROVE.** R² +0.018 (0.961→0.979), slope +0.040 (0.890→0.930). 1500 steps/frame effective. Approaching R²>0.99 target.
-Visual: GT/Pred spatial patterns match well, scatter tight along diagonal, some outliers at high GT values. Per-frame MSE high at early frames but converges to near-zero by frame 50. Loss curve still improving at 150k steps.
-Next: parent=8, omega_f 25→20 (test if lower frequency helps remaining error)
-
-**Iter 9: good** (R²=0.984, slope=0.931)
-Node: id=9, parent=8
-Mode/Strategy: exploit
-Config: hidden_dim=512, n_layers=3, omega_f=20, lr=6E-5, 150k steps
-Mutation: omega_f 25→20
-Observation: **OMEGA_F REDUCTION MARGINALLY IMPROVED R².** R² +0.005 (0.979→0.984), slope unchanged. omega_f=20 slightly better than 25 for Jp@100frames.
-Visual: GT/Pred match well - disc structures visible with correct Jp values. Scatter R²=0.984, slope=0.931. Per-frame MSE high at early frames (0-40), converges by frame 50.
-Next: parent=9, total_steps 150k→200k (2000 steps/frame to push toward R²>0.99)
+**Iter 67: good** (R²=0.995, slope=0.965, 55.4min)
+Node: id=67, parent=66
+Config: 512×3, omega_f=3.0, lr=5E-5, steps=400k, batch=1, 200 frames
+Mutation: [total_steps]: 300000 → 400000
+Observation: omega_f=3+400k yields R²=0.995 — MATCHES omega_f=5+400k (iter 61). Confirms omega_f insensitivity at 400k too. Slope=0.965 (vs 0.978 for omega_f=5). Step count is dominant factor.
+Visual: Loss still trending down at 400k. GT/Pred spatial match good. Spread at GT>1.5 in scatter. Early frames have higher per-frame MSE.
+Next: parent=67
 
 ### Emerging Observations
-- Initial config (hidden_dim=64, omega_f=80) catastrophically wrong for Jp@100frames
-- Capacity increase (64→384) + omega_f reduction (80→25) improved R² 2x (0.399→0.835)
-- **LR BOUNDARY MAPPED**: 1E-5(0.835) < 4E-5(0.913) < 6E-5(0.942) > 8E-5(0.892). Optimal=6E-5.
-- Prior knowledge confirmed: multimaterial tolerates 1.5x higher LR than prior 4E-5 baseline
-- **HIDDEN_DIM CEILING REVISED**: At 50k steps: 384(0.942) > 512(0.918). At 100k steps: 512(0.961) - steps matter more than capacity!
-- R² trajectory: 0.399 → 0.835 → 0.913 → 0.942 → 0.892 → 0.918 → 0.961 → 0.979 → **0.984** (new peak at Node 9)
-- Slope trajectory: 0.049 → 0.257 → 0.683 → 0.825 → 0.863 → 0.822 → 0.890 → 0.930 → **0.931**
-- **STEPS PER FRAME SCALING CONFIRMED**: 500 steps/frame→R²=0.918, 1000→0.961, 1500→0.979/0.984. Approaching 0.99!
-- **OMEGA_F MAP for Jp@100frames**: omega_f=25(0.979) < omega_f=20(0.984). Lower frequency slightly better.
-- Training time scaling: 8.6min (50k) → 10.4min (100k) → 16.2-16.8min (150k). Linear with steps.
-- Next: increase total_steps to 200k (2000 steps/frame) to push toward R²>0.99
-
+- Jp@200f baseline: R²=0.995 with omega_f=5 at 400k steps. Quality maintained from 100f.
+- omega_f map@400k: 3(0.995/slope=0.965) ≈ 5(0.995/slope=0.978) > 7(0.994/slope=0.963). Flat omega_f response [3-7]. omega_f=5 wins on slope.
+- omega_f map@300k: 3(0.992/slope=0.950) ≈ 5(0.992/slope=0.960) ≈ 7(0.992/slope=0.946). Also flat. omega_f=5 gives best slope.
+- Steps/frame map: 2000(0.994-0.995) > 1500(0.988-0.992). Jp@200f needs 2000 steps/frame for R²>0.99.
+- Training time: 400k=55-68min, 300k=46-54min. Speed Pareto: 300k achieves R²=0.992 in ~46min.
+- Slope=0.934-0.978 — persistent mild underprediction across all configs. Best slope: omega_f=5+lr=4E-5+400k (0.978).
+- lr at 300k steps: 5E-5(0.992) > 4E-5(0.988). Higher lr helps at reduced steps.
+- lr at 400k steps: 5E-5(0.995/slope=0.965) vs 4E-5(0.995/slope=0.978). lr=4E-5 has BETTER slope at 400k.
+- 7 consecutive R²≥0.95. omega_f [3-7] all viable. omega_f lower boundary NOT found.
+- Key insight: omega_f is NOT the differentiator. Step count (400k vs 300k) is dominant factor for R²>0.995. Loss still trending down at 400k — model not fully converged.
+- Next: exploit Node 67 — lr 5E-5→6E-5 at 400k steps. Test if higher lr speeds convergence to push R²>0.995. Block 1 found Jp lr boundary at 6E-5 optimal (this dataset at 100f).

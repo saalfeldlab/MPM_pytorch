@@ -51,6 +51,7 @@ graph_model:
   omega_f_learning: False  # make omega learnable during training
 
   nnr_f_xy_period: 1.0
+  nnr_f_T_period: 1.0
 
 plotting:
   colormap: 'tab10'

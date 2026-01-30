@@ -1,12 +1,9 @@
-=== UCB Scores (Block 0, iters 1-12, N=10, c=1.414) ===
+=== UCB Scores (Block 5, iters 61-72, N=7, c=1.414) ===
 
-Node 10: UCB=3.223, parent=9, visits=1, R2=0.987, slope=0.947, time=22.5min
-Node 5: UCB=3.128, parent=4, visits=1, R2=0.892, slope=0.863, time=8.6min, Mutation=lr 6E-5→8E-5
-Node 9: UCB=2.474, parent=8, visits=2, R2=0.984, slope=0.931, time=16.2min, Mutation=omega_f 25→20
-Node 8: UCB=2.097, parent=7, visits=3, R2=0.979, slope=0.930, time=16.8min, Mutation=total_steps 100k→150k
-Node 7: UCB=1.855, parent=6, visits=4, R2=0.961, slope=0.890, time=10.4min, Mutation=total_steps 50k→100k
-Node 6: UCB=1.663, parent=4, visits=5, R2=0.918, slope=0.822, time=7.7min, Mutation=hidden_dim 384→512
-Node 4: UCB=1.501, parent=3, visits=7, R2=0.942, slope=0.825, time=8.6min, Mutation=lr 4E-5→6E-5
-Node 3: UCB=1.410, parent=2, visits=8, R2=0.913, slope=0.683, time=5.3min, Mutation=lr 1E-5→4E-5
-Node 2: UCB=1.282, parent=1, visits=9, R2=0.835, slope=0.257, time=5.9min, Mutation=hidden_dim 64→384, omega_f 80→25
-Node 1: UCB=0.805, parent=root, visits=10, R2=0.399, slope=0.000, time=6.3min, Mutation=Initial config (from template)
+Node 67: UCB=2.866, parent=66, visits=1, R2=0.995, slope=0.965, time=55.4min, Mutation=[total_steps]: 300000 → 400000
+Node 66: UCB=2.239, parent=65, visits=2, R2=0.992, slope=0.950, time=49.5min, Mutation=[omega_f]: 5.0 → 3.0
+Node 65: UCB=1.927, parent=64, visits=3, R2=0.992, slope=0.000, time=46.1min, Mutation=[omega_f]: 7.0 → 5.0
+Node 64: UCB=1.740, parent=63, visits=4, R2=0.992, slope=0.000, time=54.3min, Mutation=[learning_rate_NNR_f]: 4E-5 → 5E-5
+Node 63: UCB=1.612, parent=62, visits=5, R2=0.988, slope=0.000, time=46.1min, Mutation=[total_steps]: 400000 → 300000
+Node 62: UCB=1.528, parent=61, visits=6, R2=0.994, slope=0.000, time=67.7min, Mutation=[omega_f]: 5.0 → 7.0
+Node 61: UCB=1.463, parent=root, visits=7, R2=0.995, slope=0.000, time=67.8min, Mutation=Block baseline — Jp@200f with omega_f=5 (lower end of 100f optimal [5-10])

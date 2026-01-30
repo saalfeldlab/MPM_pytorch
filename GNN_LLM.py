@@ -73,6 +73,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "-o", "--option", nargs="+", help="Option that takes multiple values"
     )
+    parser.add_argument(
+        "--fresh", action="store_true", default=True, help="start from iteration 1 (default)"
+    )
+    parser.add_argument(
+        "--resume", action="store_true", help="auto-resume from last completed iteration"
+    )
 
     args = parser.parse_args()
 
@@ -106,9 +112,17 @@ if __name__ == "__main__":
     instruction_name = task_params.get('instruction', f'instruction_{base_config_name}')
     llm_task_name = task_params.get('llm_task', f'{base_config_name}_Claude')
 
-    # Auto-resume: detect last completed iteration from analysis.md
+    # Auto-resume or fresh start
     _root = os.path.dirname(os.path.abspath(__file__))
-    start_iteration = detect_last_iteration(f"{_root}/{llm_task_name}_analysis.md")
+    if args.resume:
+        start_iteration = detect_last_iteration(f"{_root}/{llm_task_name}_analysis.md")
+        if start_iteration > 1:
+            print(f"\033[93mResuming from iteration {start_iteration}\033[0m")
+        else:
+            print(f"\033[93mNo previous iterations found, starting fresh\033[0m")
+    else:
+        start_iteration = 1
+        print(f"\033[93mFresh start\033[0m")
 
     # Claude task: duplicate and modify config files
     if 'Claude' in task:

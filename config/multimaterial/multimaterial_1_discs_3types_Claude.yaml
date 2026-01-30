@@ -50,12 +50,13 @@ graph_model:
   inr_type: siren_txy
   input_size_nnr_f: 3
   n_layers_nnr_f: 3
-  hidden_dim_nnr_f: 64
+  hidden_dim_nnr_f: 512
   output_size_nnr_f: 1
   outermost_linear_nnr_f: true
-  omega_f: 80.0
+  omega_f: 3.0
   omega_f_learning: false
   nnr_f_xy_period: 1.0
+  nnr_f_T_period: 1.0
 plotting:
   colormap: tab10
   arrow_length: 2
@@ -68,7 +69,7 @@ training:
   batch_size: 1
   small_init_batch_size: false
   n_runs: 1
-  n_training_frames: 100
+  n_training_frames: 200
   noise_model_level: 1.0e-05
   sparsity: none
   sparsity_freq: 3
@@ -79,4 +80,8 @@ training:
   fix_cluster_embedding: true
   learning_rate_start: 1E-5
   learning_rate_embedding_start: 1E-2
-  learning_rate_NNR_f: 1E-5
+  learning_rate_NNR_f: 6E-5
+  total_steps: 400000
+claude:
+  field_name: Jp
+  ucb_c: 1.414
