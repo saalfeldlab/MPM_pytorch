@@ -106,17 +106,16 @@ Next: parent=P
 
 Step B: Choose strategy
 
-| Condition                            | Strategy             | Action                                    |
-| ------------------------------------ | -------------------- | ----------------------------------------- |
-| Default                              | **exploit**          | Highest UCB node, try mutation            |
-| 3+ consecutive R² ≥ 0.95             | **failure-probe**    | Extreme parameter to find boundary        |
-| n_iter_block/4 consecutive successes | **explore**          | Select outside recent chain               |
-| Good config found                    | **robustness-test**  | Re-run same config                        |
-| 2+ distant nodes with R² > 0.95      | **recombine**        | Merge params from both nodes              |
-| 100% convergence, branching<10%      | **forced-branch**    | Select node in bottom 50% of tree         |
-| Same param mutated 4+ times          | **switch-param**     | Mutate different parameter                |
-| All R² > 0.94, branching <20%        | **random-branch**    | Select random unvisited parent            |
-| Robustness test variance > 0.1       | **stochastic-field** | Switch to different field or try code mod |
+| Condition                                                     | Strategy             | Action                                                                   |
+| ------------------------------------------------------------- | -------------------- | ------------------------------------------------------------------------ |
+| Default                                                       | **exploit**          | Highest UCB node, try mutation                                           |
+| 3+ consecutive R² ≥ 0.95                                      | **failure-probe**    | Extreme parameter to find boundary                                       |
+| n_iter_block/4 consecutive successes                          | **explore**          | Select outside recent chain                                              |
+| 2+ distant nodes with R² > 0.95                               | **recombine**        | Merge params from both nodes                                             |
+| 4+ consecutive converged with same param dimension            | **forced-branch**    | Select 2nd highest UCB node (not recent chain), switch param dimension   |
+| Same param mutated 4+ times                                   | **switch-param**     | Mutate different parameter                                               |
+| Good config found                                             | **robustness-test**  | Re-run same config                                                       |
+| Robustness test variance > 0.1                                | **stochastic-field** | Switch to different field or try code mod                                |
 
 **Stochastic variance detection (Block 9 finding):**
 
@@ -185,13 +184,14 @@ training:
   total_steps: 50000 # range: 5000-200000 (SCALE inversely with hidden_dim for training_time)
   n_training_frames: 48 # progression: 48 → 100 → 200 → 500 → 1000 → 2000 → 5000 → 10000
 graph_model:
+  inr_type: siren_id # values: siren_id, siren_t, siren_txy (see below)
   hidden_dim_nnr_f: 512 # values: 128, 256, 512, 1024, 2048
   n_layers_nnr_f: 3 # range: 2-6
   omega_f: 30.0 # range: 1.0 to 100.0 (SIREN frequency)
   omega_f_learning: False # or True
   learning_rate_omega_f: 1.0E-6 # if omega_f_learning=True
-  nnr_f_xy_period: 1.0 # spatial scaling (higher = expects slower spatial variation)
-  nnr_f_T_period: 1.0 # time scaling (higher = expects slower temporal variation), prior: 10.0
+  nnr_f_xy_period: 1.0 # spatial scaling for siren_txy (higher = slower spatial variation)
+  nnr_f_T_period: 1.0 # time scaling for siren_txy (higher = slower temporal variation)
   # NGP-specific - DO NOT USE (implementation incomplete)
   # ngp_n_levels: 16  # NOT READY
   # ngp_log2_hashmap_size: 19  # NOT READY
@@ -585,14 +585,22 @@ Add established principles
 **SIREN (Sinusoidal Representation Networks)**:
 
 ```
-f(t, id) → field_value
+f(input) → field_value
 ```
 
-Three variants:
+**Three variants** (set via `graph_model.inr_type`):
 
-- `siren_t`: Input = time only (outputs all particles)
-- `siren_id`: Input = (time, particle_id)
-- `siren_txy`: Input = (time, x, y) - uses Lagrangian positions
+| Variant | Input | Output | Training | When to Use |
+|---------|-------|--------|----------|-------------|
+| `siren_id` | $(t/T, \text{id}/N)$ | 1 particle | Per-particle | **Default** — treats particles as indexed entities |
+| `siren_t` | $t/T$ only | All particles | Batch | Faster training, less flexible |
+| `siren_txy` | $(t/T, x, y)$ | 1 particle | Per-particle | Position-aware, uses `nnr_f_xy_period` / `nnr_f_T_period` |
+
+**Variant selection guidelines:**
+
+- **`siren_id`** (recommended): Each particle has a unique learned representation. Best for heterogeneous fields where particles behave differently.
+- **`siren_t`**: Network outputs all particles at once from time alone. Fastest but assumes particles share structure.
+- **`siren_txy`**: Uses Lagrangian particle positions. Best when field values correlate with spatial location. Requires tuning `nnr_f_xy_period` and `nnr_f_T_period`.
 
 **SIREN Implementation Details**:
 
@@ -707,11 +715,11 @@ Examples:
 | F     | 256        | 4        | 20      | 3E-5     | 800         | 0.9999  |
 | Jp    | 384        | 3        | 15-20   | 4E-5     | 800         | 0.997   |
 | C     | 640        | 3        | 20-25   | 3E-5     | 1000        | 0.989   |
-| S     | 1280       | 4        | 50      | 2E-5     | 3000+       | 0.801   |
+| S     | 1280       | 3 (or 4) | 48-50   | 2E-5     | 3000+       | 0.729-0.801 |
 
 **Critical constraints discovered**:
 
-- **n_layers**: Jp and C require EXACTLY 3 layers (both 2 and 4 degrade). F tolerates 2-5. S prefers 4.
+- **n_layers**: Jp, C, and S require EXACTLY 3 layers (both 2 and 4 degrade). F tolerates 2-5. S@9000p: depth 3 >> depth 4 (R²=0.729 vs 0.175). Prior dataset S depth=4 does NOT transfer.
 - **hidden_dim ceilings**: S@1280 (1536 fails), Jp@384 (256 AND 512 both degrade at 50k steps, but 512 works with 200k steps - Block 1 multimaterial), C scales with frames
 - **omega_f**: Field-specific and frame-dependent. More frames → lower optimal omega_f.
 - **Data scaling**: F scales excellently (no diminishing returns to 1000f). Jp benefits. C hurts (mitigate with capacity). S fails entirely.
@@ -759,18 +767,28 @@ Examples:
 - High (>50): high-frequency detail, unstable training
 - **Field-specific optimal omega_f (Block 2 finding, updated Block 10, Block 1 multimaterial)**: F field optimal at omega_f=15-25, Jp optimal at 20-25 (200 frames) or 30-35 (48 frames). More frames → lower optimal omega_f.
 - **Jp@200frames omega_f map (Block 10)**: 35(0.786) << 30(0.982) < 25(0.985) ≈ 20(0.989) > 15(0.978). Optimal=20-25.
-- **Jp@100frames omega_f map (Block 1 multimaterial, 9000 particles)**: 25(0.979) < 20(0.984) < 15(0.988). Optimal=15. More particles may favor lower omega_f.
+- **Jp@100frames omega_f map (Block 1 multimaterial_1_discs_3types, 9000 particles)**: 3(0.975) < 5(0.996) ≈ 7(0.996) ≈ 10(0.995-0.996) > 15(0.992-0.995) > 20(0.987). Optimal=[5-10]. LOWER than prior (15). More particles favor LOWER omega_f.
 - **F@200frames boundaries (Block 11)**: omega_f [15-40] viable (15=0.9996, 20=0.9998, 25=0.9997, 40=0.9991). lr [3E-5 to 1E-4] viable. lr=2E-4 FAILS.
 - **F@100frames omega_f LOCAL MAXIMUM (Block 2 multimaterial)**: F has NARROW omega_f window at 100 frames: 15(0.957) < 18(0.989) < 25(0.985) < 20(0.998). omega_f=20 is LOCAL MAXIMUM. Even ±2 deviation causes significant degradation. More sensitive than Jp.
 - **F@100frames optimal config (Block 2 multimaterial)**: 256×4-5, omega_f=20, lr=3E-5, 150k steps (1500 steps/frame). R²=0.998. F tolerates n_layers 4-5 equally (unlike Jp ceiling at 3).
+- **F@100frames@9000p COMPLETE MAP (Block 2 this dataset)**: omega_f: 10(0.966) < 11(0.996) < 12(**0.998**) > 13(0.997) > 15(0.995) > 20(0.994). Optimal omega_f=12 (LOWER than prior dataset's omega_f=20). lr: 3E-5(0.997) < 4E-5(0.998) ≈ 5E-5(0.998) ≈ 6E-5(0.998). WIDE lr tolerance [4E-5, 6E-5]. depth: 3(0.991) < 4(**0.998**) > 5(0.996). capacity: 256(**0.998**) > 384(0.989). F@9000p has DEPTH CEILING at 4 and CAPACITY CEILING at 256.
 - **C@200frames omega_f map (Block 12)**: 15(0.993) < 20(0.990) < 25(0.994) < 27(0.992) < 30(0.989). Peak at omega_f=25 (NOT 20 like F). Non-monotonic.
 - **C depth ceiling (Block 12)**: C field is depth-sensitive like Jp. n_layers=4 regresses (0.987 vs 0.994 at n_layers=3). Optimal depth=3.
 - **C@100frames COMPLETE PARAMETER MAPPING (Block 3 multimaterial)**: All parameters have LOCAL MAXIMA - no further tuning possible. Maps: omega_f: 22(0.985) < 25(0.989) > 28(0.979). hidden_dim: 512(0.984) < 640(0.989) > 768(0.977). n_layers: 2(0.968) < 3(0.989) > 4(0.982). lr: 2E-5(0.983) < 3E-5(0.989) > 4E-5(0.982). R²=0.989 is architectural ceiling.
 - **C LR-DEPTH INTERACTION (Block 3 multimaterial)**: Shallow networks (3L) prefer lower lr (3E-5), deep networks (4L) prefer higher lr (4E-5). However 3L@optimal (0.989) always beats 4L@optimal (0.986). Depth penalty cannot be overcome via LR tuning.
 - **C capacity ceiling at 640 (Block 3 multimaterial)**: hidden_dim=640 is LOCAL MAXIMUM - both 512 (0.984) and 768 (0.977) degrade. C field does NOT benefit from more capacity. Contrast with F (scales) and S (needs 1280).
+- **C@100frames@9000p COMPLETE MAP (Block 3 this dataset)**: omega_f: 20(0.988) < 23(0.988) < 25(**0.994**) > 27(0.990) > 30(0.984). lr: 1.5E-5(0.987) < 2E-5(**0.994**) > 3E-5(0.993) > 4E-5(0.989). depth: 3(**0.993**) > 4(0.980). capacity: 512(0.986) < 640(**0.994**) > 768(0.990). C@9000p optimal: 640×3@omega=25@lr=2E-5. Note: C does NOT follow lower omega_f trend of Jp/F on this dataset - omega_f=25 unchanged. But lr shifts LOWER (2E-5 vs 4E-5).
 - **S field capacity ceiling (Block 13)**: S requires MUCH more capacity than other fields. Optimal: 1280×4 (R²=0.801). Capacity scaling: 256→0.389, 512→0.638, 1024→0.646, 1280→0.801, 1536→0.145 (FAILS). S also requires omega_f=50, lr=2E-5 (NO tolerance for lr=3E-5).
 - **S field gradient clipping (Block 17)**: CRITICAL - S field REQUIRES gradient clipping max_norm=1.0 for stable training. Clipping map: 0.25→0.810, 0.5→[0.828,0.181], 1.0→[0.785,0.787,0.732]. max_norm>1.5 causes catastrophic failure (R²<0.13). max_norm=1.0 is MOST STABLE (mean R²=0.768±0.031).
 - **SIREN normalization incompatibility (Block 17)**: LayerNorm, BatchNorm INCOMPATIBLE with SIREN architecture. LayerNorm causes R²=0.022 (catastrophic). SIREN relies on omega-scaled initialization which normalization destroys.
+- **Jp hidden_dim tradeoff (Block 1 multimaterial_1_discs_3types)**: hidden_dim: 384(0.995, 12.2min) ≈ 512(0.996, 15.4min). 384 achieves 99% accuracy at 20% lower training time = SPEED PARETO. Use 384 for efficiency, 512 for maximum accuracy.
+- **S@100frames@9000p COMPLETE MAP (Block 4 this dataset)**: omega_f: 25(0.174) << 35(0.574) < 42(0.618) < 48(**0.729**) ≈ 55(0.693). lr: 1.5E-5(0.719) < 2E-5(**0.729**) >> 3E-5(0.085). depth: 3(**0.729**) >> 4(0.175). capacity: 640(0.130) << 1024(0.721) < 1280(**0.729**). S requires omega_f=48 (still high, unlike Jp/F shift lower), lr=2E-5 hard-locked, depth=3 (NOT 4), 1280 capacity. Best R²=0.729 ceiling. Training time 166min.
+- **S lr-capacity interaction (Block 4)**: Lower lr compensates for reduced capacity: 1024@lr=1.5E-5 (0.721) > 1024@lr=2E-5 (0.686). But at full capacity (1280), lower lr HURTS: 1280@lr=2E-5 (0.729) > 1280@lr=1.5E-5 (0.719). Optimal lr shifts with capacity.
+- **S omega_f COUNTER-TREND (Block 4 this dataset)**: Jp/F shift to LOWER omega_f on 9000-particle dataset (Jp: 5-10, F: 12). S does NOT follow this trend: omega_f=48 optimal (same direction as prior dataset omega_f=50). C also unchanged (25). Pattern: high-complexity fields (C, S) maintain omega_f, low-complexity (Jp, F) shift lower.
+- **F@200frames@9000p COMPLETE MAP (Block 5 this dataset)**: omega_f: 8(0.978) < **9(0.998)** ≈ 10(0.998) > 12(0.983). lr: 4E-5(0.998) < **5E-5(0.9997)** > 6E-5(0.995). depth: 3(0.995) < **4(0.9997)**. capacity@depth4: **256(0.9997)** >> 384(0.970). Best: 256×4@omega=9@lr=5E-5@300k, R²=0.9997. Speed Pareto: 200k steps (0.9988, 27.6min).
+- **Period parameters for F (Block 5 finding)**: nnr_f_T_period and nnr_f_xy_period must BOTH stay at 1.0 for F field. T_period=2.0 causes CATASTROPHIC degradation (0.9997→0.790). xy_period=2.0 causes significant degradation (0.9997→0.987). Temporal smoothing is 6× more damaging than spatial. Rule: Never increase period parameters for F.
+- **F omega_f-to-frames scaling (Block 2+5 this dataset)**: F@100f optimal omega_f=12, F@200f optimal omega_f=[9-10]. Scaling rule: omega_f decreases ~2-3 per 100-frame increase. lr also shifts: F@100f lr=[4-6]E-5, F@200f lr=5E-5 (narrower). More frames → narrower lr tolerance.
+- **Data scaling for F CONFIRMED on this dataset (Block 5)**: F@200f R²=0.9997 matches F@100f R²=0.998 when omega_f is properly re-tuned (12→9). F continues to show NO diminishing returns with more data, consistent with prior dataset.
 
 **Compression ratio**:
 
