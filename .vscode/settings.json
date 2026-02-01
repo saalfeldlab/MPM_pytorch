@@ -1,8 +1,14 @@
 {
-    "python-envs.defaultEnvManager": "ms-python.python:conda",
-    "python-envs.defaultPackageManager": "ms-python.python:conda",
-    "python.defaultInterpreterPath": "/home/allierc@hhmi.org/anaconda3/envs/neural-graph/bin/python",
-    "files.autoSave": "afterDelay",
-    "files.autoSaveDelay": 500,
-    "python-envs.pythonProjects": []
+  "python-envs.defaultEnvManager": "ms-python.python:conda",
+  "python-envs.defaultPackageManager": "ms-python.python:conda",
+  "python.defaultInterpreterPath": "/home/allierc@hhmi.org/anaconda3/envs/neural-graph/bin/python",
+  "files.autoSave": "afterDelay",
+  "files.autoSaveDelay": 500,
+  "python-envs.pythonProjects": [
+    {
+      "path": "",
+      "envManager": "ms-python.python:conda",
+      "packageManager": "ms-python.python:conda"
+    }
+  ]
 }

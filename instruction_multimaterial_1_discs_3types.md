@@ -2,12 +2,16 @@
 
 ## Goal
 
-Map the **MPM INR training landscape**: understand which INR architectures and training configurations achieve best field reconstruction (R² > 0.995) for Material Point Method simulations. Other important evaluation are slope (~1.0) and training time. Get an intuition for the training_time.
+Scale INR field reconstruction to **high frame counts** (400, 600, 1000 frames) while maintaining R² > 0.995 for all fields (Jp, F, C, S). Prior exploration (130+ iterations) has mapped the landscape up to 200 frames — see `appendix_INR_training_knowledge.md` for complete parameter maps and scaling rules. This phase focuses on pushing beyond 200 frames to find optimal configs at production scale. Also monitor kinograph_R2 and kinograph_SSIM as secondary metrics (temporal fidelity).
 
 ## Iteration Loop Structure
 
 Each block = `n_iter_block` iterations exploring one INR configuration.
 The prompt provides: `Block info: block {block_number}, iteration {iter_in_block}/{n_iter_block} within block`
+
+## Reference Appendix
+
+**File**: `appendix_INR_training_knowledge.md` — READ at the start of each block boundary. Contains complete parameter maps, scaling rules, and starting configs for all fields up to 200 frames. Use this as the knowledge foundation for high-frame exploration.
 
 ## File Structure (CRITICAL)
 
@@ -86,7 +90,7 @@ Append to Full Log (`{config}_analysis.md`) and **Current Block** sections of `{
 Node: id=N, parent=P
 Mode/Strategy: [success-exploit/failure-probe]/[exploit/explore/boundary]
 Config: lr_NNR_f=X, total_steps=Y, hidden_dim_nnr_f=H, n_layers_nnr_f=L, omega_f=W, batch_size=B
-Metrics: final_r2=A, final_mse=B, total_params=C, compression_ratio=D, training_time=E
+Metrics: final_r2=A, final_mse=B, slope=S, kinograph_R2=KR, kinograph_SSIM=KS, total_params=C, compression_ratio=D, training_time=E
 Field: field_name=F, inr_type=T
 Mutation: [param]: [old] -> [new]
 Parent rule: [one line]
@@ -134,6 +138,21 @@ Step B: Choose strategy
 
 - Jp@48frames LR boundary: 4E-5 < 5E-5 < 6E-5 (optimal) > 8E-5
 - Rule: Probe LR upper boundary after finding good config. Optimal LR may be higher than prior knowledge suggests for fewer frames.
+
+**C data scaling and parameter shifts (Block 7 finding):**
+
+- C@200f R²=0.991 vs C@100f R²=0.994 — data scaling HURTS C (gap=0.003, narrower than prior)
+- omega_f shifts: 25(100f) → 20(200f). C DOES follow lower omega_f trend at 200f.
+- lr shifts up: 2E-5(100f) → 3E-5(200f). More data allows slightly higher lr.
+- Capacity ceiling lifts: 640(100f) → 768(200f). More data rewards more capacity. 1024 OVERPARAMETERIZED.
+- Rule: C benefits from capacity/lr tuning at 200f but fundamentally caps below 100f performance.
+
+**All-field omega_f-to-frames scaling rule (updated Block 10):**
+
+- siren_txy: Jp: 100f=[5-10], 200f=[3-7]. F: 100f=12, 200f=9-10. C: 100f=25, 200f=20. S: 100f=48.
+- siren_t: Jp: 100f=[5-10]. F: 100f=3.0. C: 100f=[3-5]. (S untested)
+- Pattern: ALL fields shift omega_f lower at 200f (~15-20% decrease per 100-frame increase).
+- siren_t vs siren_txy: siren_t optimal omega_f is ~50-88% LOWER than siren_txy for same field (F: 3 vs 12, Jp: 7 vs 10, C: 3-5 vs 25). C shows LARGEST reduction (80-88%).
 
 **Recombination details:**
 
@@ -398,7 +417,7 @@ CODE MODIFICATION:
   Function: data_train_INR
   Change: Added CosineAnnealingLR scheduler with T_max=total_steps
   Hypothesis: Decaying learning rate may escape local minimum
-Metrics: final_r2=A, final_mse=B, total_params=C, compression_ratio=D, training_time=E
+Metrics: final_r2=A, final_mse=B, slope=S, kinograph_R2=KR, kinograph_SSIM=KS, total_params=C, compression_ratio=D, training_time=E
 Field: field_name=F, inr_type=T
 Mutation: [code] data_train_INR: Added LR scheduler
 Parent rule: [one line]
@@ -481,16 +500,21 @@ Option A: **Change field_name**
 
 Option B: **Increase n_training_frames**
 
-- Progression: 48 → 100 → 200 → 500 → 1000 → 2000 → 5000 → 10000
+- Target progression: **400 → 600 → 1000** (frames ≤200 are fully mapped — see appendix)
 - Keep field_name constant to isolate effect of more training data
 - IMPORTANT: Always ensure n_training_frames > batch_size
+- Use the **starting configurations from the appendix** (Section 6) as initial configs for each new frame count, then tune from there
+- Scaling rules from the appendix: omega_f decreases, lr can increase (especially for Jp), steps/frame can decrease for F
 
 **Strategy guidelines:**
 
-- Check Regime Comparison Table → choose untested combination
-- **Do not replicate** previous block unless motivated (testing knowledge transfer)
-- Alternate between Option A and B to build comprehensive understanding
-- When stuck on one field, switch to another to test generalization
+- Read `appendix_INR_training_knowledge.md` at the start of each block for parameter scaling rules
+- Check Regime Comparison Table → choose untested field × frame_count combination
+- **Do not test n_training_frames ≤ 200** — these are fully explored
+- **Default n_training_frames for new blocks: 400** (first target), then 600, then 1000
+- Alternate between fields to build comprehensive understanding at each frame count
+- For C field: expect capacity increase needed (640→768→896→1024 with more frames)
+- For S field: CosineAnnealingLR is MANDATORY (see appendix failure modes)
 
 ### STEP 3: Update Working Memory
 
@@ -513,9 +537,9 @@ Update `{config}_memory.md`:
 
 ### Regime Comparison Table
 
-| Block | INR Type | Field | n_frames | Best R² | Best slope | Optimal lr_NNR_f | Optimal hidden_dim | Optimal n_layers | Optimal omega_f | Optimal total_steps | Training time (min) | Key finding |
-| ----- | -------- | ----- | -------- | ------- | ---------- | ---------------- | ------------------ | ---------------- | --------------- | ------------------- | ------------------- | ----------- |
-| 1     | siren_id | Jp    | 48       | 0.998   | 0.990      | 1E-5             | 512                | 3                | 30.0            | 50000               | 10.5                | ...         |
+| Block | INR Type | Field | n_training_frames | Best R² | Best slope | Optimal lr_NNR_f | Optimal hidden_dim | Optimal n_layers | Optimal omega_f | Optimal total_steps | Training time (min) | Key finding |
+| ----- | -------- | ----- | ----------------- | ------- | ---------- | ---------------- | ------------------ | ---------------- | --------------- | ------------------- | ------------------- | ----------- |
+| 1     | siren_id | Jp    | 48                | 0.998   | 0.990      | 1E-5             | 512                | 3                | 30.0            | 50000               | 10.5                | ...         |
 
 ### Established Principles
 
@@ -678,7 +702,7 @@ After each training iteration, a visualization is saved to `tmp_training/field/`
 | **Traces** (top-middle)                                        | 10 particle time series. Green=GT, White=Pred. Centered by mean, spaced by 4×std           | Temporal dynamics match: white should follow green. Systematic offsets indicate bias             |
 | **Info** (top-right for 4-comp, or right for 1-comp)           | Field name, step count, components, particles, frames, MSE                                 | Basic run metadata                                                                               |
 | **Scatter** (top-right for 4-comp, or bottom-right for 1-comp) | Pred vs GT for ALL values. Red dashed=ideal, Green=regression fit                          | Cloud should be tight along diagonal. Slope<1 means underprediction. R² and slope shown          |
-| **GT panels** (bottom rows)                                    | Ground truth field at frame n_frames/2. Each component shown separately. Yellow SSIM value | Spatial structure of the true field. SSIM measures structural similarity to prediction           |
+| **GT panels** (bottom rows)                                    | Ground truth field at frame n_training_frames/2. Each component shown separately. Yellow SSIM value | Spatial structure of the true field. SSIM measures structural similarity to prediction           |
 | **Pred panels** (bottom rows)                                  | Slope-corrected prediction at same frame. White SSIM value                                 | Should match GT visually. Low SSIM despite high R² = wrong spatial patterns learned              |
 
 **Qualitative analysis checklist:**
@@ -706,14 +730,14 @@ Examples:
 
 ### Prior Knowledge (from 17 blocks prior exploration)
 
-**Field difficulty ranking**: F (R²=0.9999) > Jp (R²=0.997) > C (R²=0.989) >> S (R²=0.801)
+**Field difficulty ranking**: Jp (R²=0.99995, siren_t) ≥ F (R²=0.9999, siren_txy) > C (R²=0.989) >> S (R²=0.801)
 
 **Optimal configurations per field** (use these as starting points):
 
 | Field | hidden_dim | n_layers | omega_f | lr_NNR_f | steps/frame | Best R² |
 | ----- | ---------- | -------- | ------- | -------- | ----------- | ------- |
 | F     | 256        | 4        | 20      | 3E-5     | 800         | 0.9999  |
-| Jp    | 384        | 3        | 15-20   | 4E-5     | 800         | 0.997   |
+| Jp    | 256 (siren_t) or 384 (siren_txy) | 3 | 7 (siren_t) or 15-20 (siren_txy) | 8E-5 (siren_t) or 4E-5 (siren_txy) | 2000 | 0.99995 (siren_t) |
 | C     | 640        | 3        | 20-25   | 3E-5     | 1000        | 0.989   |
 | S     | 1280       | 3 (or 4) | 48-50   | 2E-5     | 3000+       | 0.729-0.801 |
 
@@ -726,6 +750,28 @@ Examples:
 - **S field instability**: EXTREME stochastic variance (R² 0.08-0.80 same config). Use gradient clipping max_norm=1.0.
 - **SIREN + normalization**: LayerNorm/BatchNorm DESTROY SIREN (R²=0.022). Never use.
 - **batch_size**: Always use batch_size=1 to avoid training time explosion.
+
+**Architecture ranking (Block 8-9 multimaterial finding):**
+
+- **siren_t >> siren_txy >> siren_id** for Jp@100f@9000p, F@100f@9000p, AND C@100f@9000p:
+  - Jp siren_t: R²=0.99995, slope=1.000, 256×3, 9.7min (SOTA)
+  - F siren_t: R²=1.000000, slope=1.000, 256×3, 8.9min (SOTA) — or 256×2, 5.5min (speed)
+  - C siren_t: R²=0.9999, slope=0.998, 640×3, 26.0min (SOTA) — or 640×2, 12.4min (speed)
+  - siren_txy Jp: R²=0.996, F: R²=0.998, C: R²=0.994
+  - siren_id: R²<0.10, ALL configs fail (5 iterations tested)
+- siren_t uses 1D input (time only), output_size=n_particles×n_components. Implicitly learns all particle trajectories.
+- **omega_f-lr interaction on siren_t**: Lower omega_f compensates for high lr. Higher omega_f amplifies lr sensitivity.
+- siren_id unsuitable for large particle counts (9000). May work for smaller datasets but untested.
+
+**siren_t optimal configs (Block 8-9 findings):**
+
+- **siren_t omega_f is UNIVERSALLY LOW**: Jp optimal [5-10], F optimal 3.0, C optimal [3-5]. Rule: siren_t omega_f is ~50-88% LOWER than siren_txy optimal (wider range than initially predicted).
+- **siren_t field-specific lr**: F(5E-5) = C(5E-5) < Jp(8E-5). siren_t raises C lr from 2E-5 (siren_txy) to 5E-5 (2.5× increase).
+- **siren_t depth**: Jp/F/C all optimal at depth=3 (accuracy), depth=2 viable for F AND C speed Pareto. siren_t REDUCES depth requirements for ALL tested fields.
+- **siren_t overtraining at shallow depth**: At depth=2, fewer steps (100k) beat more (150k) for F/Jp. BUT C does NOT overtrain even at 5000 steps/frame. C is uniquely overtraining-resistant.
+- **siren_t C COMPLETE MAP (Block 10)**: omega_f: 15(0.997) < 12(0.998) < 5(0.999) ≈ **3(0.999-0.9999)**. lr: 3E-5(0.999) < **5E-5(0.9999)** > 8E-5(0.9996). Capacity: **640(0.9999)** >> 256(0.997). Depth: 3 ≈ 2 (both 0.9999@300k). Steps: 150k(0.9997) < 300k(0.9999) < 500k(0.99992). C siren_t does NOT overtrain.
+- **siren_t advantage magnitude**: C(+0.006) > Jp(+0.004) > F(+0.002). C field shows LARGEST siren_t benefit. siren_t confirmed superior for 3/4 fields.
+- **siren_t starting config for S**: Use Jp/F/C pattern to predict: omega_f ~24-36 (siren_txy: 48, apply 50-88% reduction), lr ~2E-5, depth=3, hidden_dim=1280
 
 ### Training Dynamics
 
@@ -782,6 +828,10 @@ Examples:
 - **S field gradient clipping (Block 17)**: CRITICAL - S field REQUIRES gradient clipping max_norm=1.0 for stable training. Clipping map: 0.25→0.810, 0.5→[0.828,0.181], 1.0→[0.785,0.787,0.732]. max_norm>1.5 causes catastrophic failure (R²<0.13). max_norm=1.0 is MOST STABLE (mean R²=0.768±0.031).
 - **SIREN normalization incompatibility (Block 17)**: LayerNorm, BatchNorm INCOMPATIBLE with SIREN architecture. LayerNorm causes R²=0.022 (catastrophic). SIREN relies on omega-scaled initialization which normalization destroys.
 - **Jp hidden_dim tradeoff (Block 1 multimaterial_1_discs_3types)**: hidden_dim: 384(0.995, 12.2min) ≈ 512(0.996, 15.4min). 384 achieves 99% accuracy at 20% lower training time = SPEED PARETO. Use 384 for efficiency, 512 for maximum accuracy.
+- **Jp@200frames@9000p COMPLETE MAP (Block 6 this dataset)**: omega_f: [3-7] ALL FLAT (R²=0.992-0.997). omega_f is INSENSITIVE for Jp@200f. lr@400k: 4E-5(0.995) < 6E-5(0.997) ≈ 8E-5(0.997) ≈ **1E-4(0.997/slope=0.993)** > 1.5E-4(0.989). Optimal lr=1E-4. Steps: 400k(0.997) > 300k(0.992) at moderate lr. But 300k@lr=1.5E-4 = 0.997 (overshoot prevention). Speed Pareto: 300k@lr=1.5E-4 (40.5min, R²=0.997, slope=1.002).
+- **LR-STEPS INTERACTION (Block 6 finding)**: At high lr (≥1.5E-4), fewer training steps can be BETTER. lr=1.5E-4@300k(0.997) > lr=1.5E-4@400k(0.989). High lr + many steps = overshoot. Rule: When probing high lr, also test REDUCED steps to find sweet spot.
+- **Data scaling widens lr tolerance (Block 6 finding)**: Jp@100f lr ceiling at 4E-5. Jp@200f lr ceiling at 1E-4 (2.5× higher). More training data regularizes and allows much higher learning rates. Rule: when increasing n_training_frames, probe HIGHER lr than previous optimum.
+- **Slope-LR monotonic relationship (Block 6 finding)**: For Jp, slope improves monotonically with lr: 4E-5(0.978) → 6E-5(0.979) → 8E-5(0.985) → 1E-4(0.993) → 1.5E-4(1.002). Higher lr fixes underprediction bias. If slope<1 (underprediction), try INCREASING lr.
 - **S@100frames@9000p COMPLETE MAP (Block 4 this dataset)**: omega_f: 25(0.174) << 35(0.574) < 42(0.618) < 48(**0.729**) ≈ 55(0.693). lr: 1.5E-5(0.719) < 2E-5(**0.729**) >> 3E-5(0.085). depth: 3(**0.729**) >> 4(0.175). capacity: 640(0.130) << 1024(0.721) < 1280(**0.729**). S requires omega_f=48 (still high, unlike Jp/F shift lower), lr=2E-5 hard-locked, depth=3 (NOT 4), 1280 capacity. Best R²=0.729 ceiling. Training time 166min.
 - **S lr-capacity interaction (Block 4)**: Lower lr compensates for reduced capacity: 1024@lr=1.5E-5 (0.721) > 1024@lr=2E-5 (0.686). But at full capacity (1280), lower lr HURTS: 1280@lr=2E-5 (0.729) > 1280@lr=1.5E-5 (0.719). Optimal lr shifts with capacity.
 - **S omega_f COUNTER-TREND (Block 4 this dataset)**: Jp/F shift to LOWER omega_f on 9000-particle dataset (Jp: 5-10, F: 12). S does NOT follow this trend: omega_f=48 optimal (same direction as prior dataset omega_f=50). C also unchanged (25). Pattern: high-complexity fields (C, S) maintain omega_f, low-complexity (Jp, F) shift lower.
@@ -814,6 +864,21 @@ Examples:
 - Lower is better
 - Field-dependent scale
 - Use R² for comparison across fields
+
+### Kinograph Metrics
+
+Kinographs are 2D heatmaps [n_training_frames, n_particles * n_field_dims] comparing ground truth vs INR prediction across all frames and particles. They provide a global view of temporal fidelity.
+
+- **kinograph_R2**: Mean per-frame R² computed on the kinograph matrix (averaged across field components). Measures how well the prediction matches GT at each time step across all particles.
+  - kino_R2 > 0.95: excellent temporal fidelity
+  - kino_R2 0.80-0.95: good
+  - kino_R2 < 0.80: temporal structure is lost
+- **kinograph_SSIM**: Structural similarity index on the 2D kinograph image (averaged across field components). Captures spatial-temporal pattern similarity.
+  - kino_SSIM > 0.90: strong structural match
+  - kino_SSIM 0.70-0.90: moderate
+  - kino_SSIM < 0.70: poor structural fidelity
+
+Include kinograph_R2 and kinograph_SSIM in the Metrics line of each iteration entry and in the Regime Comparison Table.
 
 ### Training Time
 

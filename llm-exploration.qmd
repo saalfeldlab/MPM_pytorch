@@ -9,7 +9,7 @@ This page documents an ongoing **LLM-in-the-loop exploration** to optimize SIREN
 
 ::: {.callout-note}
 ## Goal
-Find optimal SIREN configurations to accurately represent time-varying particle fields ($J_p$, $\mathbf{F}$, $\mathbf{C}$, $\mathbf{S}$) for 9000 particles over 100 frames.
+Find optimal SIREN configurations to accurately represent time-varying particle fields ($J_p$, $\mathbf{F}$, $\mathbf{C}$, $\mathbf{S}$) for 9000 particles over 100–200 frames.
 :::
 
 ## SIREN Architecture
@@ -20,24 +20,24 @@ $$\phi(x) = \sin(\omega_0 \cdot Wx + b)$$
 
 ### Input-Output Mapping
 
-The INR maps normalized time and particle index to field values:
+The INR maps normalized time and particle positions to field values:
 
 $$
-\text{SIREN}: (t/T, \, \text{id}/N) \rightarrow \text{field}_{\text{id}}(t)
+\text{SIREN}: (t/T, \, x, \, y) \rightarrow \text{field}(t, x, y)
 $$
 
-where $T$ = number of frames and $N$ = number of particles. Both inputs are normalized to [0, 1].
+where $T$ = number of frames. Time is normalized to [0, 1], and positions $(x, y)$ are scaled by `nnr_f_xy_period`.
 
 Three input variants are supported:
 
 | Variant | Input | Output | Use Case |
 |---------|-------|--------|----------|
-| `siren_id` | $(t, \text{id})$ | Field value for one particle | ✅ **Used for all results below** |
+| `siren_id` | $(t, \text{id})$ | Field value for one particle | Index-based encoding |
 | `siren_t` | $t$ only | All particles at once | Faster but less flexible |
-| `siren_txy` | $(t, x, y)$ | Lagrangian positions | Position-aware encoding |
+| `siren_txy` | $(t, x, y)$ | Field value at position | ✅ **Used for all results below** |
 
 ::: {.callout-note}
-All results on this page use `inr_type: siren_id` — the network learns a mapping from (time, particle_index) to field values, treating each particle as a separate entity identified by its index.
+All results on this page use `inr_type: siren_txy` — the network learns a mapping from (time, x, y) to field values, using Lagrangian particle positions for position-aware encoding.
 :::
 
 ### Frequency Parameter (omega_f)
@@ -163,34 +163,101 @@ Speed Pareto: `384×3 @ omega=10` achieves R²=0.995 in 12.2 min
 
 ---
 
-### $\mathbf{S}$ — Stress (Block 4, In Progress)
+### $\mathbf{S}$ — Stress (Block 4)
 
 `n_training_frames: 100` | `n_particles: 9000`
 
-::: {.callout-warning}
-## Currently Exploring
-**Best so far: R² = 0.574** with `1280×3 @ omega=35, lr=2E-5, 200k steps` (60.1 min)
-
-Key findings (iterations 37-39):
-
-- Prior optimal config (1280×4, omega=50) **FAILED** on this dataset (R²=0.175)
-- C-optimal config (640×3, omega=25) performed WORSE (R²=0.130)
-- **Depth=3 + high capacity critical**: 1280×3 @ omega=35 achieved R²=0.574
+::: {.callout-tip}
+## Best Configuration
+**R² = 0.729** with `1280×3 @ omega=48, lr=2E-5, 300k steps` (166.2 min)
 :::
 
 | Finding | Value |
 |---------|-------|
-| Depth ceiling | 3 layers (not 4 like prior) |
+| Optimal omega_f | 48 (no lower shift, similar to prior 50) |
+| Optimal depth | 3 layers (NOT 4 like prior) |
 | Capacity requirement | 1280 (confirmed, 640 fails) |
-| Optimal omega_f | ~35 (lower than prior 50) |
+| Optimal lr | 2E-5 (hard-locked, 3E-5 catastrophic) |
+| R² ceiling | 0.729 — hardest field on this dataset |
 
 ::: {.panel-tabset}
 
 #### Video
-{{< video log/Claude_exploration/instruction_multimaterial_1_discs_3types/videos/iter_039_multimaterial_1_discs_3types_Claude.mp4 >}}
+{{< video log/Claude_exploration/instruction_multimaterial_1_discs_3types/videos/iter_048_multimaterial_1_discs_3types_Claude.mp4 >}}
 
 #### Final Field
-![](log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_S_20260128_132852.png){.lightbox}
+![](log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_S_20260129_113314.png){.lightbox}
+
+:::
+
+---
+
+### $\mathbf{F}$ — Deformation Gradient at 200 frames (Block 5)
+
+`n_training_frames: 200` | `n_particles: 9000`
+
+::: {.callout-tip}
+## Best Configuration
+**R² = 0.9997** with `256×4 @ omega=9, lr=5E-5, 300k steps` (32.4 min)
+
+Speed Pareto: `200k steps` achieves R²=0.9988 in 27.6 min
+:::
+
+| Finding | Value |
+|---------|-------|
+| Optimal omega_f | 9–10 (shifted from 12 at 100f — more frames → lower omega) |
+| Optimal depth | 4 layers (same as F@100f) |
+| Optimal lr | 5E-5 (narrower than 100f tolerance) |
+| Capacity ceiling | 256 (re-confirmed, 384 overparameterized) |
+| Period params | T_period=1.0 and xy_period=1.0 MANDATORY |
+
+::: {.callout-warning}
+## Period Sensitivity
+`T_period=2.0` causes **catastrophic** degradation (R²=0.790). `xy_period=2.0` causes significant degradation (R²=0.987). Temporal smoothing 6× more damaging than spatial.
+:::
+
+::: {.panel-tabset}
+
+#### Video
+{{< video log/Claude_exploration/instruction_multimaterial_1_discs_3types/videos/iter_060_multimaterial_1_discs_3types_Claude.mp4 >}}
+
+#### Final Field
+![](log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_F_20260129_220007.png){.lightbox}
+
+:::
+
+---
+
+### $J_p$ — Plastic Deformation at 200 frames (Block 6, In Progress)
+
+`n_training_frames: 200` | `n_particles: 9000`
+
+::: {.callout-warning}
+## Currently Exploring
+**Best so far: R² = 0.995** with `512×3 @ omega=5, lr=4E-5, 400k steps` (67.8 min)
+
+Key findings (iterations 61-67):
+
+- Jp@200f maintains R²=0.995 (vs 0.996 at 100f) — quality preserved
+- **omega_f extremely flat** [3–7]: all yield R²=0.992–0.995. omega_f=5 wins on slope
+- **Step count is dominant**: 400k steps (R²=0.995) vs 300k (R²=0.992)
+- Speed Pareto: 300k steps achieves R²=0.992 in ~46 min
+:::
+
+| Finding | Value |
+|---------|-------|
+| Optimal omega_f | 3–7 (extremely flat, 5 best on slope) |
+| Optimal depth | 3 layers (same as Jp@100f) |
+| Optimal lr | 4E-5 at 400k steps, 5E-5 at 300k steps |
+| Steps/frame | 2000 needed for R²>0.99 |
+
+::: {.panel-tabset}
+
+#### Video
+{{< video log/Claude_exploration/instruction_multimaterial_1_discs_3types/videos/iter_067_multimaterial_1_discs_3types_Claude.mp4 >}}
+
+#### Final Field
+![](log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_Jp_20260130_045721.png){.lightbox}
 
 :::
 
@@ -205,21 +272,21 @@ flowchart TD
     A --> D[C]
     A --> E[S]
 
-    B --> B1[omega=5-10]
+    B --> B1["omega=5-10 (100f) | 3-7 (200f)"]
     B --> B2[512×3]
-    B --> B3[R²=0.996]
+    B --> B3["R²=0.996 (100f) | 0.995 (200f)"]
 
-    C --> C1[omega=12]
+    C --> C1["omega=12 (100f) | 9 (200f)"]
     C --> C2[256×4]
-    C --> C3[R²=0.998]
+    C --> C3["R²=0.998 (100f) | 0.9997 (200f)"]
 
     D --> D1[omega=25]
     D --> D2[640×3]
     D --> D3[R²=0.994]
 
-    E --> E1[omega=35]
+    E --> E1[omega=48]
     E --> E2[1280×3]
-    E --> E3[R²=0.574]
+    E --> E3[R²=0.729]
 
     style B fill:#c8e6c9
     style C fill:#c8e6c9
@@ -230,11 +297,15 @@ flowchart TD
 ### Established Principles
 
 1. **Field-specific architectures required**: Jp, F, C, S need DIFFERENT optimal configs on same dataset
-2. **omega_f scales with field complexity**: Jp(5-10) < F(12) < C(25) < S(35)
-3. **Capacity requirements vary**: F(256) < Jp(512) < C(640) < S(1280)
-4. **Learning rate sensitivity differs**: F has wide tolerance, C/S need slower learning
-5. **Depth varies by field**: Jp(3), F(4), C(3), S(3) — only F benefits from 4 layers
-6. **Prior configs don't transfer**: S field prior optimal (1280×4, omega=50) failed on new dataset
+2. **omega_f scales with field complexity**: Jp(5-10) < F(12) < C(25) < S(48)
+3. **More frames → lower omega_f**: F shifts 12→9, Jp shifts 7→5 at 200 frames. High-complexity fields (C, S) maintain omega_f
+4. **Capacity requirements vary**: F(256) < Jp(512) < C(640) < S(1280)
+5. **Learning rate sensitivity differs**: F has wide tolerance at 100f (narrows at 200f), C/S need slower learning (2E-5 hard-locked)
+6. **Depth varies by field**: Jp(3), F(4), C(3), S(3) — only F benefits from 4 layers
+7. **Prior configs don't transfer**: S field prior optimal (1280×4, omega=50) failed on new dataset
+8. **Data scaling works for F**: No diminishing returns from 100→200 frames when omega_f re-tuned (R² 0.998→0.9997)
+9. **Period parameters are critical**: T_period and xy_period must stay at 1.0 — temporal smoothing 6× more damaging than spatial
+10. **Field difficulty ranking**: F(0.9997) > Jp(0.996) > C(0.994) >> S(0.729)
 
 ---
 
@@ -245,4 +316,6 @@ flowchart TD
 | 1 | Jp | 100 | 1–12 | Complete | 0.996 |
 | 2 | F | 100 | 13–24 | Complete | 0.998 |
 | 3 | C | 100 | 25–36 | Complete | 0.994 |
-| 4 | S | 100 | 37–48 | In progress | 0.574 |
+| 4 | S | 100 | 37–48 | Complete | 0.729 |
+| 5 | F | 200 | 49–60 | Complete | 0.9997 |
+| 6 | Jp | 200 | 61–72 | In progress | 0.995 |

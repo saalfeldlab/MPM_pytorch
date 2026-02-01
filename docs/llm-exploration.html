@@ -366,7 +366,9 @@ window.Quarto = {
   <li><a href="#j_p-plastic-deformation-block-1" id="toc-j_p-plastic-deformation-block-1" class="nav-link" data-scroll-target="#j_p-plastic-deformation-block-1"><span class="math inline">\(J_p\)</span> — Plastic Deformation (Block 1)</a></li>
   <li><a href="#mathbff-deformation-gradient-block-2" id="toc-mathbff-deformation-gradient-block-2" class="nav-link" data-scroll-target="#mathbff-deformation-gradient-block-2"><span class="math inline">\(\mathbf{F}\)</span> — Deformation Gradient (Block 2)</a></li>
   <li><a href="#mathbfc-affine-velocity-block-3" id="toc-mathbfc-affine-velocity-block-3" class="nav-link" data-scroll-target="#mathbfc-affine-velocity-block-3"><span class="math inline">\(\mathbf{C}\)</span> — Affine Velocity (Block 3)</a></li>
-  <li><a href="#mathbfs-stress-block-4-in-progress" id="toc-mathbfs-stress-block-4-in-progress" class="nav-link" data-scroll-target="#mathbfs-stress-block-4-in-progress"><span class="math inline">\(\mathbf{S}\)</span> — Stress (Block 4, In Progress)</a></li>
+  <li><a href="#mathbfs-stress-block-4" id="toc-mathbfs-stress-block-4" class="nav-link" data-scroll-target="#mathbfs-stress-block-4"><span class="math inline">\(\mathbf{S}\)</span> — Stress (Block 4)</a></li>
+  <li><a href="#mathbff-deformation-gradient-at-200-frames-block-5" id="toc-mathbff-deformation-gradient-at-200-frames-block-5" class="nav-link" data-scroll-target="#mathbff-deformation-gradient-at-200-frames-block-5"><span class="math inline">\(\mathbf{F}\)</span> — Deformation Gradient at 200 frames (Block 5)</a></li>
+  <li><a href="#j_p-plastic-deformation-at-200-frames-block-6-in-progress" id="toc-j_p-plastic-deformation-at-200-frames-block-6-in-progress" class="nav-link" data-scroll-target="#j_p-plastic-deformation-at-200-frames-block-6-in-progress"><span class="math inline">\(J_p\)</span> — Plastic Deformation at 200 frames (Block 6, In Progress)</a></li>
   </ul></li>
   <li><a href="#key-discoveries" id="toc-key-discoveries" class="nav-link" data-scroll-target="#key-discoveries">Key Discoveries</a>
   <ul class="collapse">
@@ -413,7 +415,7 @@ window.Quarto = {
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>Find optimal SIREN configurations to accurately represent time-varying particle fields (<span class="math inline">\(J_p\)</span>, <span class="math inline">\(\mathbf{F}\)</span>, <span class="math inline">\(\mathbf{C}\)</span>, <span class="math inline">\(\mathbf{S}\)</span>) for 9000 particles over 100 frames.</p>
+<p>Find optimal SIREN configurations to accurately represent time-varying particle fields (<span class="math inline">\(J_p\)</span>, <span class="math inline">\(\mathbf{F}\)</span>, <span class="math inline">\(\mathbf{C}\)</span>, <span class="math inline">\(\mathbf{S}\)</span>) for 9000 particles over 100–200 frames.</p>
 </div>
 </div>
 </section>
@@ -423,11 +425,11 @@ window.Quarto = {
 <p><span class="math display">\[\phi(x) = \sin(\omega_0 \cdot Wx + b)\]</span></p>
 <section id="input-output-mapping" class="level3">
 <h3 class="anchored" data-anchor-id="input-output-mapping">Input-Output Mapping</h3>
-<p>The INR maps normalized time and particle index to field values:</p>
+<p>The INR maps normalized time and particle positions to field values:</p>
 <p><span class="math display">\[
-\text{SIREN}: (t/T, \, \text{id}/N) \rightarrow \text{field}_{\text{id}}(t)
+\text{SIREN}: (t/T, \, x, \, y) \rightarrow \text{field}(t, x, y)
 \]</span></p>
-<p>where <span class="math inline">\(T\)</span> = number of frames and <span class="math inline">\(N\)</span> = number of particles. Both inputs are normalized to [0, 1].</p>
+<p>where <span class="math inline">\(T\)</span> = number of frames. Time is normalized to [0, 1], and positions <span class="math inline">\((x, y)\)</span> are scaled by <code>nnr_f_xy_period</code>.</p>
 <p>Three input variants are supported:</p>
 <table class="caption-top table">
 <colgroup>
@@ -449,7 +451,7 @@ window.Quarto = {
 <td><code>siren_id</code></td>
 <td><span class="math inline">\((t, \text{id})\)</span></td>
 <td>Field value for one particle</td>
-<td>✅ <strong>Used for all results below</strong></td>
+<td>Index-based encoding</td>
 </tr>
 <tr class="even">
 <td><code>siren_t</code></td>
@@ -460,8 +462,8 @@ window.Quarto = {
 <tr class="odd">
 <td><code>siren_txy</code></td>
 <td><span class="math inline">\((t, x, y)\)</span></td>
-<td>Lagrangian positions</td>
-<td>Position-aware encoding</td>
+<td>Field value at position</td>
+<td>✅ <strong>Used for all results below</strong></td>
 </tr>
 </tbody>
 </table>
@@ -475,7 +477,7 @@ Note
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>All results on this page use <code>inr_type: siren_id</code> — the network learns a mapping from (time, particle_index) to field values, treating each particle as a separate entity identified by its index.</p>
+<p>All results on this page use <code>inr_type: siren_txy</code> — the network learns a mapping from (time, x, y) to field values, using Lagrangian particle positions for position-aware encoding.</p>
 </div>
 </div>
 </section>
@@ -751,9 +753,145 @@ Note
 </div>
 <hr>
 </section>
-<section id="mathbfs-stress-block-4-in-progress" class="level3">
-<h3 class="anchored" data-anchor-id="mathbfs-stress-block-4-in-progress"><span class="math inline">\(\mathbf{S}\)</span> — Stress (Block 4, In Progress)</h3>
+<section id="mathbfs-stress-block-4" class="level3">
+<h3 class="anchored" data-anchor-id="mathbfs-stress-block-4"><span class="math inline">\(\mathbf{S}\)</span> — Stress (Block 4)</h3>
 <p><code>n_training_frames: 100</code> | <code>n_particles: 9000</code></p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+<span class="screen-reader-only">Tip</span>Best Configuration
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><strong>R² = 0.729</strong> with <code>1280×3 @ omega=48, lr=2E-5, 300k steps</code> (166.2 min)</p>
+</div>
+</div>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Finding</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Optimal omega_f</td>
+<td>48 (no lower shift, similar to prior 50)</td>
+</tr>
+<tr class="even">
+<td>Optimal depth</td>
+<td>3 layers (NOT 4 like prior)</td>
+</tr>
+<tr class="odd">
+<td>Capacity requirement</td>
+<td>1280 (confirmed, 640 fails)</td>
+</tr>
+<tr class="even">
+<td>Optimal lr</td>
+<td>2E-5 (hard-locked, 3E-5 catastrophic)</td>
+</tr>
+<tr class="odd">
+<td>R² ceiling</td>
+<td>0.729 — hardest field on this dataset</td>
+</tr>
+</tbody>
+</table>
+<div class="tabset-margin-container"></div><div class="panel-tabset">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-4-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-4-1" role="tab" aria-controls="tabset-4-1" aria-selected="true" href="">Video</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-4-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-4-2" role="tab" aria-controls="tabset-4-2" aria-selected="false" href="">Final Field</a></li></ul>
+<div class="tab-content">
+<div id="tabset-4-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-4-1-tab">
+<div class="quarto-video"><video id="video_shortcode_videojs_video4" class="video-js vjs-default-skin vjs-fluid" controls="" preload="auto" data-setup="{}" title=""><source src="log/Claude_exploration/instruction_multimaterial_1_discs_3types/videos/iter_048_multimaterial_1_discs_3types_Claude.mp4"></video></div>
+</div>
+<div id="tabset-4-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-4-2-tab">
+<p><a href="log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_S_20260129_113314.png" class="lightbox" data-gallery="quarto-lightbox-gallery-4"><img src="log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_S_20260129_113314.png" class="img-fluid"></a></p>
+</div>
+</div>
+</div>
+<hr>
+</section>
+<section id="mathbff-deformation-gradient-at-200-frames-block-5" class="level3">
+<h3 class="anchored" data-anchor-id="mathbff-deformation-gradient-at-200-frames-block-5"><span class="math inline">\(\mathbf{F}\)</span> — Deformation Gradient at 200 frames (Block 5)</h3>
+<p><code>n_training_frames: 200</code> | <code>n_particles: 9000</code></p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+<span class="screen-reader-only">Tip</span>Best Configuration
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><strong>R² = 0.9997</strong> with <code>256×4 @ omega=9, lr=5E-5, 300k steps</code> (32.4 min)</p>
+<p>Speed Pareto: <code>200k steps</code> achieves R²=0.9988 in 27.6 min</p>
+</div>
+</div>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 56%">
+<col style="width: 43%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Finding</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Optimal omega_f</td>
+<td>9–10 (shifted from 12 at 100f — more frames → lower omega)</td>
+</tr>
+<tr class="even">
+<td>Optimal depth</td>
+<td>4 layers (same as F@100f)</td>
+</tr>
+<tr class="odd">
+<td>Optimal lr</td>
+<td>5E-5 (narrower than 100f tolerance)</td>
+</tr>
+<tr class="even">
+<td>Capacity ceiling</td>
+<td>256 (re-confirmed, 384 overparameterized)</td>
+</tr>
+<tr class="odd">
+<td>Period params</td>
+<td>T_period=1.0 and xy_period=1.0 MANDATORY</td>
+</tr>
+</tbody>
+</table>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+<span class="screen-reader-only">Warning</span>Period Sensitivity
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><code>T_period=2.0</code> causes <strong>catastrophic</strong> degradation (R²=0.790). <code>xy_period=2.0</code> causes significant degradation (R²=0.987). Temporal smoothing 6× more damaging than spatial.</p>
+</div>
+</div>
+<div class="tabset-margin-container"></div><div class="panel-tabset">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-5-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-5-1" role="tab" aria-controls="tabset-5-1" aria-selected="true" href="">Video</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-5-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-5-2" role="tab" aria-controls="tabset-5-2" aria-selected="false" href="">Final Field</a></li></ul>
+<div class="tab-content">
+<div id="tabset-5-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-5-1-tab">
+<div class="quarto-video"><video id="video_shortcode_videojs_video5" class="video-js vjs-default-skin vjs-fluid" controls="" preload="auto" data-setup="{}" title=""><source src="log/Claude_exploration/instruction_multimaterial_1_discs_3types/videos/iter_060_multimaterial_1_discs_3types_Claude.mp4"></video></div>
+</div>
+<div id="tabset-5-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-5-2-tab">
+<p><a href="log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_F_20260129_220007.png" class="lightbox" data-gallery="quarto-lightbox-gallery-5"><img src="log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_F_20260129_220007.png" class="img-fluid"></a></p>
+</div>
+</div>
+</div>
+<hr>
+</section>
+<section id="j_p-plastic-deformation-at-200-frames-block-6-in-progress" class="level3">
+<h3 class="anchored" data-anchor-id="j_p-plastic-deformation-at-200-frames-block-6-in-progress"><span class="math inline">\(J_p\)</span> — Plastic Deformation at 200 frames (Block 6, In Progress)</h3>
+<p><code>n_training_frames: 200</code> | <code>n_particles: 9000</code></p>
 <div class="callout callout-style-default callout-warning callout-titled">
 <div class="callout-header d-flex align-content-center">
 <div class="callout-icon-container">
@@ -764,12 +902,13 @@ Note
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p><strong>Best so far: R² = 0.574</strong> with <code>1280×3 @ omega=35, lr=2E-5, 200k steps</code> (60.1 min)</p>
-<p>Key findings (iterations 37-39):</p>
+<p><strong>Best so far: R² = 0.995</strong> with <code>512×3 @ omega=5, lr=4E-5, 400k steps</code> (67.8 min)</p>
+<p>Key findings (iterations 61-67):</p>
 <ul>
-<li>Prior optimal config (1280×4, omega=50) <strong>FAILED</strong> on this dataset (R²=0.175)</li>
-<li>C-optimal config (640×3, omega=25) performed WORSE (R²=0.130)</li>
-<li><strong>Depth=3 + high capacity critical</strong>: 1280×3 @ omega=35 achieved R²=0.574</li>
+<li>Jp@200f maintains R²=0.995 (vs 0.996 at 100f) — quality preserved</li>
+<li><strong>omega_f extremely flat</strong> [3–7]: all yield R²=0.992–0.995. omega_f=5 wins on slope</li>
+<li><strong>Step count is dominant</strong>: 400k steps (R²=0.995) vs 300k (R²=0.992)</li>
+<li>Speed Pareto: 300k steps achieves R²=0.992 in ~46 min</li>
 </ul>
 </div>
 </div>
@@ -782,27 +921,31 @@ Note
 </thead>
 <tbody>
 <tr class="odd">
-<td>Depth ceiling</td>
-<td>3 layers (not 4 like prior)</td>
+<td>Optimal omega_f</td>
+<td>3–7 (extremely flat, 5 best on slope)</td>
 </tr>
 <tr class="even">
-<td>Capacity requirement</td>
-<td>1280 (confirmed, 640 fails)</td>
+<td>Optimal depth</td>
+<td>3 layers (same as Jp@100f)</td>
 </tr>
 <tr class="odd">
-<td>Optimal omega_f</td>
-<td>~35 (lower than prior 50)</td>
+<td>Optimal lr</td>
+<td>4E-5 at 400k steps, 5E-5 at 300k steps</td>
+</tr>
+<tr class="even">
+<td>Steps/frame</td>
+<td>2000 needed for R²&gt;0.99</td>
 </tr>
 </tbody>
 </table>
 <div class="tabset-margin-container"></div><div class="panel-tabset">
-<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-4-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-4-1" role="tab" aria-controls="tabset-4-1" aria-selected="true" href="">Video</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-4-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-4-2" role="tab" aria-controls="tabset-4-2" aria-selected="false" href="">Final Field</a></li></ul>
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-6-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-6-1" role="tab" aria-controls="tabset-6-1" aria-selected="true" href="">Video</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-6-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-6-2" role="tab" aria-controls="tabset-6-2" aria-selected="false" href="">Final Field</a></li></ul>
 <div class="tab-content">
-<div id="tabset-4-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-4-1-tab">
-<div class="quarto-video"><video id="video_shortcode_videojs_video4" class="video-js vjs-default-skin vjs-fluid" controls="" preload="auto" data-setup="{}" title=""><source src="log/Claude_exploration/instruction_multimaterial_1_discs_3types/videos/iter_039_multimaterial_1_discs_3types_Claude.mp4"></video></div>
+<div id="tabset-6-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-6-1-tab">
+<div class="quarto-video"><video id="video_shortcode_videojs_video6" class="video-js vjs-default-skin vjs-fluid" controls="" preload="auto" data-setup="{}" title=""><source src="log/Claude_exploration/instruction_multimaterial_1_discs_3types/videos/iter_067_multimaterial_1_discs_3types_Claude.mp4"></video></div>
 </div>
-<div id="tabset-4-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-4-2-tab">
-<p><a href="log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_S_20260128_132852.png" class="lightbox" data-gallery="quarto-lightbox-gallery-4"><img src="log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_S_20260128_132852.png" class="img-fluid"></a></p>
+<div id="tabset-6-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-6-2-tab">
+<p><a href="log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_Jp_20260130_045721.png" class="lightbox" data-gallery="quarto-lightbox-gallery-6"><img src="log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_Jp_20260130_045721.png" class="img-fluid"></a></p>
 </div>
 </div>
 </div>
@@ -822,21 +965,21 @@ Note
     A --&gt; D[C]
     A --&gt; E[S]
 
-    B --&gt; B1[omega=5-10]
+    B --&gt; B1["omega=5-10 (100f) | 3-7 (200f)"]
     B --&gt; B2[512×3]
-    B --&gt; B3[R²=0.996]
+    B --&gt; B3["R²=0.996 (100f) | 0.995 (200f)"]
 
-    C --&gt; C1[omega=12]
+    C --&gt; C1["omega=12 (100f) | 9 (200f)"]
     C --&gt; C2[256×4]
-    C --&gt; C3[R²=0.998]
+    C --&gt; C3["R²=0.998 (100f) | 0.9997 (200f)"]
 
     D --&gt; D1[omega=25]
     D --&gt; D2[640×3]
     D --&gt; D3[R²=0.994]
 
-    E --&gt; E1[omega=35]
+    E --&gt; E1[omega=48]
     E --&gt; E2[1280×3]
-    E --&gt; E3[R²=0.574]
+    E --&gt; E3[R²=0.729]
 
     style B fill:#c8e6c9
     style C fill:#c8e6c9
@@ -852,11 +995,15 @@ Note
 <h3 class="anchored" data-anchor-id="established-principles">Established Principles</h3>
 <ol type="1">
 <li><strong>Field-specific architectures required</strong>: Jp, F, C, S need DIFFERENT optimal configs on same dataset</li>
-<li><strong>omega_f scales with field complexity</strong>: Jp(5-10) &lt; F(12) &lt; C(25) &lt; S(35)</li>
+<li><strong>omega_f scales with field complexity</strong>: Jp(5-10) &lt; F(12) &lt; C(25) &lt; S(48)</li>
+<li><strong>More frames → lower omega_f</strong>: F shifts 12→9, Jp shifts 7→5 at 200 frames. High-complexity fields (C, S) maintain omega_f</li>
 <li><strong>Capacity requirements vary</strong>: F(256) &lt; Jp(512) &lt; C(640) &lt; S(1280)</li>
-<li><strong>Learning rate sensitivity differs</strong>: F has wide tolerance, C/S need slower learning</li>
+<li><strong>Learning rate sensitivity differs</strong>: F has wide tolerance at 100f (narrows at 200f), C/S need slower learning (2E-5 hard-locked)</li>
 <li><strong>Depth varies by field</strong>: Jp(3), F(4), C(3), S(3) — only F benefits from 4 layers</li>
 <li><strong>Prior configs don’t transfer</strong>: S field prior optimal (1280×4, omega=50) failed on new dataset</li>
+<li><strong>Data scaling works for F</strong>: No diminishing returns from 100→200 frames when omega_f re-tuned (R² 0.998→0.9997)</li>
+<li><strong>Period parameters are critical</strong>: T_period and xy_period must stay at 1.0 — temporal smoothing 6× more damaging than spatial</li>
+<li><strong>Field difficulty ranking</strong>: F(0.9997) &gt; Jp(0.996) &gt; C(0.994) &gt;&gt; S(0.729)</li>
 </ol>
 <hr>
 </section>
@@ -904,8 +1051,24 @@ Note
 <td>S</td>
 <td>100</td>
 <td>37–48</td>
+<td>Complete</td>
+<td>0.729</td>
+</tr>
+<tr class="odd">
+<td>5</td>
+<td>F</td>
+<td>200</td>
+<td>49–60</td>
+<td>Complete</td>
+<td>0.9997</td>
+</tr>
+<tr class="even">
+<td>6</td>
+<td>Jp</td>
+<td>200</td>
+<td>61–72</td>
 <td>In progress</td>
-<td>0.574</td>
+<td>0.995</td>
 </tr>
 </tbody>
 </table>
@@ -1345,6 +1508,8 @@ Note
 <script>videojs(video_shortcode_videojs_video2);</script>
 <script>videojs(video_shortcode_videojs_video3);</script>
 <script>videojs(video_shortcode_videojs_video4);</script>
+<script>videojs(video_shortcode_videojs_video5);</script>
+<script>videojs(video_shortcode_videojs_video6);</script>
 <script>var lightboxQuarto = GLightbox({"closeEffect":"zoom","descPosition":"bottom","loop":false,"openEffect":"zoom","selector":".lightbox"});
 (function() {
   let previousOnload = window.onload;

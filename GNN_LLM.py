@@ -122,6 +122,15 @@ if __name__ == "__main__":
             print(f"\033[93mNo previous iterations found, starting fresh\033[0m")
     else:
         start_iteration = 1
+        _analysis_check = f"{_root}/{llm_task_name}_analysis.md"
+        if os.path.exists(_analysis_check):
+            print(f"\033[91mWARNING: Fresh start will erase existing results in:\033[0m")
+            print(f"\033[91m  {_analysis_check}\033[0m")
+            print(f"\033[91m  {_root}/{llm_task_name}_memory.md\033[0m")
+            answer = input("\033[91mContinue? (y/n): \033[0m").strip().lower()
+            if answer != 'y':
+                print("Aborted.")
+                sys.exit(0)
         print(f"\033[93mFresh start\033[0m")
 
     # Claude task: duplicate and modify config files
@@ -136,7 +145,7 @@ if __name__ == "__main__":
             target_config = f"{config_root}/{pre}{llm_task_name}.yaml"
 
             # Only copy and initialize config on fresh start (not when resuming)
-            if start_iteration == 1:
+            if start_iteration == 1 and not args.resume:
                 if os.path.exists(source_config):
                     shutil.copy2(source_config, target_config)
                     print(f"\033[93mcopied {source_config} -> {target_config}\033[0m")
@@ -200,7 +209,7 @@ if __name__ == "__main__":
                 continue
 
             # clear analysis, memory, and reasoning files at start (only if not resuming)
-            if start_iteration == 1:
+            if start_iteration == 1 and not args.resume:
                 with open(analysis_path, 'w') as f:
                     f.write(f"# Experiment Log: {config_file_}\n\n")
                 print(f"\033[93mcleared {analysis_path}\033[0m")
@@ -213,8 +222,8 @@ if __name__ == "__main__":
                     f.write(f"# Working Memory: {config_file_}\n\n")
                     f.write("## Knowledge Base (accumulated across all blocks)\n\n")
                     f.write("### Regime Comparison Table\n")
-                    f.write("| Block | INR Type | Field | n_frames | Best R² | Best slope | Optimal lr_NNR_f | Optimal hidden_dim | Optimal n_layers | Optimal omega_f | Optimal total_steps | Training time (min) | Key finding |\n")
-                    f.write("|-------|----------|-------|----------|---------|------------|------------------|--------------------|--------------------|-----------------|---------------------|---------------------|-------------|\n\n")
+                    f.write("| Block | INR Type | Field | n_training_frames | Best R² | Best slope | kino_R2 | kino_SSIM | Optimal lr_NNR_f | Optimal hidden_dim | Optimal n_layers | Optimal omega_f | Optimal total_steps | Training time (min) | Key finding |\n")
+                    f.write("|-------|----------|-------|-------------------|---------|------------|---------|-----------|------------------|--------------------|--------------------|-----------------|---------------------|---------------------|-------------|\n\n")
                     f.write("### Established Principles\n\n")
                     f.write("### Open Questions\n\n")
                     f.write("---\n\n")

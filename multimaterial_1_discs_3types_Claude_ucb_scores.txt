@@ -1,9 +1,0 @@
-=== UCB Scores (Block 5, iters 61-72, N=7, c=1.414) ===
-
-Node 67: UCB=2.866, parent=66, visits=1, R2=0.995, slope=0.965, time=55.4min, Mutation=[total_steps]: 300000 → 400000
-Node 66: UCB=2.239, parent=65, visits=2, R2=0.992, slope=0.950, time=49.5min, Mutation=[omega_f]: 5.0 → 3.0
-Node 65: UCB=1.927, parent=64, visits=3, R2=0.992, slope=0.000, time=46.1min, Mutation=[omega_f]: 7.0 → 5.0
-Node 64: UCB=1.740, parent=63, visits=4, R2=0.992, slope=0.000, time=54.3min, Mutation=[learning_rate_NNR_f]: 4E-5 → 5E-5
-Node 63: UCB=1.612, parent=62, visits=5, R2=0.988, slope=0.000, time=46.1min, Mutation=[total_steps]: 400000 → 300000
-Node 62: UCB=1.528, parent=61, visits=6, R2=0.994, slope=0.000, time=67.7min, Mutation=[omega_f]: 5.0 → 7.0
-Node 61: UCB=1.463, parent=root, visits=7, R2=0.995, slope=0.000, time=67.8min, Mutation=Block baseline — Jp@200f with omega_f=5 (lower end of 100f optimal [5-10])

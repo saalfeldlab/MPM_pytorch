@@ -1070,6 +1070,101 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
         slope, intercept, r_value, p_value, std_err = linregress(gt_flat, pred_flat)
         final_r2 = r_value ** 2
 
+    # ---- Kinograph computation ----
+    print("computing kinograph metrics...")
+    from MPM_pytorch.models.utils import compute_kinograph_metrics
+
+    gt_kino_np = ground_truth.cpu().numpy()      # [n_frames, n_particles, n_components]
+    pred_kino_np = pred_all.cpu().numpy()
+    # Apply slope correction for fair comparison
+    if slope != 0:
+        pred_kino_np = (pred_kino_np - intercept) / slope
+
+    kino_metrics_per_comp = []
+    for c in range(n_components):
+        # compute_kinograph_metrics expects [n_entities, n_frames]
+        gt_c = gt_kino_np[:, :, c].T        # [n_particles, n_frames]
+        pred_c = pred_kino_np[:, :, c].T     # [n_particles, n_frames]
+        metrics_c = compute_kinograph_metrics(gt_c, pred_c)
+        kino_metrics_per_comp.append(metrics_c)
+
+    kino_r2 = np.mean([m['r2'] for m in kino_metrics_per_comp])
+    kino_ssim = np.mean([m['ssim'] for m in kino_metrics_per_comp])
+    print(f"kinograph_R2: {kino_r2:.4f}, kinograph_SSIM: {kino_ssim:.4f}")
+
+    # Save kinograph matrices
+    np.save(os.path.join(output_folder, 'kinograph_gt.npy'), gt_kino_np)
+    np.save(os.path.join(output_folder, 'kinograph_pred.npy'), pred_kino_np)
+
+    # Kinograph montage — transposed: rows=frames, cols=particles*field_dims
+    gt_display = gt_kino_np.reshape(n_frames, n_particles * n_components)
+    pred_display = pred_kino_np.reshape(n_frames, n_particles * n_components)
+    residual_display = gt_display - pred_display
+    vmax_shared = max(np.abs(gt_display).max(), np.abs(pred_display).max())
+    vmax_res = np.abs(residual_display).max()
+    if vmax_shared == 0:
+        vmax_shared = 1.0
+    if vmax_res == 0:
+        vmax_res = 1.0
+
+    fig, axes = plt.subplots(2, 2, figsize=(24, 12))
+    ax_gt, ax_pred, ax_res, ax_scat = axes[0, 0], axes[0, 1], axes[1, 0], axes[1, 1]
+
+    if n_components == 4:
+        cmap_kino = 'coolwarm' if field_name in ['F', 'C'] else 'hot'
+    else:
+        cmap_kino = 'viridis'
+
+    im_gt = ax_gt.imshow(gt_display, aspect='auto', cmap=cmap_kino,
+                         vmin=-vmax_shared, vmax=vmax_shared, origin='lower')
+    ax_gt.set_ylabel('frames', fontsize=20)
+    ax_gt.set_title(f'Ground Truth ({field_name})', fontsize=18)
+    fig.colorbar(im_gt, ax=ax_gt, fraction=0.046, pad=0.04).ax.tick_params(labelsize=12)
+
+    im_pred = ax_pred.imshow(pred_display, aspect='auto', cmap=cmap_kino,
+                             vmin=-vmax_shared, vmax=vmax_shared, origin='lower')
+    ax_pred.set_title(f'INR Prediction ({field_name})', fontsize=18)
+    fig.colorbar(im_pred, ax=ax_pred, fraction=0.046, pad=0.04).ax.tick_params(labelsize=12)
+
+    im_res = ax_res.imshow(residual_display, aspect='auto', cmap='RdBu_r',
+                           vmin=-vmax_res, vmax=vmax_res, origin='lower')
+    ax_res.set_ylabel('frames', fontsize=20)
+    ax_res.set_xlabel('particles \u00d7 field dims', fontsize=20)
+    ax_res.set_title('Residuals (GT \u2212 Pred)', fontsize=18)
+    fig.colorbar(im_res, ax=ax_res, fraction=0.046, pad=0.04).ax.tick_params(labelsize=12)
+
+    gt_flat_k = gt_display.flatten()
+    pred_flat_k = pred_display.flatten()
+    n_pts = len(gt_flat_k)
+    if n_pts > 200000:
+        idx = np.random.choice(n_pts, 200000, replace=False)
+        gt_flat_k = gt_flat_k[idx]
+        pred_flat_k = pred_flat_k[idx]
+    ax_scat.scatter(gt_flat_k, pred_flat_k, s=1, alpha=0.05, c='k', rasterized=True)
+    lim = [min(gt_flat_k.min(), pred_flat_k.min()), max(gt_flat_k.max(), pred_flat_k.max())]
+    ax_scat.plot(lim, lim, 'r--', linewidth=2)
+    ax_scat.set_xlim(lim); ax_scat.set_ylim(lim)
+    ax_scat.set_xlabel('ground truth', fontsize=20)
+    ax_scat.set_ylabel('prediction', fontsize=20)
+    ax_scat.set_title('True vs Predicted', fontsize=18)
+    ax_scat.tick_params(labelsize=14)
+    ax_scat.text(0.05, 0.95,
+                 f'kino_R\u00b2={kino_r2:.4f}\nkino_SSIM={kino_ssim:.4f}',
+                 transform=ax_scat.transAxes, fontsize=16, va='top',
+                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+
+    if n_components > 1:
+        for c_idx in range(1, n_components):
+            x_sep = c_idx * n_particles - 0.5
+            for ax in [ax_gt, ax_pred, ax_res]:
+                ax.axvline(x_sep, color='white', linewidth=0.5, alpha=0.7)
+
+    plt.tight_layout()
+    kinograph_path = os.path.join(output_folder, 'kinograph_montage.png')
+    plt.savefig(kinograph_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"kinograph montage saved: {kinograph_path}")
+
     # Calculate training time
     training_time = time.time() - training_start_time
     training_time_min = training_time / 60.0
@@ -1286,5 +1381,7 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
             omegas = nnr_f.get_omegas()
             if omegas:
                 log_file.write(f"final_omega_f: {omegas[0]:.2f}\n")
+        log_file.write(f"kinograph_R2: {kino_r2:.4f}\n")
+        log_file.write(f"kinograph_SSIM: {kino_ssim:.4f}\n")
 
     return nnr_f, loss_list

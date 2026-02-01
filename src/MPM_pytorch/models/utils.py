@@ -64,6 +64,37 @@ class KoLeoLoss(nn.Module):
 
         return loss
 
+def compute_kinograph_metrics(gt, pred):
+    """Compare two kinograph matrices [n_entities, n_frames].
+    Returns dict: r2, ssim.
+
+    r2: mean per-frame R².
+    ssim: structural similarity index on the 2D kinograph image.
+    """
+    from skimage.metrics import structural_similarity
+
+    # Per-frame R²
+    n_frames = gt.shape[1]
+    r2_list = []
+    for t in range(n_frames):
+        gt_col = gt[:, t]
+        pred_col = pred[:, t]
+        ss_tot = np.sum((gt_col - np.mean(gt_col)) ** 2)
+        if ss_tot > 0:
+            ss_res = np.sum((gt_col - pred_col) ** 2)
+            r2_list.append(1 - ss_res / ss_tot)
+        else:
+            r2_list.append(0.0)
+    r2_mean = np.mean(r2_list)
+
+    data_range = max(np.abs(gt).max(), np.abs(pred).max()) * 2
+    if data_range == 0:
+        data_range = 1.0
+    ssim_val = structural_similarity(gt, pred, data_range=data_range)
+
+    return {'r2': r2_mean, 'ssim': ssim_val}
+
+
 def linear_model(x, a, b):
     return a * x + b
 

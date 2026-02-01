@@ -143,7 +143,7 @@ class GraphModelConfig(BaseModel):
     # siren_txy: input=(t, x, y), output=1 (uses particle positions)
     # ngp: instantNGP hash encoding
     # lowrank: low-rank matrix factorization U @ V (not a neural network)
-    inr_type: Literal["siren_t", "siren_txy", "ngp"] = "siren_t"
+    inr_type: Literal["siren_t", "siren_id", "siren_txy", "ngp"] = "siren_t"
 
     input_size_nnr_f: int = 3
     n_layers_nnr_f: int = 5

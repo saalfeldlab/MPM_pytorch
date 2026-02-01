@@ -124,6 +124,13 @@ def compute_ucb_scores(analysis_path, ucb_path, c=1.0, current_log_path=None, cu
                     current_node['training_time_min'] = float(time_str) if time_str != 'N/A' else 0.0
                 else:
                     current_node['training_time_min'] = 0.0
+                # Parse kinograph metrics
+                kino_r2_match = re.search(r'kinograph_R2=([\d.]+|nan)', line)
+                if kino_r2_match:
+                    current_node['kinograph_R2'] = float(kino_r2_match.group(1)) if kino_r2_match.group(1) != 'nan' else 0.0
+                kino_ssim_match = re.search(r'kinograph_SSIM=([\d.]+|nan)', line)
+                if kino_ssim_match:
+                    current_node['kinograph_SSIM'] = float(kino_ssim_match.group(1)) if kino_ssim_match.group(1) != 'nan' else 0.0
                 continue
 
         # Save the last node if complete
@@ -167,12 +174,24 @@ def compute_ucb_scores(analysis_path, ucb_path, c=1.0, current_log_path=None, cu
             if time_match:
                 training_time_value = float(time_match.group(1))
 
+            # parse kinograph metrics from analysis.log
+            kino_r2_value = 0.0
+            kino_r2_m = re.search(r'kinograph_R2[=:]\s*([\d.]+|nan)', log_content)
+            if kino_r2_m:
+                kino_r2_value = float(kino_r2_m.group(1)) if kino_r2_m.group(1) != 'nan' else 0.0
+            kino_ssim_value = 0.0
+            kino_ssim_m = re.search(r'kinograph_SSIM[=:]\s*([\d.]+|nan)', log_content)
+            if kino_ssim_m:
+                kino_ssim_value = float(kino_ssim_m.group(1)) if kino_ssim_m.group(1) != 'nan' else 0.0
+
             if current_iteration in nodes:
                 # Update existing node's metrics
                 nodes[current_iteration]['final_r2'] = r2_value
                 nodes[current_iteration]['final_mse'] = mse_value
                 nodes[current_iteration]['slope'] = slope_value
                 nodes[current_iteration]['training_time_min'] = training_time_value
+                nodes[current_iteration]['kinograph_R2'] = kino_r2_value
+                nodes[current_iteration]['kinograph_SSIM'] = kino_ssim_value
             else:
                 # Create new node using parent from previous iteration's "Next: parent=P"
                 prev_iter = current_iteration - 1
@@ -184,7 +203,9 @@ def compute_ucb_scores(analysis_path, ucb_path, c=1.0, current_log_path=None, cu
                     'final_r2': r2_value,
                     'final_mse': mse_value,
                     'slope': slope_value,
-                    'training_time_min': training_time_value
+                    'training_time_min': training_time_value,
+                    'kinograph_R2': kino_r2_value,
+                    'kinograph_SSIM': kino_ssim_value
                 }
 
     if not nodes:
@@ -254,6 +275,8 @@ def compute_ucb_scores(analysis_path, ucb_path, c=1.0, current_log_path=None, cu
             'final_mse': node.get('final_mse', 0.0),
             'slope': node.get('slope', 0.0),
             'training_time_min': node.get('training_time_min', 0.0),
+            'kinograph_R2': node.get('kinograph_R2', 0.0),
+            'kinograph_SSIM': node.get('kinograph_SSIM', 0.0),
             'mutation': node.get('mutation', ''),
             'has_code_mod': node.get('has_code_mod', False),
             'code_change': node.get('code_change', ''),
@@ -283,6 +306,8 @@ def compute_ucb_scores(analysis_path, ucb_path, c=1.0, current_log_path=None, cu
                     f"parent={parent_str}, visits={score['visits']}, "
                     f"R2={score['final_r2']:.3f}, "
                     f"slope={score['slope']:.3f}, "
+                    f"kino_R2={score.get('kinograph_R2', 0.0):.3f}, "
+                    f"kino_SSIM={score.get('kinograph_SSIM', 0.0):.3f}, "
                     f"time={score['training_time_min']:.1f}min")
 
             # Add code modification indicator
@@ -337,9 +362,21 @@ def save_exploration_artifacts(root_dir, exploration_dir, config, config_file, p
     else:
         activity_path = f"{output_folder}/placeholder.png"
 
+    # Copy kinograph montage to exploration directory
+    kinograph_save_dir = f"{exploration_dir}/kinograph"
+    os.makedirs(kinograph_save_dir, exist_ok=True)
+    field_output = os.path.join(log_dir, 'tmp_training', 'field')
+    src_montage = os.path.join(field_output, 'kinograph_montage.png')
+    kinograph_path = f"{kinograph_save_dir}/iter_{iteration:03d}.png"
+    if os.path.exists(src_montage):
+        import shutil
+        shutil.copy2(src_montage, kinograph_path)
+
     return {
         'tree_save_dir': tree_save_dir,
         'protocol_save_dir': protocol_save_dir,
         'videos_save_dir': videos_save_dir,
+        'kinograph_save_dir': kinograph_save_dir,
+        'kinograph_path': kinograph_path,
         'activity_path': activity_path
     }
