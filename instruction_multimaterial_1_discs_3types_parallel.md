@@ -57,11 +57,26 @@ If there are no Established Principles yet (early in the experiment), use slot 3
 - When selecting parents for next batch, choose from the highest UCB nodes — spread across different branches for diversity.
 - At block boundaries, UCB resets as usual.
 
-**CRITICAL**: The `Next: parent=P` line selects the parent for the **next batch's** mutations. `P` must refer to a node from a **previous** batch or the current batch — but NEVER set `Next: parent=P` where P is `id+1` (the next slot in the same batch). This would make a node its own parent and create a circular reference. For example, if the current batch is iterations 131-134, iteration 132 must NOT write `Next: parent=133` because that would make node 133 its own parent.
+**CRITICAL — Preventing circular parent references**: The `Next: parent=P` line selects the parent for the **next batch's** mutations. Within a parallel batch, `P` must ONLY reference:
 
-Valid parent references for batch 131-134:
-- Any iteration ≤ 130 (from sequential exploration)
-- Iterations 131-134 (current batch — referencing yourself or an earlier slot is fine)
+1. **Your own id or an earlier slot** in the current batch (OK)
+2. **Any iteration from a previous batch** (OK)
+
+**NEVER** set `Next: parent=P` where P > your own id. This creates circular references because the tree builder applies `Next:` from iter N to override iter N+1's parent. If iter 2 writes `Next: parent=3`, iter 3 becomes its own parent.
+
+**Example — batch iterations 1-4:**
+- Iter 1 (id=1): `Next: parent=1` ← OK (self-reference, recommends itself)
+- Iter 2 (id=2): `Next: parent=3` ← **BAD!** Creates circular: iter 3's parent = 3 (itself)
+- Iter 3 (id=3): `Next: parent=3` ← OK (self-reference)
+- Iter 4 (id=4): `Next: parent=3` ← OK (earlier slot)
+
+**Simple rule: `Next: parent=P` must satisfy P ≤ your own id** (never a forward reference within the batch).
+
+**Example — batch iterations 131-134:**
+
+Valid parent references:
+- Any iteration ≤ 130 (from previous batches)
+- Iterations 131-134 where P ≤ current id
 - NEVER reference iteration 135+ (future batch)
 
 ## Block Boundaries

@@ -141,7 +141,11 @@ def compute_ucb_scores(analysis_path, ucb_path, c=1.0, current_log_path=None, cu
     for node_id, node in nodes.items():
         prev_iter = node_id - 1
         if prev_iter in next_parent_map:
-            node['parent'] = next_parent_map[prev_iter]
+            new_parent = next_parent_map[prev_iter]
+            # Skip self-references (parallel mode: sibling slot pointing to itself)
+            if new_parent == node_id:
+                continue
+            node['parent'] = new_parent
 
     # Add current iteration from analysis.log if not yet in markdown
     if current_log_path and current_iteration and os.path.exists(current_log_path):

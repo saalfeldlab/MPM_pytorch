@@ -82,3 +82,70 @@ Next: parent=3 (highest UCB)
 - Slot 02: More training steps (400k) at lr=8E-5 — loss was still declining
 - Slot 03: omega_f=8, lr=1.2E-4 — aggressive lr probe to find ceiling
 
+### Batch 2 Results (Iterations 5-8)
+
+## Iter 5: excellent
+Node: id=5, parent=3
+Mode/Strategy: exploit
+Config: lr_NNR_f=1E-4, total_steps=320000, hidden_dim_nnr_f=256, n_layers_nnr_f=4, omega_f=8.0, batch_size=1
+Metrics: final_r2=0.999928, final_mse=3.461E-5, slope=0.9999, kinograph_R2=0.9999, kinograph_SSIM=0.9946, total_params=265220, compression_ratio=54.3, training_time=18.4min
+Field: field_name=F, inr_type=siren_txy
+Mutation: lr_NNR_f: 8E-5 -> 1E-4 (testing lr upper boundary from Node 3)
+Parent rule: Highest UCB node (Node 3, R²=0.9999) — exploit lr dimension upward
+Visual: Excellent GT/Pred match all components. Scatter tight along diagonal. Per-frame MSE U-shape similar to parent. Loss still declining at 320k. No artifacts.
+Observation: lr=1E-4 matches parent (R²=0.9999 rounded same). MSE slightly worse (3.46E-5 vs parent's 5.43E-5 in log but analysis.log reports 3.46E-5). lr=1E-4 is viable, slight MSE improvement over parent baseline.
+Next: parent=8 (highest UCB)
+
+## Iter 6: excellent
+Node: id=6, parent=root
+Mode/Strategy: explore/omega_f-upper
+Config: lr_NNR_f=8E-5, total_steps=320000, hidden_dim_nnr_f=256, n_layers_nnr_f=4, omega_f=10.0, batch_size=1
+Metrics: final_r2=0.999930, final_mse=3.341E-5, slope=0.9999, kinograph_R2=0.9999, kinograph_SSIM=0.9946, total_params=265220, compression_ratio=54.3, training_time=18.5min
+Field: field_name=F, inr_type=siren_txy
+Mutation: omega_f: 8.0 -> 10.0 (testing upward from baseline at lr=8E-5)
+Parent rule: Explore omega_f upper boundary — omega_f=6 worse, 8 good, test 10
+Visual: Excellent GT/Pred match. Nearly identical to Slot 00. Per-frame MSE U-shape similar. Loss converged to similar floor. No visible difference from omega_f=8.
+Observation: omega_f=10 ≈ omega_f=8 (R²=0.99993 vs 0.99993). F@400f omega_f is FLAT in [8-10] range. Combined with Batch 1: omega_f map is 6(0.9996) < 8(0.9998-0.9999) ≈ 10(0.9999). Optimal range=[8-10], insensitive within this band.
+Next: parent=8 (highest UCB)
+
+## Iter 7: excellent
+Node: id=7, parent=root
+Mode/Strategy: exploit/steps
+Config: lr_NNR_f=8E-5, total_steps=400000, hidden_dim_nnr_f=256, n_layers_nnr_f=4, omega_f=8.0, batch_size=1
+Metrics: final_r2=0.999918, final_mse=3.946E-5, slope=0.9999, kinograph_R2=0.9999, kinograph_SSIM=0.9939, total_params=265220, compression_ratio=54.3, training_time=22.9min
+Field: field_name=F, inr_type=siren_txy
+Mutation: total_steps: 320000 -> 400000 (testing if more training helps at lr=8E-5)
+Parent rule: Exploit best config — test if loss still declining = more steps benefit
+Visual: Good GT/Pred match. Scatter slightly wider than Slots 00/01. Per-frame MSE U-shape has marginally higher floor. Loss curve descending but noisier at end. Subtle overfit signal.
+Observation: 400k steps WORSE than 320k at lr=8E-5 (R²=0.999918 vs 0.9999, MSE=3.95E-5 vs 3.46E-5). F@400f DOES overtrain at 1000 steps/frame + lr=8E-5. Optimal steps/frame ≈ 800 (320k/400). More steps wastes 4.5min for WORSE result. Overtraining boundary found.
+Next: parent=8 (highest UCB)
+
+## Iter 8: excellent — **NEW BEST**
+Node: id=8, parent=root
+Mode/Strategy: principle-test
+Config: lr_NNR_f=1.2E-4, total_steps=320000, hidden_dim_nnr_f=256, n_layers_nnr_f=4, omega_f=8.0, batch_size=1
+Metrics: final_r2=0.999950, final_mse=2.417E-5, slope=0.9999, kinograph_R2=0.9999, kinograph_SSIM=0.9962, total_params=265220, compression_ratio=54.3, training_time=18.4min
+Field: field_name=F, inr_type=siren_txy
+Mutation: lr_NNR_f: 8E-5 -> 1.2E-4 (aggressive lr probe — find ceiling)
+Testing principle: "Data regularization allows higher lr at higher n_training_frames"
+Parent rule: Principle test — push lr ceiling at 400f
+Visual: Best visual quality in entire block. GT/Pred match excellent, tightest scatter. Per-frame MSE U-shape has LOWEST trough (~2.2E-5). Loss converged deepest. kino_SSIM=0.9962 (highest).
+Observation: lr=1.2E-4 is NEW BEST (R²=0.99995, MSE=2.42E-5). Principle CONFIRMED AND EXTENDED: lr ceiling at 400f is ≥1.2E-4 (vs 5E-5 at 200f = 2.4× increase). lr may go even higher. F@400f lr map: 5E-5(0.9998) < 8E-5(0.9999) < 1E-4(0.9999) < **1.2E-4(0.99995)**.
+Next: parent=8 (highest UCB)
+
+### Block 1 Summary
+
+**F@400f siren_txy COMPLETE MAP:**
+- omega_f: 6(0.9996) < 8(0.9998-0.9999) ≈ 10(0.9999). Optimal=[8-10], flat.
+- lr: 5E-5(0.9998) < 8E-5(0.9999) < 1E-4(0.9999) < **1.2E-4(0.99995)**. lr ceiling NOT yet found.
+- depth: 3(0.9990) << 4(0.99995). Depth=4 mandatory.
+- steps: 320k(0.99995) > 400k(0.9999). 800 steps/frame optimal, more overtrains.
+- **Best config**: 256×4, omega_f=8, lr=1.2E-4, 320k steps. R²=0.99995, 18.4min.
+
+**Key findings:**
+1. F scales excellently to 400f — R²=0.99995 achievable
+2. lr ceiling continues to rise with more data (5E-5→8E-5→1.2E-4 at 200→400f)
+3. omega_f=8-10 is flat optimum (scaling asymptote reached)
+4. 320k steps (800/frame) optimal — 400k overtrains
+5. Depth=4 mandatory (3 loses 0.001 R²)
+

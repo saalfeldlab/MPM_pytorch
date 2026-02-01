@@ -45,3 +45,48 @@ All 4 config files are initialized and ready. Here's the summary:
 | 02 | 3 | more steps | 8.0 | 8E-5 | **400k** | Loss was still declining at 320k |
 | 03 | 3 | aggressive lr | 8.0 | **1.2E-4** | 320k | Find lr ceiling |
 
+
+============================================================
+=== Batch 5-8 ===
+============================================================
+All tasks complete. Here's the summary:
+
+---
+
+## Block 1 Complete — F@400f siren_txy (8 iterations)
+
+### Batch 2 Results (Iterations 5-8)
+
+| Iter | Mutation | R² | MSE | kino_SSIM | Time |
+|------|----------|-----|-----|-----------|------|
+| 5 | lr: 8E-5→1E-4 | 0.999928 | 3.46E-5 | 0.9946 | 18.4min |
+| 6 | omega_f: 8→10 | 0.999930 | 3.34E-5 | 0.9946 | 18.5min |
+| 7 | steps: 320k→400k | 0.999918 | 3.95E-5 | 0.9939 | 22.9min |
+| **8** | **lr: 8E-5→1.2E-4** | **0.999950** | **2.42E-5** | **0.9962** | **18.4min** |
+
+### Key Findings
+- **Iter 8 (lr=1.2E-4) = NEW BEST**: R²=0.99995, lowest MSE, highest kino_SSIM
+- **omega_f flat in [8-10]**: omega_f=10 ≈ omega_f=8 (insensitive)
+- **400k steps OVERTRAINS**: worse than 320k at lr=8E-5 (+4.5min for worse result)
+- **lr ceiling still not found**: 1.2E-4 is best — could go higher
+
+### F@400f Complete Map
+- omega_f: 6(0.9996) < **8-10(0.9999)** — flat optimum, plateau reached
+- lr: 5E-5 < 8E-5 < 1E-4 < **1.2E-4(0.99995)** — ceiling rising with data
+- depth: 3(0.999) << **4(0.99995)** — mandatory
+- steps: **320k(800/f)** > 400k(1000/f) — overtrains
+
+### Block-End Actions
+1. **Instructions edited**: Added F@400f complete map, omega_f plateau rule, lr-data scaling confirmation, overtraining rule
+2. **Next block**: Switched to **Jp@400f siren_txy** (Block 2, iterations 9-16)
+3. **Memory updated**: Regime table updated, previous block summarized, new block hypothesis written
+
+### Next Block Configs (Jp@400f)
+
+| Slot | omega_f | lr | hidden_dim | n_layers | steps | Dimension |
+|------|---------|-----|------------|----------|-------|-----------|
+| 00 | 5.0 | 1.5E-4 | 512 | 3 | 600k | Baseline (appendix) |
+| 01 | 3.0 | 1.5E-4 | 512 | 3 | 600k | omega_f lower |
+| 02 | 5.0 | 2E-4 | 512 | 3 | 600k | lr higher |
+| 03 | 5.0 | 1.5E-4 | 384 | 3 | 600k | capacity (speed Pareto test) |
+
