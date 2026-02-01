@@ -249,9 +249,13 @@ def compute_ucb_scores(analysis_path, ucb_path, c=1.0, current_log_path=None, cu
     # Backpropagate: for each node, increment all ancestors
     for node_id in sorted_node_ids:
         parent_id = nodes[node_id]['parent']
-        while parent_id is not None and parent_id in nodes:
+        visited = set()  # Protect against circular parent references
+        while parent_id is not None and parent_id in nodes and parent_id not in visited:
+            visited.add(parent_id)
             visits[parent_id] += 1
             parent_id = nodes[parent_id]['parent']
+        if parent_id in visited:
+            print(f"Warning: circular parent reference detected at node {node_id}")
 
     # Compute UCB for each node
     # PUCT formula: UCB(u) = RankScore(u) + c * sqrt(N_total) / (1 + V(u))
@@ -351,7 +355,8 @@ def save_exploration_artifacts(root_dir, exploration_dir, config, config_file, p
     os.makedirs(videos_save_dir, exist_ok=True)
 
     # Path to activity visualization (placeholder - create in data_train_INR if needed)
-    log_dir = f"./log/{config.dataset}/"
+    # Use config.config_file (per-slot output dir), NOT config.dataset (shared input data)
+    log_dir = f"./log/{config.config_file}/"
     output_folder = os.path.join(log_dir, 'tmp_training', 'external_input')
 
     # Find the most recent visualization image

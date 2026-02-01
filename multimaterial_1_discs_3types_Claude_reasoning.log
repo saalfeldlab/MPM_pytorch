@@ -2,20 +2,46 @@
 ============================================================
 === BATCH 0 (start call) ===
 ============================================================
-All 4 config slots are initialized and ready. Here's the summary:
+All 4 config files are initialized and ready. Here's the summary:
 
-**Block 1: Jp@100f, siren_txy — Batch 1 (4 parallel slots)**
+**Block 1: F field @ 400 frames (siren_txy)**
 
-| Slot | hidden_dim | omega_f | lr_NNR_f | Variation tested |
-|------|-----------|---------|----------|------------------|
-| **00** | 384 | 7.0 | 4E-5 | Baseline (known optimal from prior) |
-| **01** | 512 | 7.0 | 4E-5 | Capacity probe (+33% width) |
-| **02** | 384 | 7.0 | 6E-5 | LR probe (+50% learning rate) |
-| **03** | 384 | 12.0 | 4E-5 | Omega_f probe (higher frequency) |
+| Slot | omega_f | lr_NNR_f | hidden_dim | n_layers | total_steps | Dimension tested |
+|------|---------|----------|------------|----------|-------------|------------------|
+| 00 | 8.0 | 5E-5 | 256 | 4 | 320k | **Baseline** (appendix reference) |
+| 01 | 6.0 | 5E-5 | 256 | 4 | 320k | **omega_f** (probe continued scaling) |
+| 02 | 8.0 | 8E-5 | 256 | 4 | 320k | **lr** (data regularization at 400f) |
+| 03 | 8.0 | 5E-5 | 256 | 3 | 400k | **depth** (shallower + more steps) |
 
-**Shared across all slots**: `field_name=Jp`, `inr_type=siren_txy`, `n_training_frames=100`, `batch_size=1`, `n_layers_nnr_f=3`, `total_steps=200000`.
+**Rationale**: F is the most scalable field (no diminishing returns to 500f). Each slot varies exactly one parameter dimension from the appendix baseline, enabling clean causal attribution. The `dataset` fields are preserved unchanged in all configs. Working memory and analysis log have been updated with the planned configurations and hypotheses.
 
-**Design rationale**: Each slot varies exactly ONE parameter dimension from the baseline, enabling clean causal attribution. The baseline (slot 00) should reproduce prior R²~0.995. The three probes test whether capacity, learning rate, or omega_f can improve on the established optimum.
 
-Working memory and analysis log have been updated with the batch plan.
+============================================================
+=== Batch 1-4 ===
+============================================================
+## Batch 1 Analysis Complete (Iterations 1-4)
+
+### Results Summary
+
+| Slot | Iter | Mutation | R² | slope | kino_SSIM | Rating |
+|------|------|----------|-----|-------|-----------|--------|
+| 00 | 1 | Baseline (omega_f=8, lr=5E-5) | 0.9998 | 0.9997 | 0.984 | Excellent |
+| 01 | 2 | omega_f=6 | 0.9996 | 0.9995 | 0.974 | Excellent |
+| 02 | 3 | **lr=8E-5** | **0.9999** | **0.9999** | **0.992** | **Excellent (BEST)** |
+| 03 | 4 | depth=3, steps=400k | 0.9990 | 0.9989 | 0.953 | Good |
+
+### Key Findings
+- **F scales to 400 frames** — all 4 configs achieve R²>0.999
+- **lr=8E-5 is best** (Node 3): data regularization at 400f allows higher lr, consistent with Jp pattern
+- **omega_f scaling plateaus**: 12(100f)→9(200f)→8(400f), NOT linear. omega_f=6 is too low.
+- **Depth=4 mandatory**: n_layers=3 loses ~0.0008 R² even with 25% more steps
+
+### Batch 2 Configs (Iterations 5-8) — All exploit from Node 3
+
+| Slot | Parent | Mutation | omega_f | lr | steps | Rationale |
+|------|--------|----------|---------|-----|-------|-----------|
+| 00 | 3 | lr probe up | 8.0 | **1E-4** | 320k | Test lr upper boundary |
+| 01 | 3 | omega_f+lr | **10.0** | **8E-5** | 320k | Probe omega_f upward (since 8>6) |
+| 02 | 3 | more steps | 8.0 | 8E-5 | **400k** | Loss was still declining at 320k |
+| 03 | 3 | aggressive lr | 8.0 | **1.2E-4** | 320k | Find lr ceiling |
 

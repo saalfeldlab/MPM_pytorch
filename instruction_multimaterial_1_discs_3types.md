@@ -99,6 +99,7 @@ Next: parent=P
 ```
 
 **`Next: parent=P` specifies the parent for iteration N+1:**
+
 - Use the highest UCB node from `ucb_scores.txt`
 - Only use `Next: parent=root` at block boundaries when UCB is reset
 
@@ -110,16 +111,16 @@ Next: parent=P
 
 Step B: Choose strategy
 
-| Condition                                                     | Strategy             | Action                                                                   |
-| ------------------------------------------------------------- | -------------------- | ------------------------------------------------------------------------ |
-| Default                                                       | **exploit**          | Highest UCB node, try mutation                                           |
-| 3+ consecutive R² ≥ 0.95                                      | **failure-probe**    | Extreme parameter to find boundary                                       |
-| n_iter_block/4 consecutive successes                          | **explore**          | Select outside recent chain                                              |
-| 2+ distant nodes with R² > 0.95                               | **recombine**        | Merge params from both nodes                                             |
-| 4+ consecutive converged with same param dimension            | **forced-branch**    | Select 2nd highest UCB node (not recent chain), switch param dimension   |
-| Same param mutated 4+ times                                   | **switch-param**     | Mutate different parameter                                               |
-| Good config found                                             | **robustness-test**  | Re-run same config                                                       |
-| Robustness test variance > 0.1                                | **stochastic-field** | Switch to different field or try code mod                                |
+| Condition                                          | Strategy             | Action                                                                 |
+| -------------------------------------------------- | -------------------- | ---------------------------------------------------------------------- |
+| Default                                            | **exploit**          | Highest UCB node, try mutation                                         |
+| 3+ consecutive R² ≥ 0.95                           | **failure-probe**    | Extreme parameter to find boundary                                     |
+| n_iter_block/4 consecutive successes               | **explore**          | Select outside recent chain                                            |
+| 2+ distant nodes with R² > 0.95                    | **recombine**        | Merge params from both nodes                                           |
+| 4+ consecutive converged with same param dimension | **forced-branch**    | Select 2nd highest UCB node (not recent chain), switch param dimension |
+| Same param mutated 4+ times                        | **switch-param**     | Mutate different parameter                                             |
+| Good config found                                  | **robustness-test**  | Re-run same config                                                     |
+| Robustness test variance > 0.1                     | **stochastic-field** | Switch to different field or try code mod                              |
 
 **Stochastic variance detection (Block 9 finding):**
 
@@ -201,7 +202,7 @@ training:
   learning_rate_NNR_f: 1.0E-5 # range: 1E-7 to 1E-3
   batch_size: 8 # values: 4, 8, 16, 32, never larger than 32
   total_steps: 50000 # range: 5000-200000 (SCALE inversely with hidden_dim for training_time)
-  n_training_frames: 48 # progression: 48 → 100 → 200 → 500 → 1000 → 2000 → 5000 → 10000
+  n_training_frames: 400 # progression: 400 → 1000 → 2000 → 5000 → 10000
 graph_model:
   inr_type: siren_id # values: siren_id, siren_t, siren_txy (see below)
   hidden_dim_nnr_f: 512 # values: 128, 256, 512, 1024, 2048
@@ -614,11 +615,11 @@ f(input) → field_value
 
 **Three variants** (set via `graph_model.inr_type`):
 
-| Variant | Input | Output | Training | When to Use |
-|---------|-------|--------|----------|-------------|
-| `siren_id` | $(t/T, \text{id}/N)$ | 1 particle | Per-particle | **Default** — treats particles as indexed entities |
-| `siren_t` | $t/T$ only | All particles | Batch | Faster training, less flexible |
-| `siren_txy` | $(t/T, x, y)$ | 1 particle | Per-particle | Position-aware, uses `nnr_f_xy_period` / `nnr_f_T_period` |
+| Variant     | Input                | Output        | Training     | When to Use                                               |
+| ----------- | -------------------- | ------------- | ------------ | --------------------------------------------------------- |
+| `siren_id`  | $(t/T, \text{id}/N)$ | 1 particle    | Per-particle | **Default** — treats particles as indexed entities        |
+| `siren_t`   | $t/T$ only           | All particles | Batch        | Faster training, less flexible                            |
+| `siren_txy` | $(t/T, x, y)$        | 1 particle    | Per-particle | Position-aware, uses `nnr_f_xy_period` / `nnr_f_T_period` |
 
 **Variant selection guidelines:**
 
@@ -648,12 +649,14 @@ Key implementation points:
 The `omega_f` parameter controls frequency capacity - higher values capture finer spatial/temporal detail but risk training instability.
 
 **Coordinate scaling parameters** (named "period" because they stretch the input range):
+
 - `nnr_f_xy_period`: Divides spatial coordinates by this value. Larger period → inputs span smaller range → network sees slower spatial variation. Default: 1.0
 - `nnr_f_T_period`: Divides time coordinate by this value. Larger period → inputs span smaller range → network sees slower temporal variation. Default: 1.0
 
 **Intuition**: Think of it as "how many cycles fit in the data". Period=10 means the network treats the full time range as 1/10th of its natural period, so it expects 10× slower variation.
 
 **Tuning guidelines:**
+
 - **Physical prior**: Fields typically change less in time than in space → use `nnr_f_T_period > nnr_f_xy_period` (e.g., 10.0 vs 1.0)
 - Smoother temporal dynamics → increase `nnr_f_T_period` (e.g., 2.0-10.0)
 - Smoother spatial patterns → increase `nnr_f_xy_period`
@@ -696,14 +699,14 @@ After each training iteration, a visualization is saved to `tmp_training/field/`
 
 **Panel descriptions:**
 
-| Panel                                                          | What it shows                                                                              | What to look for                                                                                 |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| **Loss curve** (top-left)                                      | MSE loss vs training steps. Gray=raw, Red=smoothed                                         | Convergence shape: steep initial drop is good. Oscillation = lr too high. Plateau = underfitting |
-| **Traces** (top-middle)                                        | 10 particle time series. Green=GT, White=Pred. Centered by mean, spaced by 4×std           | Temporal dynamics match: white should follow green. Systematic offsets indicate bias             |
-| **Info** (top-right for 4-comp, or right for 1-comp)           | Field name, step count, components, particles, frames, MSE                                 | Basic run metadata                                                                               |
-| **Scatter** (top-right for 4-comp, or bottom-right for 1-comp) | Pred vs GT for ALL values. Red dashed=ideal, Green=regression fit                          | Cloud should be tight along diagonal. Slope<1 means underprediction. R² and slope shown          |
+| Panel                                                          | What it shows                                                                                       | What to look for                                                                                 |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| **Loss curve** (top-left)                                      | MSE loss vs training steps. Gray=raw, Red=smoothed                                                  | Convergence shape: steep initial drop is good. Oscillation = lr too high. Plateau = underfitting |
+| **Traces** (top-middle)                                        | 10 particle time series. Green=GT, White=Pred. Centered by mean, spaced by 4×std                    | Temporal dynamics match: white should follow green. Systematic offsets indicate bias             |
+| **Info** (top-right for 4-comp, or right for 1-comp)           | Field name, step count, components, particles, frames, MSE                                          | Basic run metadata                                                                               |
+| **Scatter** (top-right for 4-comp, or bottom-right for 1-comp) | Pred vs GT for ALL values. Red dashed=ideal, Green=regression fit                                   | Cloud should be tight along diagonal. Slope<1 means underprediction. R² and slope shown          |
 | **GT panels** (bottom rows)                                    | Ground truth field at frame n_training_frames/2. Each component shown separately. Yellow SSIM value | Spatial structure of the true field. SSIM measures structural similarity to prediction           |
-| **Pred panels** (bottom rows)                                  | Slope-corrected prediction at same frame. White SSIM value                                 | Should match GT visually. Low SSIM despite high R² = wrong spatial patterns learned              |
+| **Pred panels** (bottom rows)                                  | Slope-corrected prediction at same frame. White SSIM value                                          | Should match GT visually. Low SSIM despite high R² = wrong spatial patterns learned              |
 
 **Qualitative analysis checklist:**
 
@@ -734,12 +737,12 @@ Examples:
 
 **Optimal configurations per field** (use these as starting points):
 
-| Field | hidden_dim | n_layers | omega_f | lr_NNR_f | steps/frame | Best R² |
-| ----- | ---------- | -------- | ------- | -------- | ----------- | ------- |
-| F     | 256        | 4        | 20      | 3E-5     | 800         | 0.9999  |
-| Jp    | 256 (siren_t) or 384 (siren_txy) | 3 | 7 (siren_t) or 15-20 (siren_txy) | 8E-5 (siren_t) or 4E-5 (siren_txy) | 2000 | 0.99995 (siren_t) |
-| C     | 640        | 3        | 20-25   | 3E-5     | 1000        | 0.989   |
-| S     | 1280       | 3 (or 4) | 48-50   | 2E-5     | 3000+       | 0.729-0.801 |
+| Field | hidden_dim                       | n_layers | omega_f                          | lr_NNR_f                           | steps/frame | Best R²           |
+| ----- | -------------------------------- | -------- | -------------------------------- | ---------------------------------- | ----------- | ----------------- |
+| F     | 256                              | 4        | 20                               | 3E-5                               | 800         | 0.9999            |
+| Jp    | 256 (siren_t) or 384 (siren_txy) | 3        | 7 (siren_t) or 15-20 (siren_txy) | 8E-5 (siren_t) or 4E-5 (siren_txy) | 2000        | 0.99995 (siren_t) |
+| C     | 640                              | 3        | 20-25                            | 3E-5                               | 1000        | 0.989             |
+| S     | 1280                             | 3 (or 4) | 48-50                            | 2E-5                               | 3000+       | 0.729-0.801       |
 
 **Critical constraints discovered**:
 

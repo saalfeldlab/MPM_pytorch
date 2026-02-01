@@ -1150,8 +1150,7 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
     ax_scat.tick_params(labelsize=14)
     ax_scat.text(0.05, 0.95,
                  f'kino_R\u00b2={kino_r2:.4f}\nkino_SSIM={kino_ssim:.4f}',
-                 transform=ax_scat.transAxes, fontsize=16, va='top',
-                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+                 transform=ax_scat.transAxes, fontsize=16, va='top')
 
     if n_components > 1:
         for c_idx in range(1, n_components):

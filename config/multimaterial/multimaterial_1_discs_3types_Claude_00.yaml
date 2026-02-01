@@ -49,11 +49,11 @@ graph_model:
   output_size_update: 2
   inr_type: siren_txy
   input_size_nnr_f: 3
-  n_layers_nnr_f: 3
-  hidden_dim_nnr_f: 384
-  output_size_nnr_f: 1
+  n_layers_nnr_f: 4
+  hidden_dim_nnr_f: 256
+  output_size_nnr_f: 4
   outermost_linear_nnr_f: true
-  omega_f: 7.0
+  omega_f: 8.0
   omega_f_learning: false
   nnr_f_xy_period: 1.0
   nnr_f_T_period: 1.0
@@ -80,8 +80,8 @@ training:
   fix_cluster_embedding: true
   learning_rate_start: 1E-5
   learning_rate_embedding_start: 1E-2
-  learning_rate_NNR_f: 4E-5
-  total_steps: 200000
+  learning_rate_NNR_f: 1E-4
+  total_steps: 320000
 claude:
-  field_name: Jp
+  field_name: F
   ucb_c: 1.414
