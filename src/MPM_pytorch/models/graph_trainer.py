@@ -611,7 +611,10 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
     else:
         optim = torch.optim.Adam(lr=learning_rate, params=nnr_f.parameters())
 
-    print(f"training nnr_f for {total_steps} steps...")
+    # CosineAnnealingLR scheduler: decays lr from initial to near-zero over total_steps
+    # Hypothesis: S field loss plateaus suggest local minimum; annealing may help escape
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=total_steps, eta_min=learning_rate * 0.01)
+    print(f"training nnr_f for {total_steps} steps with CosineAnnealingLR (eta_min={learning_rate * 0.01:.1e})...")
 
     # clamp batch_size to not exceed number of frames
     if batch_size > n_frames:
@@ -693,6 +696,7 @@ def data_train_INR(config=None, device=None, field_name='C', total_steps=None, e
         # Robustness test at max_norm=1.0 to confirm stability with 3rd sample
         torch.nn.utils.clip_grad_norm_(nnr_f.parameters(), max_norm=1.0)
         optim.step()
+        scheduler.step()
 
         loss_list.append(loss.item())
 
