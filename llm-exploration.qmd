@@ -5,12 +5,14 @@ subtitle: "SIREN network parameter tuning for MPM field representation"
 
 ## Overview
 
-This page documents an ongoing **LLM-in-the-loop exploration** to optimize SIREN (Sinusoidal Representation Network) parameters for representing MPM particle fields over time. The exploration uses UCB tree search to systematically tune hyperparameters for each field type.
+This page documents an ongoing **LLM-in-the-loop exploration** to optimize SIREN (Sinusoidal Representation Network) parameters for representing MPM particle fields over time. The exploration uses UCB tree search to systematically tune hyperparameters for each field type, with the goal of scaling to high frame counts.
 
 ::: {.callout-note}
 ## Goal
-Find optimal SIREN configurations to accurately represent time-varying particle fields ($J_p$, $\mathbf{F}$, $\mathbf{C}$, $\mathbf{S}$) for 9000 particles over 100–200 frames.
+Scale INR field reconstruction to **high frame counts** (400, 600, 1000 frames) while maintaining R² > 0.995 for all fields ($J_p$, $\mathbf{F}$, $\mathbf{C}$, $\mathbf{S}$) for 9000 particles. Prior exploration (130+ sequential iterations) mapped the landscape up to 200 frames. Current phase pushes beyond 200 frames to find optimal configs at production scale.
 :::
+
+---
 
 ## SIREN Architecture
 
@@ -34,288 +36,376 @@ Three input variants are supported:
 |---------|-------|--------|----------|
 | `siren_id` | $(t, \text{id})$ | Field value for one particle | Index-based encoding |
 | `siren_t` | $t$ only | All particles at once | Faster but less flexible |
-| `siren_txy` | $(t, x, y)$ | Field value at position | ✅ **Used for all results below** |
+| `siren_txy` | $(t, x, y)$ | Field value at position | Position-aware encoding |
 
 ::: {.callout-note}
-All results on this page use `inr_type: siren_txy` — the network learns a mapping from (time, x, y) to field values, using Lagrangian particle positions for position-aware encoding.
+**Architecture ranking** (from Block 8-9 sequential exploration): `siren_t >> siren_txy >> siren_id` for Jp, F, and C at 100 frames with 9000 particles. `siren_id` is unsuitable for large particle counts.
 :::
 
 ### Frequency Parameter (omega_f)
 
-The `omega_f` parameter controls the network's frequency capacity — higher values capture finer spatial/temporal detail but risk training instability:
+The `omega_f` parameter controls the network's frequency capacity — higher values capture finer spatial/temporal detail but risk training instability. Optimal `omega_f` is **field-specific** and **frame-dependent**:
 
-| omega_f | Behavior | Recommended For |
-|---------|----------|-----------------|
-| 1–10 | Smooth, low-frequency | Simple fields (Jp) |
-| 10–30 | Medium detail | Most fields (F, C) |
-| 30–100 | High-frequency detail | Complex fields (S), unstable |
+| Field | 100 frames | 200 frames | 400 frames | Trend |
+|-------|-----------|-----------|-----------|-------|
+| Jp    | 5–10      | 3–7       | 5         | Narrow peak at 400f |
+| F     | 12        | 9–10      | 8–10      | Plateaus above 200f |
+| C     | 25        | 20        | 15        | Continues linear decrease |
+| S     | 48        | —         | 48        | Counter-trend: maintains high omega |
 
-**Key finding**: `omega_f` is **field-specific** and **frame-dependent**. More particles → lower optimal `omega_f`.
+**Key rule**: ALL fields shift `omega_f` lower with more frames, except S which maintains high omega. The scaling is NOT linear — it approaches an asymptote. For frames >200, `omega_f` changes slowly.
 
 ### Period Parameters (for `siren_txy`)
 
-When using position-based input `(t, x, y)`, two scaling parameters control how the network interprets coordinates:
+When using position-based input `(t, x, y)`, two scaling parameters control coordinate interpretation:
 
 | Parameter | Formula | Effect |
 |-----------|---------|--------|
 | `nnr_f_T_period` | $t_{\text{norm}} = t / T / \text{period}$ | Higher → expects slower temporal variation |
 | `nnr_f_xy_period` | $(x,y)_{\text{norm}} = (x,y) / \text{period}$ | Higher → expects slower spatial variation |
 
-*Intuition*: Period=10 means the network treats the full range as 1/10th of its natural period.
+::: {.callout-warning}
+## Period Sensitivity
+Both parameters must stay at **1.0** for F field. `T_period=2.0` causes **catastrophic** degradation (R²=0.790). Temporal smoothing is 6× more damaging than spatial.
+:::
 
 ### Tunable Parameters
 
-| Parameter | Description | Search Range |
+| Parameter | Description | Typical Range |
 |-----------|-------------|--------------|
-| `n_training_frames` | Frames encoded in SIREN | 100 |
+| `n_training_frames` | Frames encoded in SIREN | 100 → 400 → 1000 |
 | `hidden_dim` | Width of hidden layers | 256–1280 |
 | `n_layers` | Number of hidden layers | 2–5 |
-| `omega_f` | SIREN frequency multiplier | 5–50 |
-| `lr_NNR_f` | Learning rate | 1E-5–1E-4 |
-| `total_steps` | Training iterations | 100k–200k |
+| `omega_f` | SIREN frequency multiplier | 3–50 |
+| `lr_NNR_f` | Learning rate | 1E-5–2E-4 |
+| `total_steps` | Training iterations | 100k–1M |
+
+---
+
+## Exploration Methodology
+
+### UCB Tree Search
+
+Each iteration proposes one parameter mutation, trains the SIREN, and records the result. A **UCB (Upper Confidence Bound)** tree tracks the exploration:
+
+$$\text{UCB}(k) = R^2_k + c \cdot \sqrt{\frac{\ln N}{n_k}}$$
+
+where $c$ is the exploration constant (default $\sqrt{2}$), $N$ is total visits, and $n_k$ is visits to node $k$. Higher $c$ favors exploration of under-visited branches; lower $c$ favors exploitation of known-good configs.
+
+### Block Structure
+
+Exploration is organized into **blocks** of `n_iter_block` iterations (default 8). At block boundaries:
+
+1. **Edit instructions** — add/modify rules based on block findings
+2. **Choose next configuration** — change field or increase frame count
+3. **Update working memory** — confirmed principles, regime comparison table
+
+### Parallel Mode
+
+Since iteration 131, the exploration runs in **parallel mode** — 4 configs trained simultaneously per batch:
+
+| Slot | Role | Description |
+|------|------|-------------|
+| 0 | **exploit** | Highest UCB node, conservative mutation |
+| 1 | **exploit** | 2nd highest UCB, or same parent different param |
+| 2 | **explore** | Under-visited node, new parameter dimension |
+| 3 | **principle-test** | Tests/challenges an established principle |
+
+### Strategy Selection
+
+| Condition | Strategy | Action |
+|-----------|----------|--------|
+| Default | **exploit** | Highest UCB node, try mutation |
+| 3+ consecutive R² ≥ 0.95 | **failure-probe** | Extreme parameter to find boundary |
+| n_iter_block/4 consecutive successes | **explore** | Select outside recent chain |
+| 2+ distant nodes with R² > 0.95 | **recombine** | Merge params from both nodes |
+| 4+ consecutive same param | **switch-param** | Mutate different parameter |
+| Good config found | **robustness-test** | Re-run same config |
+
+### Code Modifications
+
+The LLM can also modify Python code (network architecture, training loop) when config-level tuning is insufficient:
+
+- **Siren_Network.py** — architecture changes (skip connections, activations, initialization)
+- **graph_trainer.py** — training loop changes (optimizer, LR scheduler, gradient clipping, loss function)
+
+Code changes are automatically committed to git with iteration metadata for full traceability and rollback capability.
 
 ---
 
 ## Field-Specific Results
 
-### $J_p$ — Plastic Deformation (Block 1)
-
-`n_training_frames: 100` | `n_particles: 9000`
+### $\mathbf{F}$ — Deformation Gradient @ 400 frames (Block 1 parallel)
 
 ::: {.callout-tip}
 ## Best Configuration
-**R² = 0.996** with `512×3 @ omega=5-10, lr=4E-5, 200k steps` (15.4 min)
-
-Speed Pareto: `384×3 @ omega=10` achieves R²=0.995 in 12.2 min
+**R² = 0.99995** with `256×4 @ omega=8, lr=1.2E-4, 320k steps` (18.4 min)
 :::
 
 | Finding | Value |
 |---------|-------|
-| Optimal omega_f | 5–10 (LOWER than prior=15) |
-| Optimal depth | 3 layers (ceiling) |
-| Optimal lr | 4E-5 |
+| Optimal omega_f | 8–10 (flat — insensitive in this range) |
+| LR ceiling | 1.2E-4 (2.4× vs 200f, matches ~2.5× per 2× frames rule) |
+| Depth | 4 layers MANDATORY |
+| Steps/frame | 800 (1000 overtrains) |
+| Overtraining | 400k steps (1000/f) at lr=8E-5 WORSE than 320k (800/f) |
+
+::: {.callout-note}
+## F omega_f plateau
+The omega_f-to-frames scaling is NOT linear: 12(100f) → 9(200f) → 8(400f). It approaches an asymptote. At 400f, omega_f=[8-10] is flat and insensitive. For frames >200, don't extrapolate linearly.
+:::
 
 ::: {.panel-tabset}
 
 #### Video
-{{< video log/Claude_exploration/instruction_multimaterial_1_discs_3types/videos/iter_012_multimaterial_1_discs_3types_Claude.mp4 >}}
+{{< video log/Claude_exploration/instruction_multimaterial_1_discs_3types_parallel/videos/iter_005_multimaterial_1_discs_3types_Claude_00.mp4 >}}
 
-#### Final Field
-![](log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_Jp_20260127_164039.png){.lightbox}
+#### Kinograph
+![](log/Claude_exploration/instruction_multimaterial_1_discs_3types_parallel/kinograph/iter_008.png){.lightbox}
+
+#### UCB Tree
+![](log/Claude_exploration/instruction_multimaterial_1_discs_3types_parallel/exploration_tree/ucb_tree_iter_008.png){.lightbox}
 
 :::
 
 ---
 
-### $\mathbf{F}$ — Deformation Gradient (Block 2)
-
-`n_training_frames: 100` | `n_particles: 9000`
+### $J_p$ — Plastic Deformation @ 400 frames (Block 2 parallel)
 
 ::: {.callout-tip}
 ## Best Configuration
-**R² = 0.998** with `256×4 @ omega=12, lr=4E-5 to 6E-5, 150k steps` (8.1 min)
+**R² = 0.999996** with `512×3 @ omega=5, lr=2E-4, 600k steps` (39.0 min)
+
+Speed Pareto: `384×3 @ omega=5, lr=2E-4, 600k steps` achieves R²=0.999995 in 26.3 min
 :::
 
 | Finding | Value |
 |---------|-------|
-| Optimal omega_f | 12 (SHARP optimum, ±1 degrades) |
-| Optimal depth | 4 layers (different from Jp) |
-| Optimal lr | Wide tolerance [4E-5, 6E-5] |
-| Capacity ceiling | 256 (384 hurts performance) |
+| Optimal omega_f | 5 (NARROW peak — ±2 causes significant degradation) |
+| LR ceiling | 2E-4 (5× from 100f, matches ~2.5× per 2× frames) |
+| Capacity | 384 near-equal to 512 at optimal lr |
+| Steps | 600k needed (400k for speed Pareto) |
+
+::: {.callout-note}
+## Jp omega_f sensitivity
+Unlike F where omega_f is flat in [8-10] at 400f, Jp has a **narrow omega_f optimum** at 5 — both 3 and 7 cause significant MSE degradation (5× and 14× respectively). Jp requires precise omega_f tuning.
+:::
 
 ::: {.panel-tabset}
 
 #### Video
-{{< video log/Claude_exploration/instruction_multimaterial_1_discs_3types/videos/iter_024_multimaterial_1_discs_3types_Claude.mp4 >}}
+{{< video log/Claude_exploration/instruction_multimaterial_1_discs_3types_parallel/videos/iter_009_multimaterial_1_discs_3types_Claude_00.mp4 >}}
 
-#### Final Field
-![](log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_F_20260127_192429.png){.lightbox}
+#### Kinograph
+![](log/Claude_exploration/instruction_multimaterial_1_discs_3types_parallel/kinograph/iter_016.png){.lightbox}
+
+#### UCB Tree
+![](log/Claude_exploration/instruction_multimaterial_1_discs_3types_parallel/exploration_tree/ucb_tree_iter_016.png){.lightbox}
 
 :::
 
 ---
 
-### $\mathbf{C}$ — Affine Velocity (Block 3)
-
-`n_training_frames: 100` | `n_particles: 9000`
+### $\mathbf{C}$ — Affine Velocity @ 400 frames (Block 3 parallel)
 
 ::: {.callout-tip}
 ## Best Configuration
-**R² = 0.994** with `640×3 @ omega=25, lr=2E-5, 150k steps` (15.7 min)
+**R² = 0.9998** with `896×3 @ omega=15, lr=4E-5, 1M steps` (155.8 min)
+
+Speed Pareto: `768×3` achieves similar quality in 120.6 min
 :::
 
 | Finding | Value |
 |---------|-------|
-| Optimal omega_f | 25 (unchanged from prior, NO lower shift) |
-| Optimal depth | 3 layers (same as Jp) |
-| Optimal lr | 2E-5 (LOWER than Jp/F) |
-| Capacity ceiling | 640 (between F@256 and S@1280) |
-
-::: {.panel-tabset}
-
-#### Video
-{{< video log/Claude_exploration/instruction_multimaterial_1_discs_3types/videos/iter_036_multimaterial_1_discs_3types_Claude.mp4 >}}
-
-#### Final Field
-![](log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_C_20260128_095041.png){.lightbox}
-
-:::
-
----
-
-### $\mathbf{S}$ — Stress (Block 4)
-
-`n_training_frames: 100` | `n_particles: 9000`
-
-::: {.callout-tip}
-## Best Configuration
-**R² = 0.729** with `1280×3 @ omega=48, lr=2E-5, 300k steps` (166.2 min)
-:::
-
-| Finding | Value |
-|---------|-------|
-| Optimal omega_f | 48 (no lower shift, similar to prior 50) |
-| Optimal depth | 3 layers (NOT 4 like prior) |
-| Capacity requirement | 1280 (confirmed, 640 fails) |
-| Optimal lr | 2E-5 (hard-locked, 3E-5 catastrophic) |
-| R² ceiling | 0.729 — hardest field on this dataset |
-
-::: {.panel-tabset}
-
-#### Video
-{{< video log/Claude_exploration/instruction_multimaterial_1_discs_3types/videos/iter_048_multimaterial_1_discs_3types_Claude.mp4 >}}
-
-#### Final Field
-![](log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_S_20260129_113314.png){.lightbox}
-
-:::
-
----
-
-### $\mathbf{F}$ — Deformation Gradient at 200 frames (Block 5)
-
-`n_training_frames: 200` | `n_particles: 9000`
-
-::: {.callout-tip}
-## Best Configuration
-**R² = 0.9997** with `256×4 @ omega=9, lr=5E-5, 300k steps` (32.4 min)
-
-Speed Pareto: `200k steps` achieves R²=0.9988 in 27.6 min
-:::
-
-| Finding | Value |
-|---------|-------|
-| Optimal omega_f | 9–10 (shifted from 12 at 100f — more frames → lower omega) |
-| Optimal depth | 4 layers (same as F@100f) |
-| Optimal lr | 5E-5 (narrower than 100f tolerance) |
-| Capacity ceiling | 256 (re-confirmed, 384 overparameterized) |
-| Period params | T_period=1.0 and xy_period=1.0 MANDATORY |
+| Optimal omega_f | 15 (continues linear decrease: 25→20→15) |
+| LR | 4E-5 (weaker data scaling than F/Jp: ~2× per 4× frames) |
+| Capacity | 768–896 (ceiling lifts from 640 at 100f) |
+| Steps/frame | 2500 minimum (no overtraining risk, loss still declining at 1M) |
 
 ::: {.callout-warning}
-## Period Sensitivity
-`T_period=2.0` causes **catastrophic** degradation (R²=0.790). `xy_period=2.0` causes significant degradation (R²=0.987). Temporal smoothing 6× more damaging than spatial.
+## C reverses degradation trend at 400f
+Prior data scaling trend was negative: R²=0.994(100f) → 0.991(200f). But at 400f: **R²=0.9998** — a dramatic improvement. With sufficient capacity (896) and steps (1M), C benefits enormously from more data. The 200f degradation was due to insufficient training, not a fundamental limitation.
 :::
 
 ::: {.panel-tabset}
 
 #### Video
-{{< video log/Claude_exploration/instruction_multimaterial_1_discs_3types/videos/iter_060_multimaterial_1_discs_3types_Claude.mp4 >}}
+{{< video log/Claude_exploration/instruction_multimaterial_1_discs_3types_parallel/videos/iter_017_multimaterial_1_discs_3types_Claude_00.mp4 >}}
 
-#### Final Field
-![](log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_F_20260129_220007.png){.lightbox}
+#### Kinograph
+![](log/Claude_exploration/instruction_multimaterial_1_discs_3types_parallel/kinograph/iter_024.png){.lightbox}
+
+#### UCB Tree
+![](log/Claude_exploration/instruction_multimaterial_1_discs_3types_parallel/exploration_tree/ucb_tree_iter_024.png){.lightbox}
 
 :::
 
 ---
 
-### $J_p$ — Plastic Deformation at 200 frames (Block 6, In Progress)
-
-`n_training_frames: 200` | `n_particles: 9000`
+### $\mathbf{S}$ — Stress @ 400 frames (Block 4 parallel — in progress)
 
 ::: {.callout-warning}
 ## Currently Exploring
-**Best so far: R² = 0.995** with `512×3 @ omega=5, lr=4E-5, 400k steps` (67.8 min)
+**Best so far: R² = 0.960** with `1280×3 @ omega=48, lr=2E-5, 1M steps` (290 min)
 
-Key findings (iterations 61-67):
+Key findings (iterations 25-28):
 
-- Jp@200f maintains R²=0.995 (vs 0.996 at 100f) — quality preserved
-- **omega_f extremely flat** [3–7]: all yield R²=0.992–0.995. omega_f=5 wins on slope
-- **Step count is dominant**: 400k steps (R²=0.995) vs 300k (R²=0.992)
-- Speed Pareto: 300k steps achieves R²=0.992 in ~46 min
+- S@400f baseline R²=0.960 — **massive improvement** over S@100f (0.729) with CosineAnnealingLR scheduler
+- S does NOT follow omega_f decrease pattern — omega_f=48 confirmed optimal
+- S lr=2E-5 is HARD-LOCKED (even 50% increase to 3E-5 is catastrophic)
+- S requires 1280 capacity minimum (1024 loses 4.4% R²)
+- Training time is 290 min — prohibitively expensive
+- Loss still declining at 1M steps (more training may help)
 :::
-
-| Finding | Value |
-|---------|-------|
-| Optimal omega_f | 3–7 (extremely flat, 5 best on slope) |
-| Optimal depth | 3 layers (same as Jp@100f) |
-| Optimal lr | 4E-5 at 400k steps, 5E-5 at 300k steps |
-| Steps/frame | 2000 needed for R²>0.99 |
 
 ::: {.panel-tabset}
 
 #### Video
-{{< video log/Claude_exploration/instruction_multimaterial_1_discs_3types/videos/iter_067_multimaterial_1_discs_3types_Claude.mp4 >}}
+{{< video log/Claude_exploration/instruction_multimaterial_1_discs_3types_parallel/videos/iter_025_multimaterial_1_discs_3types_Claude_00.mp4 >}}
 
-#### Final Field
-![](log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_Jp_20260130_045721.png){.lightbox}
+#### Kinograph
+![](log/Claude_exploration/instruction_multimaterial_1_discs_3types_parallel/kinograph/iter_025.png){.lightbox}
+
+#### Final Field (latest S)
+![](log/Claude_exploration/instruction_multimaterial_1_discs_3types/final_field/final_field_S_20260202_044436.png){.lightbox}
 
 :::
+
+---
+
+## Sequential Phase Results (100–200 frames)
+
+The sequential exploration (iterations 1–130) mapped the INR landscape at 100 and 200 frames. Videos from this phase are no longer available, but the parameter maps are fully documented.
+
+### 100-frame Optimal Configurations
+
+| Field | hidden_dim | n_layers | omega_f | lr_NNR_f | total_steps | R² | Time (min) |
+|-------|-----------|----------|---------|----------|-------------|-----|-----------|
+| F | 256 | 4 | 12.0 | 4-6E-5 | 150k | 0.998 | 8.1 |
+| Jp | 512 (384 speed) | 3 | 5-10 | 4E-5 | 200k | 0.996 | 15.4 (12.2) |
+| C | 640 | 3 | 25.0 | 2E-5 | 150k | 0.994 | 15.7 |
+| S | 1280 | 3 | 48.0 | 2E-5 | 300k | 0.729 | 166.2 |
+
+### 200-frame Optimal Configurations
+
+| Field | hidden_dim | n_layers | omega_f | lr_NNR_f | total_steps | R² | Time (min) |
+|-------|-----------|----------|---------|----------|-------------|-----|-----------|
+| F | 256 | 4 | 9.0 | 5E-5 | 300k | 0.9997 | 32.4 |
+| Jp | 512 | 3 | 5 | 1E-4 | 300k | 0.997 | 40.5 |
+
+### Key Sequential Findings
+
+- **F omega_f sharp optimum at 100f**: omega_f=12 is a LOCAL MAXIMUM — even ±1 degrades. Wider tolerance at 200f (9-10).
+- **Jp omega_f extremely flat at 200f**: Range [3-7] all yield R²=0.992–0.997.
+- **F data scaling**: No diminishing returns from 100→200 frames when omega_f re-tuned (R²=0.998→0.9997).
+- **C degrades at 200f**: R²=0.994(100f) → 0.991(200f) — reversed at 400f.
+- **S@100f ceiling**: R²=0.729 without LR scheduler (extreme stochastic variance R²=0.08–0.80).
+- **siren_t dominance** (Blocks 8-9): siren_t >> siren_txy for Jp (0.99995 vs 0.996), F (1.000 vs 0.998), C (0.9999 vs 0.994) at 100 frames.
 
 ---
 
 ## Key Discoveries
 
-```{mermaid}
-flowchart TD
-    A[Field Type] --> B[Jp]
-    A --> C[F]
-    A --> D[C]
-    A --> E[S]
+| Field | omega_f @ 400f | Architecture | Best R² | Status |
+|-------|---------------|-------------|---------|--------|
+| **Jp** | 5 | 512×3 (384 speed) | **0.999996** | Mapped |
+| **F** | 8–10 | 256×4 | **0.99995** | Mapped |
+| **C** | 15 | 896×3 (768 speed) | **0.9998** | Mapped |
+| **S** | 48 | 1280×3 | 0.960 | In progress |
 
-    B --> B1["omega=5-10 (100f) | 3-7 (200f)"]
-    B --> B2[512×3]
-    B --> B3["R²=0.996 (100f) | 0.995 (200f)"]
+### Data Scaling Rules
 
-    C --> C1["omega=12 (100f) | 9 (200f)"]
-    C --> C2[256×4]
-    C --> C3["R²=0.998 (100f) | 0.9997 (200f)"]
+::: {.columns}
 
-    D --> D1[omega=25]
-    D --> D2[640×3]
-    D --> D3[R²=0.994]
+::: {.column width="48%"}
+**Learning Rate Ceiling vs Frames**
 
-    E --> E1[omega=48]
-    E --> E2[1280×3]
-    E --> E3[R²=0.729]
+| Field | 100f | 200f | 400f | Rule |
+|-------|------|------|------|------|
+| F | — | 5E-5 | 1.2E-4 | ~2.5× per 2× frames |
+| Jp | 4E-5 | 1E-4 | 2E-4 | ~2.5× per 2× frames |
+| C | 2E-5 | — | 4E-5 | Weaker (~2× per 4×) |
+| S | 2E-5 | — | 2E-5 | **HARD-LOCKED** |
+:::
 
-    style B fill:#c8e6c9
-    style C fill:#c8e6c9
-    style D fill:#c8e6c9
-    style E fill:#fff9c4
-```
+::: {.column width="4%"}
+:::
+
+::: {.column width="48%"}
+**omega_f vs Frames**
+
+| Field | 100f | 200f | 400f | Trend |
+|-------|------|------|------|-------|
+| F | 12 | 9 | 8 | Plateau |
+| Jp | 5-10 | 3-7 | 5 | Narrow peak |
+| C | 25 | 20 | 15 | Linear decrease |
+| S | 48 | — | 48 | No change |
+:::
+
+:::
 
 ### Established Principles
 
-1. **Field-specific architectures required**: Jp, F, C, S need DIFFERENT optimal configs on same dataset
-2. **omega_f scales with field complexity**: Jp(5-10) < F(12) < C(25) < S(48)
-3. **More frames → lower omega_f**: F shifts 12→9, Jp shifts 7→5 at 200 frames. High-complexity fields (C, S) maintain omega_f
-4. **Capacity requirements vary**: F(256) < Jp(512) < C(640) < S(1280)
-5. **Learning rate sensitivity differs**: F has wide tolerance at 100f (narrows at 200f), C/S need slower learning (2E-5 hard-locked)
-6. **Depth varies by field**: Jp(3), F(4), C(3), S(3) — only F benefits from 4 layers
-7. **Prior configs don't transfer**: S field prior optimal (1280×4, omega=50) failed on new dataset
-8. **Data scaling works for F**: No diminishing returns from 100→200 frames when omega_f re-tuned (R² 0.998→0.9997)
-9. **Period parameters are critical**: T_period and xy_period must stay at 1.0 — temporal smoothing 6× more damaging than spatial
-10. **Field difficulty ranking**: F(0.9997) > Jp(0.996) > C(0.994) >> S(0.729)
+1. **Field-specific architectures required**: Jp, F, C, S need DIFFERENT optimal configs on the same dataset
+2. **omega_f scales with field complexity**: Jp(5) < F(8-10) < C(15) < S(48) at 400 frames
+3. **More frames → lower omega_f**: All fields except S. Scaling is non-linear (approaches asymptote for F)
+4. **LR ceiling scales ~2.5× per 2× frames**: Confirmed for F and Jp. Weaker for C (~2× per 4× frames). S does not follow
+5. **Capacity requirements vary**: F(256) < Jp(384-512) < C(768-896) < S(1280)
+6. **Depth is field-locked**: Jp(3), F(4), C(3), S(3) — only F benefits from 4 layers
+7. **Period parameters must be 1.0**: T_period and xy_period deviations cause catastrophic F degradation
+8. **C reverses degradation at 400f**: With sufficient capacity + steps, C benefits enormously from more data (0.994→0.991→0.9998)
+9. **S requires CosineAnnealingLR**: Without scheduler, R² ceiling is 0.729. With it: 0.960
+10. **LR-steps interaction**: High lr + many steps = overshoot. When probing high lr, also test reduced steps
+11. **Higher lr fixes underprediction bias**: For Jp, slope improves monotonically with lr
+12. **SIREN + normalization incompatible**: LayerNorm/BatchNorm destroy SIREN (R²=0.022)
+13. **Field difficulty ranking at 400f**: F(0.99995) > Jp(0.999996) > C(0.9998) >> S(0.960)
+
+### Overtraining Risk
+
+| Field | Steps/frame | Notes |
+|-------|-------------|-------|
+| F     | 800 at 400f | Decreasing trend (1500@200f → 800@400f). 1000/f overtrains |
+| Jp    | 1500 at 400f | Never exceed 2500 steps/frame |
+| C     | 2500+ at 400f | No overtraining risk, loss still declining at 1M steps |
+| S     | 2500+ at 400f | Loss still declining at 1M steps, 290 min training |
 
 ---
 
 ## Exploration Progress
 
-| Block | Field | n_training_frames | Iterations | Status | Best R² |
-|-------|-------|-------------------|------------|--------|---------|
-| 1 | Jp | 100 | 1–12 | Complete | 0.996 |
-| 2 | F | 100 | 13–24 | Complete | 0.998 |
-| 3 | C | 100 | 25–36 | Complete | 0.994 |
-| 4 | S | 100 | 37–48 | Complete | 0.729 |
-| 5 | F | 200 | 49–60 | Complete | 0.9997 |
-| 6 | Jp | 200 | 61–72 | In progress | 0.995 |
+### Sequential Phase (iterations 1–130)
+
+| Block | Field | INR Type | n_frames | Iterations | Best R² |
+|-------|-------|----------|----------|------------|---------|
+| 1 | Jp | siren_txy | 100 | 1–12 | 0.996 |
+| 2 | F | siren_txy | 100 | 13–24 | 0.998 |
+| 3 | C | siren_txy | 100 | 25–36 | 0.994 |
+| 4 | S | siren_txy | 100 | 37–48 | 0.729 |
+| 5 | F | siren_txy | 200 | 49–60 | 0.9997 |
+| 6 | Jp | siren_txy | 200 | 61–72 | 0.997 |
+| 7 | C | siren_txy | 200 | 73–84 | 0.991 |
+| 8–9 | Jp,F,C | siren_t | 100 | 85–108 | 0.99995 (Jp) |
+| 10 | C | siren_t | 100 | 109–120 | 0.9999 |
+| 11+ | Various | Various | 200–500 | 121–130 | — |
+
+### Parallel Phase (iterations 1–28+, 4 slots per batch)
+
+| Block | Field | INR Type | n_frames | Iterations | Best R² | kino_R2 | kino_SSIM |
+|-------|-------|----------|----------|------------|---------|---------|-----------|
+| 1 | F | siren_txy | 400 | 1–8 | 0.99995 | 0.9999 | 0.9962 |
+| 2 | Jp | siren_txy | 400 | 9–16 | 0.999996 | 1.0000 | 1.0000 |
+| 3 | C | siren_txy | 400 | 17–24 | 0.9998 | 0.9998 | 1.0000 |
+| 4 | S | siren_txy | 400 | 25–32 | 0.960 | — | — |
+
+---
+
+## Optimal Configurations Summary
+
+### Per-Field Optimal at 400 Frames (current best)
+
+| Field | hidden_dim | n_layers | omega_f | lr_NNR_f | total_steps | R² | Time (min) |
+|-------|-----------|----------|---------|----------|-------------|-----|-----------|
+| F | 256 | 4 | 8.0 | 1.2E-4 | 320k | 0.99995 | 18.4 |
+| Jp | 512 (384 speed) | 3 | 5.0 | 2E-4 | 600k (400k speed) | 0.999996 | 39.0 (26.3) |
+| C | 896 (768 speed) | 3 | 15.0 | 4E-5 | 1M | 0.9998 | 155.8 (120.6) |
+| S | 1280 | 3 | 48.0 | 2E-5 | 1M | 0.960 | 290.1 |

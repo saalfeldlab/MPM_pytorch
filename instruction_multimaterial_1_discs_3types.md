@@ -2,7 +2,7 @@
 
 ## Goal
 
-Scale INR field reconstruction to **high frame counts** (400, 600, 1000 frames) while maintaining R² > 0.995 for all fields (Jp, F, C, S). Prior exploration (130+ iterations) has mapped the landscape up to 200 frames — see `appendix_INR_training_knowledge.md` for complete parameter maps and scaling rules. This phase focuses on pushing beyond 200 frames to find optimal configs at production scale. Also monitor kinograph_R2 and kinograph_SSIM as secondary metrics (temporal fidelity).
+Scale INR field reconstruction to **high frame counts** (400, 600, 1000, 2000, 4000 frames) while maintaining R² > 0.995 for all fields (Jp, F, C, S). Prior exploration (130+ iterations) has mapped the landscape up to 200 frames — see `appendix_INR_training_knowledge.md` for complete parameter maps and scaling rules. This phase focuses on pushing beyond 200 frames to find optimal configs at production scale. Also monitor kinograph_R2 and kinograph_SSIM as secondary metrics (temporal fidelity).
 
 ## Iteration Loop Structure
 
@@ -140,19 +140,21 @@ Step B: Choose strategy
 - Jp@48frames LR boundary: 4E-5 < 5E-5 < 6E-5 (optimal) > 8E-5
 - Rule: Probe LR upper boundary after finding good config. Optimal LR may be higher than prior knowledge suggests for fewer frames.
 
-**C data scaling and parameter shifts (Block 7 finding):**
+**C data scaling and parameter shifts (Block 7 finding, UPDATED Block 3 parallel):**
 
-- C@200f R²=0.991 vs C@100f R²=0.994 — data scaling HURTS C (gap=0.003, narrower than prior)
-- omega_f shifts: 25(100f) → 20(200f). C DOES follow lower omega_f trend at 200f.
-- lr shifts up: 2E-5(100f) → 3E-5(200f). More data allows slightly higher lr.
-- Capacity ceiling lifts: 640(100f) → 768(200f). More data rewards more capacity. 1024 OVERPARAMETERIZED.
-- Rule: C benefits from capacity/lr tuning at 200f but fundamentally caps below 100f performance.
+- C@200f R²=0.991 vs C@100f R²=0.994 — data scaling HURTS C at 200f (gap=0.003)
+- **C@400f R²=0.9998 — data scaling HELPS at 400f!** Prior degradation trend REVERSES: 0.994(100f) → 0.991(200f) → 0.9998(400f). With sufficient capacity (896) + steps (1M), C benefits enormously from more data.
+- omega_f shifts: 25(100f) → 20(200f) → **15(400f)**. C DOES follow lower omega_f trend.
+- lr shifts: 2E-5(100f) → 3E-5(200f) → **4E-5(400f)**. C lr-data scaling WEAKER than F/Jp (~2× per 4× frames vs ~2.5× per 2×).
+- Capacity ceiling lifts: 640(100f) → 768(200f) → **768-896(400f)**. 768 is speed Pareto at 400f.
+- C needs 2500 steps/frame minimum (no overtraining risk, loss still declining at 1M). Contrast with F (800 steps/frame).
+- Rule: C BENEFITS from more data at 400f+ when capacity and steps are sufficient. Prior cap was due to insufficient training, not fundamental limitation.
 
-**All-field omega_f-to-frames scaling rule (updated Block 10):**
+**All-field omega_f-to-frames scaling rule (updated Block 10, Block 3 parallel):**
 
-- siren_txy: Jp: 100f=[5-10], 200f=[3-7]. F: 100f=12, 200f=9-10. C: 100f=25, 200f=20. S: 100f=48.
+- siren_txy: Jp: 100f=[5-10], 200f=[3-7], **400f=5**. F: 100f=12, 200f=9-10, **400f=[8-10]**. C: 100f=25, 200f=20, **400f=15**. S: 100f=48.
 - siren_t: Jp: 100f=[5-10]. F: 100f=3.0. C: 100f=[3-5]. (S untested)
-- Pattern: ALL fields shift omega_f lower at 200f (~15-20% decrease per 100-frame increase).
+- Pattern: ALL fields shift omega_f lower with more frames. At 400f: F plateaus ([8-10] flat), Jp narrows (5 peak), C continues linear decrease (25→20→15).
 - siren_t vs siren_txy: siren_t optimal omega_f is ~50-88% LOWER than siren_txy for same field (F: 3 vs 12, Jp: 7 vs 10, C: 3-5 vs 25). C shows LARGEST reduction (80-88%).
 
 **Recombination details:**
@@ -846,6 +848,10 @@ Examples:
 - **F omega_f PLATEAU rule (Block 1 parallel)**: omega_f-to-frames scaling is NOT linear. Pattern: 12(100f) → 9(200f) → 8(400f). Approaches asymptote. At 400f, omega_f=[8-10] is FLAT (insensitive). Rule: For frames >200, omega_f changes slowly; don't extrapolate linearly.
 - **F@400f lr-data scaling CONFIRMED (Block 1 parallel)**: lr ceiling progression: 5E-5(200f) → 1.2E-4(400f) = 2.4× increase. Matches Jp pattern (2.5× from 100→200f). Rule: lr ceiling scales ~2.5× per 2× frames for well-scaling fields (F, Jp).
 - **F@400f OVERTRAINING at high steps/frame (Block 1 parallel)**: 400k steps (1000/f) at lr=8E-5 WORSE than 320k (800/f). Rule: optimal steps/frame DECREASES at higher frames (confirming appendix 1500→800 from 200→500f trend). At 400f, 800 steps/frame is sweet spot.
+- **Jp@400frames@9000p COMPLETE MAP (Block 2 parallel)**: omega_f: 3(0.999982) < **5(0.999996)** > 7(0.999947). lr: 1.5E-4(0.999992) < **2E-4(0.999996)** > 2.5E-4(0.999850). capacity: **384(0.999995)** ≈ 512(0.999996). steps: 400k(0.999986) < 600k(0.999996). Best accuracy: 512×3@omega=5@lr=2E-4@600k, R²=0.999996, 39.0min. Best efficiency: 384×3@omega=5@lr=2E-4@600k, R²=0.999995, 26.3min.
+- **Jp omega_f NARROW PEAK at 400f (Block 2 parallel)**: omega_f=5 is LOCAL MAXIMUM — ±2 causes significant degradation (3: MSE 5×, 7: MSE 14×). Contrast with F@400f where omega_f is FLAT in [8-10]. Rule: Jp has narrow omega_f optimum that must be precisely tuned; F is more forgiving.
+- **Jp lr-data scaling CONFIRMED (Block 2 parallel)**: lr ceiling progression: 4E-5(100f) → 1E-4(200f) → 2E-4(400f) = 5× from 100→400f. Matches F pattern (~2.5× per 2× frames). 2.5E-4 overshoots (MSE 45× worse).
+- **Jp 384 speed Pareto STRENGTHENED at lr=2E-4 (Block 2 parallel)**: At optimal lr=2E-4, 384 gap shrinks to negligible 0.0001% R² (0.999995 vs 0.999996). lr=2E-4 closes capacity gap. Rule: Higher lr can compensate for reduced capacity.
 
 **Compression ratio**:
 

@@ -90,3 +90,153 @@ All tasks complete. Here's the summary:
 | 02 | 5.0 | 2E-4 | 512 | 3 | 600k | lr higher |
 | 03 | 5.0 | 1.5E-4 | 384 | 3 | 600k | capacity (speed Pareto test) |
 
+
+============================================================
+=== Batch 9-12 ===
+============================================================
+All tasks complete. Here's the summary:
+
+---
+
+**Batch 1 Results (Block 2, Jp@400f siren_txy, iters 9-12):**
+
+All 4 slots achieved excellent results (R² > 0.99998). Jp scales very well to 400 frames.
+
+| Iter | Config | R² | MSE | Time | Key finding |
+|------|--------|----|-----|------|-------------|
+| 9 | Baseline (omega=5, lr=1.5E-4, 512×3) | 0.999992 | 2.17E-3 | 38.7min | Appendix reference works well |
+| 10 | omega_f=3 | 0.999982 | 4.58E-3 | 38.9min | omega_f=3 worse than 5 (2× MSE) |
+| **11** | **lr=2E-4** | **0.999996** | **9.68E-4** | **39.0min** | **NEW BEST — lr ceiling still rising** |
+| 12 | hidden_dim=384 | 0.999986 | 3.50E-3 | 26.2min | Speed Pareto confirmed (32% faster) |
+
+**Key findings:** lr=2E-4 best (lr ceiling progression: 4E-5@100f → 1E-4@200f → 2E-4@400f). omega_f=5 > 3. 384 is viable speed Pareto. All kinograph metrics saturated at 1.0000.
+
+**Next batch (iters 13-16) configs set:**
+
+| Slot | Mutation from parent | Strategy |
+|------|---------------------|----------|
+| 00 | lr=2.5E-4 (from iter 11) | exploit: lr ceiling probe |
+| 01 | omega_f=7, lr=2E-4 (from iter 11) | exploit: omega_f upper boundary |
+| 02 | 400k steps, lr=2E-4 (from iter 11) | explore: step reduction for speed |
+| 03 | 384×3, lr=2E-4 (from iter 12) | principle-test: 384+high lr combo |
+
+
+============================================================
+=== Batch 13-16 ===
+============================================================
+**Block 2 complete. Summary of iterations 13-16 (Jp@400f):**
+
+| Iter | Mutation | R² | MSE | slope | Time | Finding |
+|------|----------|-----|-----|-------|------|---------|
+| 13 | lr 2E-4→2.5E-4 | 0.99985 | 4.4E-2 | 0.995 | 38.7min | lr CEILING FOUND — 2.5E-4 overshoots (MSE 45× worse) |
+| 14 | omega_f 5→7 | 0.99995 | 1.4E-2 | 0.999 | 38.9min | omega_f=5 LOCAL MAX — 7 worse (MSE 14×) |
+| 15 | steps 600k→400k | 0.99999 | 3.7E-3 | 0.999 | 26.2min | 400k viable speed Pareto (33% faster, negligible loss) |
+| 16 | 384@lr=2E-4 | 0.99999 | 1.3E-3 | 0.9999 | 26.3min | **BEST EFFICIENCY** — 384+lr=2E-4 matches 512 |
+
+**Block 2 key results (Jp@400f siren_txy):**
+- Best accuracy: 512×3, omega_f=5, lr=2E-4, 600k steps → R²=0.999996, 39min
+- Best efficiency: 384×3, omega_f=5, lr=2E-4, 600k steps → R²=0.999995, 26.3min
+- lr ceiling at 2E-4 (scaling: 4E-5→1E-4→2E-4 from 100→200→400f)
+- omega_f=5 is narrow peak (unlike F's flat [8-10])
+
+**Block 3 set up: C@400f siren_txy** (iterations 17-24)
+
+| Slot | omega_f | lr | hidden_dim | Dimension tested |
+|------|---------|-----|------------|------------------|
+| 00 | 18.0 | 4E-5 | 896 | Baseline (appendix) |
+| 01 | 22.0 | 4E-5 | 896 | omega_f (higher) |
+| 02 | 18.0 | 6E-5 | 896 | lr (higher, test data regularization) |
+| 03 | 18.0 | 4E-5 | 768 | capacity (principle-test: does C need 896?) |
+
+All configs: siren_txy, batch_size=1, n_training_frames=400, 1M steps, n_layers=3.
+
+
+============================================================
+=== Batch 17-20 ===
+============================================================
+All tasks complete. Here's the summary:
+
+## Batch 1 Results (Iterations 17-20): C@400f siren_txy
+
+**Major finding: C@400f dramatically exceeds predictions** — R²=0.9998 vs predicted ~0.99. The prior claim that "C HURTS with more data" is **reversed** at 400f with sufficient capacity (896×3) and training steps (1M). Scaling: 0.994(100f) → 0.991(200f) → **0.9998(400f)**.
+
+| Iter | Mutation | R² | MSE | Time | Key Result |
+|------|----------|-----|-----|------|------------|
+| 17 | **Baseline** (omega_f=18, lr=4E-5, 896×3) | **0.999758** | 5.13E-2 | 156.1min | **BEST** — appendix prediction accurate |
+| 18 | omega_f=22 | 0.999650 | 7.42E-2 | 155.7min | omega_f=22 worse; trend 25→20→18 confirmed |
+| 19 | lr=6E-5 | 0.999734 | 5.62E-2 | 155.9min | lr=6E-5 marginally worse; C lr-scaling weaker than F/Jp |
+| 20 | hidden_dim=768 | 0.999729 | 5.74E-2 | 120.6min | **SPEED PARETO** — 0.003% R² loss, 23% time saving |
+
+## Next Batch (Iterations 21-24): Boundary probing
+
+| Slot | Config Change | Parent | Rationale |
+|------|--------------|--------|-----------|
+| 00 | omega_f=15 | 17 | Probe omega_f lower boundary |
+| 01 | lr=3E-5 | 17 | Probe lr lower boundary |
+| 02 | 750k steps (from 1M) | 17 | Test step reduction for time savings |
+| 03 | hidden_dim=640 | 20 | Principle-test: does C@100f capacity ceiling (640) hold at 400f? |
+
+
+============================================================
+=== Batch 21-24 ===
+============================================================
+## Summary
+
+### Batch 2 Results (Iterations 21-24) — Block 3 END
+
+| Slot | Iter | Mutation | R² | MSE | Time | Result |
+|------|------|----------|-----|-----|------|--------|
+| 00 | 21 | omega_f: 18→15 | **0.999807** | 4.09E-2 | 155.8min | **NEW BEST** |
+| 01 | 22 | lr: 4E-5→3E-5 | 0.999692 | 6.56E-2 | 155.7min | Worse — lr too low |
+| 02 | 23 | steps: 1M→750k | 0.999521 | 1.02E-1 | 117.2min | Worse — undertrained |
+| 03 | 24 | capacity: 896→640 | 0.999600 | 8.51E-2 | 88.4min | Worse — insufficient capacity |
+
+### Block 3 Complete Map (C@400f siren_txy)
+- **omega_f**: 15(0.9998) > 18(0.9998) > 22(0.9997). Best=15, continues downward trend.
+- **lr**: 3E-5(0.9997) < **4E-5(0.9998)** >= 6E-5(0.9997). Optimal=4E-5.
+- **steps**: 750k(0.9995) << **1M(0.9998)**. Needs 2500 steps/frame minimum.
+- **capacity**: 640(0.9996) < 768(0.9997) < **896(0.9998)**. 768=speed Pareto.
+
+### Key Block 3 Finding
+C@400f **REVERSES** the prior degradation trend: 0.994(100f) → 0.991(200f) → **0.9998(400f)**. The claim "C HURTS with more data" is wrong at 400f with sufficient capacity and training steps.
+
+### Block 4 Setup: S@400f siren_txy
+New block explores the hardest field (S) at 400 frames. CosineAnnealingLR + gradient clipping already in code.
+
+| Slot | omega_f | lr | hidden_dim | Role |
+|------|---------|-----|------------|------|
+| 00 | 48 | 2E-5 | 1280 | Baseline (S@100f extrapolated) |
+| 01 | 36 | 2E-5 | 1280 | omega_f lower (all-field downward trend) |
+| 02 | 48 | 3E-5 | 1280 | lr higher (data regularization test) |
+| 03 | 48 | 2E-5 | 1024 | Capacity lower (principle test) |
+
+
+============================================================
+=== Batch 25-28 ===
+============================================================
+**Batch 1 Analysis Complete (Iterations 25-28, S@400f)**
+
+**Results Summary:**
+
+| Slot | Iter | Mutation | R² | slope | kino_R2 | Time |
+|------|------|----------|----|-------|---------|------|
+| 00 | 25 | **Baseline** (omega=48, lr=2E-5, 1280×3) | **0.960** | 0.961 | 0.920 | 290min |
+| 01 | 26 | omega_f: 48→36 | 0.949 | 0.949 | 0.898 | 290min |
+| 02 | 27 | lr: 2E-5→3E-5 | 0.803 | 0.806 | 0.470 | 290min |
+| 03 | 28 | capacity: 1280→1024 | 0.918 | 0.917 | 0.831 | 190min |
+
+**Key findings:**
+1. **S@400f baseline R²=0.960** — huge improvement over S@100f no-scheduler (0.729). Data scaling HELPS S substantially.
+2. **omega_f=48 confirmed** — S does NOT follow the all-field omega_f decrease. 36 is worse.
+3. **lr=2E-5 hard-locked** — even 50% increase (3E-5) is catastrophic (R²=0.803). S fundamentally different from F/Jp/C.
+4. **1280 capacity required** — 1024 loses 4.4% R² with steep capacity dependence.
+
+**Next Batch (Iterations 29-32) Configs Set:**
+
+| Slot | Mutation | Parent |
+|------|----------|--------|
+| 00 | omega_f=55 (upper probe) | 25 |
+| 01 | total_steps=1.5M (more training, loss declining) | 25 |
+| 02 | lr=1.5E-5 (lower lr probe) | 25 |
+| 03 | omega_f=42 (refine map, principle-test) | 25 |
+
