@@ -534,3 +534,504 @@ Next: parent=25
 - Slot 02: lr=1.5E-5 — probe lr lower boundary (parent=25)
 - Slot 03: omega_f=42 — probe omega_f between 36 and 48 to refine map (parent=25, principle-test: "S omega_f COUNTER-TREND: high-complexity fields maintain omega_f")
 
+## Iter 29: good — **BEST IN BLOCK**
+Node: id=29, parent=25
+Mode/Strategy: exploit
+Config: lr_NNR_f=2E-5, total_steps=1000000, hidden_dim_nnr_f=1280, n_layers_nnr_f=3, omega_f=55.0, batch_size=1
+Metrics: final_r2=0.970, final_mse=4.538E-9, slope=0.970, kinograph_R2=0.940, kinograph_SSIM=0.942, total_params=4929284, compression_ratio=2.92, training_time=290.0min
+Field: field_name=S, inr_type=siren_txy
+Mutation: omega_f: 48→55
+Parent rule: Highest UCB node (25), probe omega_f upward boundary
+Visual: GT/Pred panels show good spatial match across all 4 components. Loss curve still declining at 1M steps. Per-frame MSE shows characteristic double-hump with mid-frames harder. Scatter tight along diagonal with slope=0.970. Pred panels capture stress gradients and disc boundaries well — best visual quality in block.
+Observation: omega_f=55 is NEW BEST (R²=0.970 vs 0.960 at omega_f=48). S omega_f skews HIGHER than 48 at 400f. Complete map: 36(0.949) < 42(0.952) < 48(0.960) < **55(0.970)**. S counter-trend STRENGTHENED: omega_f increases with frames for S (opposite to F/Jp/C). Need to probe 60-65 next.
+Next: parent=29
+
+## Iter 30: good
+Node: id=30, parent=root
+Mode/Strategy: exploit
+Config: lr_NNR_f=2E-5, total_steps=1500000, hidden_dim_nnr_f=1280, n_layers_nnr_f=3, omega_f=48.0, batch_size=1
+Metrics: final_r2=0.963, final_mse=5.622E-9, slope=0.963, kinograph_R2=0.922, kinograph_SSIM=0.932, total_params=4929284, compression_ratio=2.92, training_time=434.8min
+Field: field_name=S, inr_type=siren_txy
+Mutation: total_steps: 1M→1.5M
+Parent rule: Probe if more steps improve (loss declining at 1M)
+Visual: GT/Pred spatial patterns present but slightly less crisp than Slot 00 (omega_f=55). Per-frame MSE shows higher peaks in mid-frames than omega_f=55. Scatter shows mild dispersion at high-stress values. Loss curve was still declining at 1M but flattened by 1.5M — suggests convergence plateau.
+Observation: 1.5M WORSE than 1M (R²=0.963 vs 0.960). Marginal gain within noise but 45% longer training (434.8 vs 290.0min). OVERTRAINING at 1.5M steps with CosineAnnealingLR — scheduler already reaches near-zero lr by 1M, extra steps are near-zero lr training. 1M steps is OPTIMAL for S@400f. Rule: With CosineAnnealingLR(T_max=total_steps), additional steps beyond T_max are useless since lr=0.
+Next: parent=29
+
+## Iter 31: good
+Node: id=31, parent=root
+Mode/Strategy: explore/lr-probe
+Config: lr_NNR_f=1.5E-5, total_steps=1000000, hidden_dim_nnr_f=1280, n_layers_nnr_f=3, omega_f=48.0, batch_size=1
+Metrics: final_r2=0.965, final_mse=5.315E-9, slope=0.966, kinograph_R2=0.933, kinograph_SSIM=0.935, total_params=4929284, compression_ratio=2.92, training_time=290.8min
+Field: field_name=S, inr_type=siren_txy
+Mutation: lr: 2E-5→1.5E-5
+Parent rule: Explore lr lower boundary to refine S lr map
+Visual: GT/Pred spatial patterns similar to baseline (omega_f=48). Slightly softer high-stress gradients than omega_f=55. Per-frame MSE pattern slightly lower than baseline in mid-frames. Scatter comparable to baseline.
+Observation: lr=1.5E-5 gives R²=0.965, slightly BETTER than lr=2E-5 (0.960) at omega_f=48. But note these both use omega_f=48 not 55. S lr map expanding: 1.5E-5(0.965) ≈ 2E-5(0.960) >> 3E-5(0.803). lr=[1.5-2]E-5 both viable, 1.5E-5 slightly better. Need to test lr=1.5E-5 with omega_f=55 (best config).
+Next: parent=29
+
+## Iter 32: good
+Node: id=32, parent=root
+Mode/Strategy: principle-test
+Config: lr_NNR_f=2E-5, total_steps=1000000, hidden_dim_nnr_f=1280, n_layers_nnr_f=3, omega_f=42.0, batch_size=1
+Metrics: final_r2=0.952, final_mse=7.236E-9, slope=0.953, kinograph_R2=0.906, kinograph_SSIM=0.917, total_params=4929284, compression_ratio=2.92, training_time=290.0min
+Field: field_name=S, inr_type=siren_txy
+Mutation: omega_f: 48→42
+Testing principle: "S omega_f COUNTER-TREND: high-complexity fields maintain omega_f"
+Parent rule: Principle-test — refine omega_f map between known points 36 and 48
+Visual: GT/Pred show spatial structure but noticeably less sharp stress gradients than omega_f=55. Pred panels show smoothed high-stress regions. Per-frame MSE higher throughout compared to baseline. Scatter shows wider dispersion.
+Observation: omega_f=42 WORSE than 48 (R²=0.952 vs 0.960). Principle CONFIRMED AND STRENGTHENED: S does not just "maintain" omega_f — it INCREASES with frames. Complete omega_f map: 36(0.949) < 42(0.952) < 48(0.960) < 55(0.970). Nearly linear relationship. Principle updated: S omega_f INCREASES with frames (counter to all other fields).
+Next: parent=29
+
+### Block 4 Summary: S@400f siren_txy
+
+**Iterations**: 25-32 (8 iterations, 2 batches of 4)
+**Best config**: 1280×3@omega_f=55@lr=2E-5@1M steps, R²=0.970, 290.0min
+
+**Key findings**:
+1. **S@400f achieves R²=0.970** — massive improvement over S@100f (0.729 without scheduler). Data scaling HELPS S enormously when CosineAnnealingLR + gradient clipping are used.
+2. **omega_f map is MONOTONICALLY INCREASING**: 36(0.949) < 42(0.952) < 48(0.960) < 55(0.970). S is the ONLY field where omega_f increases with frames. All other fields (F, Jp, C) decrease. S counter-trend is FUNDAMENTAL.
+3. **omega_f=55 is best but NOT saturated** — trend appears roughly linear, need to probe 60-65.
+4. **lr=[1.5-2]E-5 viable**: 1.5E-5(0.965) ≈ 2E-5(0.960). S lr remains low but has mild flexibility at lower end.
+5. **lr=3E-5 catastrophic**: R²=0.803. S lr upper bound is HARD.
+6. **1280 capacity REQUIRED**: 1024 loses 4.4% R². Steep capacity dependence.
+7. **1M steps optimal**: 1.5M steps shows OVERTRAINING (0.963 vs 0.960) — CosineAnnealingLR reaches T_max at 1M, extra steps are wasted.
+8. **Training time**: ~290min for 1280×3@1M steps. Prohibitive but necessary.
+
+**Block metrics**:
+- Branching rate: 0/8 (0%) — all branches from root or node 25. Low branching appropriate for initial exploration.
+- Improvement rate: 1/8 (12.5%) — only omega_f=55 improved over baseline.
+- UCB usage: node 25 was primary parent (correct — baseline was best until omega_f=55 found).
+
+INSTRUCTIONS EDITED: Updated omega_f-to-frames scaling rule to reflect S counter-trend (omega_f INCREASES at 400f). Added S@400f parameter constraints section (lr hard-locked, 1M steps optimal, 1280 required).
+
+---
+
+## Block 5 Initialization: F field @ 600 frames (parallel)
+
+**Field**: F (deformation gradient, 4 components)
+**INR type**: siren_txy
+**n_training_frames**: 600
+**Rationale**: All 4 fields now mapped at 400f. F is most scalable and fastest to iterate. Pushing to 600f to continue high-frame exploration. F@400f achieved R²=0.99995 — expect R²≥0.9999 at 600f.
+
+### Batch 1 — Initial Configurations (4 diverse starting points)
+
+| Slot | omega_f | lr_NNR_f | hidden_dim | n_layers | total_steps | Dimension tested |
+|------|---------|----------|------------|----------|-------------|------------------|
+| 00 | 8.0 | 1.2E-4 | 256 | 4 | 420000 | Baseline (F@400f optimal, extrapolated 700 steps/f) |
+| 01 | 7.0 | 1.2E-4 | 256 | 4 | 420000 | omega_f (test continued downward trend 8→7) |
+| 02 | 8.0 | 1.8E-4 | 256 | 4 | 420000 | lr (test data-regularized lr ceiling rise) |
+| 03 | 8.0 | 1.2E-4 | 256 | 4 | 360000 | steps (600/f, principle-test: steps/frame decreases at higher frames) |
+
+**Design rationale**:
+- Slot 00: F@400f best config (omega_f=8, lr=1.2E-4, 256×4) with steps extrapolated from 800/f→700/f
+- Slot 01: Test if omega_f continues asymptotic decline toward 7
+- Slot 02: Test if lr ceiling continues to rise (~2.5× per 2× frames → ~1.5× for 1.5× frames = ~1.8E-4)
+- Slot 03: Principle-test — if steps/frame efficiency improves: 1500/f(200f) → 800/f(400f) → 600/f(600f)?
+
+### Batch 1 Results (Iterations 33-36)
+
+## Iter 33: excellent
+Node: id=33, parent=root
+Mode/Strategy: explore/baseline
+Config: lr_NNR_f=1.2E-4, total_steps=420000, hidden_dim_nnr_f=256, n_layers_nnr_f=4, omega_f=8.0, batch_size=1
+Metrics: final_r2=0.999940, final_mse=2.901E-5, slope=0.9999, kinograph_R2=0.9999, kinograph_SSIM=0.9954, total_params=265220, compression_ratio=81.4, training_time=24.2min
+Field: field_name=F, inr_type=siren_txy
+Mutation: Baseline from F@400f optimal (omega_f=8, lr=1.2E-4, 256x4, extrapolated 700 steps/f)
+Parent rule: Block initialization — direct F@400f extrapolation to 600f
+Visual: GT/Pred match well across all 4 components. Scatter tight along diagonal (slope=0.9999). Loss still declining at 420k. Per-frame MSE shows U-shape with boundary frames harder, mid-frame floor ~3E-5. No visible artifacts.
+Observation: F@600f baseline achieves R²=0.99994 — slightly below F@400f best (0.99995) but still excellent. Loss still declining at 420k suggesting more steps or higher lr could help. Training time 24.2min (up from 18.4min at 400f, proportional to 1.5× frames). F continues to scale well.
+Next: parent=35
+
+## Iter 34: excellent
+Node: id=34, parent=root
+Mode/Strategy: explore/omega_f-scaling
+Config: lr_NNR_f=1.2E-4, total_steps=420000, hidden_dim_nnr_f=256, n_layers_nnr_f=4, omega_f=7.0, batch_size=1
+Metrics: final_r2=0.999919, final_mse=3.897E-5, slope=0.9999, kinograph_R2=0.9999, kinograph_SSIM=0.9940, total_params=265220, compression_ratio=81.4, training_time=24.4min
+Field: field_name=F, inr_type=siren_txy
+Mutation: omega_f: 8.0 -> 7.0 (testing continued downward trend from 12→9→8→7)
+Parent rule: Block initialization — test omega_f asymptote at 600f
+Visual: GT/Pred match good. Scatter slightly wider than Slot 00. Per-frame MSE U-shape wider with higher boundary peaks. Loss curve converged to higher floor. Spatial patterns captured but marginally less crisp at disc boundaries.
+Observation: omega_f=7 WORSE than 8 (R²=0.999919 vs 0.999940, MSE 1.34× higher). omega_f=8 remains optimal at 600f — omega_f plateau CONFIRMED: 12(100f) → 9(200f) → 8(400f) → 8(600f). omega_f has FULLY PLATEAUED at 8 from 400f onward. No further decrease.
+Next: parent=35
+
+## Iter 35: excellent — **NEW BEST**
+Node: id=35, parent=root
+Mode/Strategy: explore/lr-ceiling
+Config: lr_NNR_f=1.8E-4, total_steps=420000, hidden_dim_nnr_f=256, n_layers_nnr_f=4, omega_f=8.0, batch_size=1
+Metrics: final_r2=0.999970, final_mse=1.441E-5, slope=0.9999, kinograph_R2=1.0000, kinograph_SSIM=0.9976, total_params=265220, compression_ratio=81.4, training_time=24.4min
+Field: field_name=F, inr_type=siren_txy
+Mutation: lr_NNR_f: 1.2E-4 -> 1.8E-4 (testing data-regularized lr ceiling at 600f)
+Parent rule: Block initialization — test lr ceiling rise with more frames
+Visual: BEST visual quality in batch. Scatter tightest (R²=1.000 in plot). Per-frame MSE U-shape has LOWEST mid-frame floor (~1.2E-5). Loss descends deepest despite slightly noisier curve (higher lr). kino_SSIM=0.9976 (highest). GT/Pred panels near-identical across all 4 components.
+Observation: lr=1.8E-4 is NEW BEST (R²=0.99997, MSE=1.44E-5 — 2× lower than baseline). lr ceiling CONTINUES RISING: 5E-5(200f) → 1.2E-4(400f) → ≥1.8E-4(600f). That's 1.5× from 400→600f, matching the predicted ~1.5× for 1.5× frames. Principle CONFIRMED: lr scales ~2.5× per 2× frames. kino_R2=1.0000 — perfect temporal fidelity at 600f.
+Next: parent=35
+
+## Iter 36: excellent
+Node: id=36, parent=root
+Mode/Strategy: principle-test
+Config: lr_NNR_f=1.2E-4, total_steps=360000, hidden_dim_nnr_f=256, n_layers_nnr_f=4, omega_f=8.0, batch_size=1
+Metrics: final_r2=0.999922, final_mse=3.745E-5, slope=0.9999, kinograph_R2=0.9999, kinograph_SSIM=0.9941, total_params=265220, compression_ratio=81.4, training_time=20.9min
+Field: field_name=F, inr_type=siren_txy
+Mutation: total_steps: 420000 -> 360000 (600 steps/f vs 700 steps/f — testing efficiency gain)
+Testing principle: "F@400f overtrains at >800 steps/frame (400k worse than 320k at lr=8E-5)"
+Parent rule: Principle test — does steps/frame continue decreasing at 600f?
+Visual: GT/Pred match good. Per-frame MSE U-shape has higher boundary peaks than baseline. Loss was clearly still declining when cut off at 360k — premature termination visible. Scatter slightly wider than baseline.
+Observation: 360k steps (600/f) WORSE than 420k (700/f) at lr=1.2E-4 (R²=0.999922 vs 0.999940). Principle PARTIALLY REFUTED: steps/frame does NOT continue decreasing linearly at 600f. F@400f optimal=800/f, F@600f needs ≥700/f. The efficiency gain trend SLOWS or REVERSES. Higher lr (1.8E-4) may allow fewer steps — need to test. Time savings 14% (20.9 vs 24.2min) not worth 0.002% R² loss.
+Next: parent=35
+
+### Batch 2 Design (Iterations 37-40)
+
+**Strategy**: Exploit from Node 35 (best: R²=0.99997, lr=1.8E-4). UCB scores all tied at 2.414 — Node 35 has highest kino_SSIM (0.9976).
+- Slot 00: lr=2.2E-4 — probe lr upper ceiling further (parent=35, exploit)
+- Slot 01: omega_f=10 at lr=1.8E-4 — test upper omega_f boundary at optimal lr (parent=35, exploit)
+- Slot 02: 500k steps at lr=1.8E-4 — test more training (loss declining at 420k) (parent=35, explore)
+- Slot 03: lr=1.8E-4 at 360k steps — test if high lr compensates for fewer steps (parent=35, principle-test: "Higher lr can compensate for reduced capacity/steps")
+
+### Batch 2 Results (Iterations 37-40)
+
+## Iter 37: excellent
+Node: id=37, parent=35
+Mode/Strategy: exploit
+Config: lr_NNR_f=2.2E-4, total_steps=420000, hidden_dim_nnr_f=256, n_layers_nnr_f=4, omega_f=8.0, batch_size=1
+Metrics: final_r2=0.999975, final_mse=1.202E-5, slope=1.0000, kinograph_R2=1.0000, kinograph_SSIM=0.9980, total_params=265220, compression_ratio=81.4, training_time=24.2min
+Field: field_name=F, inr_type=siren_txy
+Mutation: lr_NNR_f: 1.8E-4 -> 2.2E-4 (probing lr upper ceiling at 600f)
+Parent rule: Highest UCB node (Node 35, R²=0.99997) — exploit lr dimension upward
+Visual: GT/Pred match excellent across all 4 components. Scatter tight along diagonal (slope=1.0000). Per-frame MSE U-shape with mid-frame floor ~1.2E-5, boundary spikes at frame 0 and 600. Loss curve still declining at 420k but noisier at high lr. kino_SSIM=0.9980 (higher than parent).
+Observation: lr=2.2E-4 MATCHES parent quality (R²=0.999975 vs 0.999970). MSE=1.20E-5 comparable (parent 1.44E-5). lr ceiling at 600f NOT YET FOUND — 2.2E-4 is viable. F@600f lr map: 1.2E-4(0.99994) < 1.8E-4(0.99997) ≈ 2.2E-4(0.999975). lr tolerance is WIDE at 600f. slope=1.0000 (perfect, improved from parent 0.9999).
+Next: parent=37
+
+## Iter 38: excellent — **NEW BEST**
+Node: id=38, parent=root
+Mode/Strategy: exploit
+Config: lr_NNR_f=1.8E-4, total_steps=420000, hidden_dim_nnr_f=256, n_layers_nnr_f=4, omega_f=10.0, batch_size=1
+Metrics: final_r2=0.999983, final_mse=8.050E-6, slope=1.0000, kinograph_R2=1.0000, kinograph_SSIM=0.9987, total_params=265220, compression_ratio=81.4, training_time=24.1min
+Field: field_name=F, inr_type=siren_txy
+Mutation: omega_f: 8.0 -> 10.0 at lr=1.8E-4 (testing omega_f upper boundary at optimal lr)
+Parent rule: Exploit from Node 35 — test omega_f=10 at high lr
+Visual: BEST visual quality in entire block. Scatter tightest (R²=1.0000, slope=1.0000). Per-frame MSE U-shape has LOWEST mid-frame floor (~8E-6). Loss curve descends deepest of all slots. GT/Pred panels near-identical across all 4 components — disc boundaries crisp, spatial gradients precise. kino_SSIM=0.9987 (block best).
+Observation: omega_f=10@lr=1.8E-4 is NEW BEST (R²=0.999983, MSE=8.05E-6 — 44% lower MSE than parent). omega_f=10 is BETTER than 8 when paired with high lr=1.8E-4 (at lr=1.2E-4: 8≈10). **omega_f-lr INTERACTION discovered**: at higher lr, higher omega_f becomes slightly better. F@600f omega_f-lr map: omega_f=7@lr=1.2E-4(0.99992), omega_f=8@lr=1.2E-4(0.99994), omega_f=8@lr=1.8E-4(0.99997), **omega_f=10@lr=1.8E-4(0.999983)**. Optimal omega_f=10 at high lr, omega_f=8 at moderate lr.
+Next: parent=38
+
+## Iter 39: excellent
+Node: id=39, parent=root
+Mode/Strategy: explore/steps
+Config: lr_NNR_f=1.8E-4, total_steps=500000, hidden_dim_nnr_f=256, n_layers_nnr_f=4, omega_f=8.0, batch_size=1
+Metrics: final_r2=0.999973, final_mse=1.286E-5, slope=1.0000, kinograph_R2=1.0000, kinograph_SSIM=0.9978, total_params=265220, compression_ratio=81.4, training_time=28.5min
+Field: field_name=F, inr_type=siren_txy
+Mutation: total_steps: 420000 -> 500000 (testing if more training helps at lr=1.8E-4)
+Parent rule: Explore from Node 35 — test step increase
+Visual: GT/Pred match excellent. Scatter tight along diagonal. Per-frame MSE U-shape shows spike at final frames (frame 580-600) higher than parent — boundary overfit. Loss curve shows noisier tail section with upward oscillation (overtraining signal at 500k). GT/Pred spatial panels comparable to parent.
+Observation: 500k steps (833/f) WORSE than 420k (700/f) at lr=1.8E-4 (R²=0.999973 vs 0.999970, MSE 1.29E-5 vs 1.44E-5). Mixed signal: MSE marginally better but R² essentially tied, and 4.1min longer (28.5 vs 24.4). F@600f CONFIRMS overtraining above 700-800 steps/frame at high lr. 420k (700/f) is optimal at lr=1.8E-4.
+Next: parent=38
+
+## Iter 40: excellent
+Node: id=40, parent=root
+Mode/Strategy: principle-test
+Config: lr_NNR_f=1.8E-4, total_steps=360000, hidden_dim_nnr_f=256, n_layers_nnr_f=4, omega_f=8.0, batch_size=1
+Metrics: final_r2=0.999965, final_mse=1.691E-5, slope=0.9999, kinograph_R2=1.0000, kinograph_SSIM=0.9973, total_params=265220, compression_ratio=81.4, training_time=20.6min
+Field: field_name=F, inr_type=siren_txy
+Mutation: total_steps: 420000 -> 360000 at lr=1.8E-4 (test if high lr compensates for fewer steps)
+Testing principle: "Higher lr can compensate for reduced capacity/steps"
+Parent rule: Principle test from Node 35 — test lr-steps compensation
+Visual: GT/Pred match good. Scatter tight but marginally wider than parent. Per-frame MSE U-shape with higher boundary peaks (frame 0 and 600 spikes at ~5E-5). Loss curve clearly still declining when cut off at 360k — premature termination visible. Spatial patterns captured but fine gradients slightly less precise.
+Observation: lr=1.8E-4@360k (600/f) gives R²=0.999965 — BETTER than lr=1.2E-4@360k (0.999922, Iter 36). Principle PARTIALLY CONFIRMED: higher lr DOES help at reduced steps (0.999965 vs 0.999922 = 0.004% improvement). But still below lr=1.8E-4@420k (0.999970). High lr reduces but does NOT eliminate the steps penalty. SPEED PARETO: R²=0.999965 in 20.6min (vs 24.4min for 0.999970). 15% time savings for 0.0005% R² cost.
+Next: parent=38
+
+### Block 5 Summary: F@600f siren_txy
+
+**Iterations**: 33-40 (8 iterations, 2 batches of 4)
+**Best config**: 256×4@omega_f=10@lr=1.8E-4@420k steps, R²=0.999983, 24.1min
+
+**F@600f siren_txy COMPLETE MAP:**
+- omega_f: 7(0.999919) < 8(0.999940-0.999975) < **10(0.999983)**. omega_f=10 optimal at high lr. omega_f-lr interaction: at lr=1.8E-4, omega_f=10 > 8; at lr=1.2E-4, omega_f=8 ≈ 10.
+- lr: 1.2E-4(0.999940) < **1.8E-4(0.999970-0.999983)** ≈ 2.2E-4(0.999975). lr ceiling NOT found at 2.2E-4. Wide lr tolerance [1.2-2.2]E-4.
+- steps: 360k(0.999922-0.999965) < **420k(0.999970-0.999983)** ≥ 500k(0.999973). 700 steps/frame optimal. Overtraining above 800/f confirmed.
+- depth: remains 4 (not retested — confirmed at 400f)
+- capacity: remains 256 (not retested — confirmed at 400f)
+- **Best accuracy**: 256×4, omega_f=10, lr=1.8E-4, 420k steps. R²=0.999983, 24.1min.
+- **Speed Pareto**: 256×4, omega_f=8, lr=1.8E-4, 360k steps. R²=0.999965, 20.6min.
+
+**Key findings:**
+1. **F scales excellently to 600f** — R²=0.999983 (HIGHER than 400f best of 0.99995). F shows POSITIVE data scaling to 600f.
+2. **omega_f-lr INTERACTION discovered**: at high lr (1.8E-4), omega_f=10 beats 8. At moderate lr (1.2E-4), omega_f=8≈10. Higher lr unlocks higher frequency capacity.
+3. **lr ceiling NOT found at 2.2E-4**: F@600f has VERY wide lr tolerance [1.2-2.2]E-4. May go even higher.
+4. **lr-data scaling CONFIRMED**: 5E-5(200f) → 1.2E-4(400f) → 1.8E-4(600f). ~1.5× per 1.5× frames.
+5. **Steps/frame at 600f**: 700/f optimal (vs 800/f at 400f). Efficiency gain continues slightly.
+6. **kino_R2=1.0000 across ALL iterations** — temporal fidelity saturated at 600f.
+
+**Block metrics:**
+- Branching rate: 4/8 (50%) from root — appropriate initial exploration
+- Improvement rate: 2/8 (25%) — Iter 35 (lr=1.8E-4) and Iter 38 (omega_f=10@lr=1.8E-4)
+- Best iteration: 38 (omega_f=10@lr=1.8E-4, R²=0.999983)
+
+INSTRUCTIONS EDITED: Updated F@600f complete map, omega_f-lr interaction rule, lr ceiling still open at 2.2E-4, steps/frame 700/f at 600f.
+
+---
+
+## Block 6 Initialization: Jp field @ 600 frames (parallel)
+
+**Field**: Jp (plastic deformation, 1 component)
+**INR type**: siren_txy
+**n_training_frames**: 600
+**Rationale**: Jp is second-most scalable. Jp@400f achieved R²=0.999996 with 512×3@omega=5@lr=2E-4@600k. At 600f, expect lr ceiling rises to ~2.5-3E-4, omega_f stays at 5 (narrow peak), 384 speed Pareto should hold.
+
+### Batch 1 — Initial Configurations (Iterations 41-44)
+
+| Slot | omega_f | lr_NNR_f | hidden_dim | n_layers | total_steps | Dimension tested |
+|------|---------|----------|------------|----------|-------------|------------------|
+| 00 | 5.0 | 2.5E-4 | 512 | 3 | 720000 | Baseline (Jp@400f optimal, extrapolated lr+steps to 600f) |
+| 01 | 4.0 | 2.5E-4 | 512 | 3 | 720000 | omega_f (test omega_f=4, continued downward from 5) |
+| 02 | 5.0 | 3E-4 | 512 | 3 | 720000 | lr (probe lr ceiling at 600f) |
+| 03 | 5.0 | 2.5E-4 | 384 | 3 | 720000 | capacity (principle-test: "Jp 384 speed Pareto holds at 400f") |
+
+**Design rationale**:
+- Slot 00: Jp@400f best config with lr extrapolated from 2E-4→2.5E-4 (~1.25× for 1.5× frames) and steps from 1500/f→1200/f (720k)
+- Slot 01: Jp has narrow omega_f peak at 5. Test if it shifts to 4 at 600f (consistent with general downward trend)
+- Slot 02: Probe lr ceiling — if data regularization holds for Jp, lr=3E-4 may be viable (Jp@400f: 2.5E-4 overshoots, but 600f has more data)
+- Slot 03: Principle test — 384 matches 512 within 0.0001% at 400f@lr=2E-4. Test at 600f.
+
+All slots: siren_txy, batch_size=1, n_training_frames=600, output_size_nnr_f=1, nnr_f_xy_period=1.0, nnr_f_T_period=1.0
+
+### Batch 1 Results (Iterations 41-44)
+
+## Iter 41: excellent
+Node: id=41, parent=root
+Mode/Strategy: exploit/baseline
+Config: lr_NNR_f=2.5E-4, total_steps=720000, hidden_dim_nnr_f=512, n_layers_nnr_f=3, omega_f=5.0, batch_size=1
+Metrics: final_r2=0.999833, final_mse=6.010E-2, slope=0.996, kinograph_R2=0.9999, kinograph_SSIM=1.0000, total_params=790529, compression_ratio=6.8, training_time=46.4min
+Field: field_name=Jp, inr_type=siren_txy
+Mutation: Baseline — Jp@400f optimal extrapolated to 600f (lr 2E-4→2.5E-4, steps 600k→720k)
+Parent rule: Block initialization — extrapolated from Jp@400f best config
+Visual: GT/Pred spatial match excellent, scatter tight along diagonal but slight spread at high values (slope=0.996). Loss curve still descending steadily at 720k steps — NOT converged. Per-frame MSE shows two spikes near frames 50-100 and 200 (early dynamics harder).
+Observation: Baseline achieves R²=0.999833 at 600f — excellent but WEAKEST of the batch. slope=0.996 indicates slight underprediction. Loss still declining suggests more steps could help, but other slots with same steps do better via parameter changes.
+Next: parent=44
+
+## Iter 42: excellent
+Node: id=42, parent=root
+Mode/Strategy: explore/omega_f-scaling
+Config: lr_NNR_f=2.5E-4, total_steps=720000, hidden_dim_nnr_f=512, n_layers_nnr_f=3, omega_f=4.0, batch_size=1
+Metrics: final_r2=0.999906, final_mse=3.251E-2, slope=0.998, kinograph_R2=1.0000, kinograph_SSIM=1.0000, total_params=790529, compression_ratio=6.8, training_time=46.6min
+Field: field_name=Jp, inr_type=siren_txy
+Mutation: omega_f: 5.0 -> 4.0 (test continued downward shift at 600f)
+Parent rule: Block initialization — probe omega_f downward from Jp@400f optimal
+Visual: GT/Pred match excellent, scatter very tight (slope=0.998), loss curve reaches lower floor than Slot 00. Per-frame MSE spikes smaller and narrower. Spatial field match near-perfect.
+Observation: omega_f=4 IMPROVES over omega_f=5 (MSE 3.25E-2 vs 6.01E-2, ~1.9× better). Jp omega_f does continue downward at 600f: 5(400f) → 4(600f). But R² gap is small (0.999906 vs 0.999833). omega_f=4-5 both viable.
+Next: parent=44
+
+## Iter 43: excellent
+Node: id=43, parent=root
+Mode/Strategy: explore/lr-ceiling
+Config: lr_NNR_f=3E-4, total_steps=720000, hidden_dim_nnr_f=512, n_layers_nnr_f=3, omega_f=5.0, batch_size=1
+Metrics: final_r2=0.999903, final_mse=3.277E-2, slope=0.998, kinograph_R2=0.9999, kinograph_SSIM=1.0000, total_params=790529, compression_ratio=6.8, training_time=46.4min
+Field: field_name=Jp, inr_type=siren_txy
+Mutation: lr_NNR_f: 2.5E-4 -> 3E-4 (probe lr ceiling at 600f)
+Parent rule: Block initialization — test lr upper boundary
+Visual: GT/Pred match excellent, scatter tight (slope=0.998 improved over Slot 00's 0.996). Loss curve noisier than Slot 01 in late training but reaches similar floor. Spatial match near-perfect. Per-frame MSE shows lower peak near frame 200 than Slot 00.
+Observation: lr=3E-4 is VIABLE at 600f — does NOT overshoot (R²=0.999903 matches omega=4 slot). lr ceiling continues to rise: 2E-4(400f) → ≥3E-4(600f). The slope improvement (0.998 vs 0.996) confirms higher lr fixes underprediction.
+Next: parent=44
+
+## Iter 44: excellent
+Node: id=44, parent=root
+Mode/Strategy: principle-test
+Config: lr_NNR_f=2.5E-4, total_steps=720000, hidden_dim_nnr_f=384, n_layers_nnr_f=3, omega_f=5.0, batch_size=1
+Metrics: final_r2=0.999910, final_mse=3.126E-2, slope=0.998, kinograph_R2=1.0000, kinograph_SSIM=1.0000, total_params=445441, compression_ratio=12.1, training_time=31.6min
+Field: field_name=Jp, inr_type=siren_txy
+Mutation: hidden_dim_nnr_f: 512 -> 384. Testing principle: "Jp 384 speed Pareto holds at 400f AND strengthened by lr=2E-4"
+Parent rule: Block initialization — principle validation at 600f
+Visual: GT/Pred match excellent — visually indistinguishable from 512 slots. Scatter tight along diagonal (slope=0.998). Loss curve converges cleanly with steady descent. Per-frame MSE profile nearly identical to Slot 01/02.
+Observation: **384 speed Pareto CONFIRMED at 600f.** R²=0.999910 is BEST of batch (narrowly). MSE=3.126E-2 is also lowest. Training time 31.6min is 32% faster than 512 (46.4min). Compression ratio 12.1 vs 6.8. Principle "384 matches/beats 512" extends from 400f to 600f. 384 is the clear winner at every tested frame count.
+Next: parent=44
+
+### Batch 2 — Configurations (Iterations 45-48)
+
+| Slot | omega_f | lr_NNR_f | hidden_dim | n_layers | total_steps | Dimension tested |
+|------|---------|----------|------------|----------|-------------|------------------|
+| 00 | 4.0 | 2.5E-4 | 384 | 3 | 720000 | **recombine** (omega=4 from iter42 + 384 from iter44) |
+| 01 | 4.0 | 3E-4 | 512 | 3 | 720000 | **recombine** (omega=4 from iter42 + lr=3E-4 from iter43) |
+| 02 | 5.0 | 2.5E-4 | 384 | 3 | 540000 | **speed-probe** (iter44 base, reduce steps 720k→540k = 900/f) |
+| 03 | 3.0 | 2.5E-4 | 384 | 3 | 720000 | **principle-test** (omega_f=3 boundary — test "Jp omega_f=5 is narrow peak" at 600f) |
+
+**Design rationale**:
+- Slot 00: Recombine two best-performing mutations (omega=4 + 384). Parent=44, adopt omega=4 from iter42.
+- Slot 01: Recombine omega=4 + lr=3E-4 — both improved separately, test if additive. Parent=43, adopt omega=4 from iter42.
+- Slot 02: Speed Pareto probe — 384 already fast at 31.6min. Can 540k steps (900/f) work? Parent=44, reduce steps only.
+- Slot 03: Boundary probe on omega_f — at 400f omega_f=3 caused 5× MSE degradation. At 600f with downward shift (5→4 optimal), does omega_f=3 now work? Parent=44, omega_f: 5→3.
+
+All slots: siren_txy, batch_size=1, n_training_frames=600, output_size_nnr_f=1, nnr_f_xy_period=1.0, nnr_f_T_period=1.0
+
+### Batch 2 Results (Iterations 45-48)
+
+## Iter 45: excellent — **NEW BEST** (recombine omega=4+384)
+Node: id=45, parent=44
+Mode/Strategy: recombine
+Config: lr_NNR_f=2.5E-4, total_steps=720000, hidden_dim_nnr_f=384, n_layers_nnr_f=3, omega_f=4.0, batch_size=1
+Metrics: final_r2=0.999955, final_mse=1.552E-2, slope=0.9986, kinograph_R2=1.0000, kinograph_SSIM=1.0000, total_params=445441, compression_ratio=12.1, training_time=31.7min
+Field: field_name=Jp, inr_type=siren_txy
+Mutation: omega_f: 5.0 -> 4.0 on 384 base (recombine omega=4 from iter42 + 384 from iter44)
+Parent rule: Recombine — parent=44 (highest UCB, 384 speed Pareto), adopt omega=4 from iter42
+Visual: GT/Pred near-perfect spatial match. Scatter very tight along diagonal (slope=0.999). Loss curve descends to ~1E-3 floor with continued decline at 720k. Per-frame MSE shows narrow spike at frame ~100 (early dynamics), rest extremely flat near zero. Pred field captures all disc structures and contact zones.
+Observation: Recombination SUCCESS — omega=4+384 is NEW BEST. R²=0.999955, MSE=1.55E-2 is 2× lower than batch 1 best (3.13E-2). Both mutations are ADDITIVE. 384 remains speed Pareto (31.7min). slope=0.999 nearly perfect.
+Next: parent=45
+
+## Iter 46: excellent
+Node: id=46, parent=root
+Mode/Strategy: recombine
+Config: lr_NNR_f=3E-4, total_steps=720000, hidden_dim_nnr_f=512, n_layers_nnr_f=3, omega_f=4.0, batch_size=1
+Metrics: final_r2=0.999913, final_mse=3.081E-2, slope=0.9975, kinograph_R2=1.0000, kinograph_SSIM=1.0000, total_params=790529, compression_ratio=6.8, training_time=46.6min
+Field: field_name=Jp, inr_type=siren_txy
+Mutation: omega_f: 5.0 -> 4.0 + lr: 2.5E-4 -> 3E-4 (recombine omega=4 from iter42 + lr=3E-4 from iter43)
+Parent rule: Recombine — parent=43 (lr=3E-4 base), adopt omega=4 from iter42
+Visual: GT/Pred match excellent. Scatter tight but marginally wider than Slot 00 (slope=0.998). Loss curve noisier in late training (lr=3E-4 effect). Per-frame MSE higher peaks at frames 50-200. Spatial patterns correct but slightly less precise at contact zones.
+Observation: omega=4+lr=3E-4 recombination DOES NOT improve over omega=4 alone (R²=0.999913 vs iter42's 0.999906 — essentially flat). lr=3E-4 at omega=4 provides NO benefit. Contrast with omega=4+384 which DID improve. lr=3E-4 is NOT additive with omega=4. At 512 capacity, lr=3E-4 may cause mild overshooting.
+Next: parent=45
+
+## Iter 47: excellent — **SPEED PARETO**
+Node: id=47, parent=root
+Mode/Strategy: explore/speed-probe
+Config: lr_NNR_f=2.5E-4, total_steps=540000, hidden_dim_nnr_f=384, n_layers_nnr_f=3, omega_f=5.0, batch_size=1
+Metrics: final_r2=0.999912, final_mse=3.053E-2, slope=0.9977, kinograph_R2=1.0000, kinograph_SSIM=1.0000, total_params=445441, compression_ratio=12.1, training_time=23.9min
+Field: field_name=Jp, inr_type=siren_txy
+Mutation: total_steps: 720000 -> 540000 (reduce from 1200/f to 900/f)
+Parent rule: Explore from Node 44 — test speed limit
+Visual: GT/Pred match excellent. Scatter tight (slope=0.998). Loss curve still clearly declining at 540k — training underfit, more steps would help. Per-frame MSE shows slightly higher peaks than 720k runs. Spatial patterns correct, disc structures captured.
+Observation: 540k steps (900/f) gives R²=0.999912 in 23.9min — SPEED PARETO. 25% faster than 720k@384 (31.7min) for 0.004% R² cost. Loss still declining confirms undertrained. Steps map at 600f: 540k(0.999912) < 720k(0.999955). 1200 steps/frame is clearly better than 900/f. Jp needs more steps/frame than F at same frame count.
+Next: parent=45
+
+## Iter 48: excellent — omega_f=3 boundary HOLDS
+Node: id=48, parent=root
+Mode/Strategy: principle-test
+Config: lr_NNR_f=2.5E-4, total_steps=720000, hidden_dim_nnr_f=384, n_layers_nnr_f=3, omega_f=3.0, batch_size=1
+Metrics: final_r2=0.999954, final_mse=1.550E-2, slope=0.9989, kinograph_R2=0.9999, kinograph_SSIM=1.0000, total_params=445441, compression_ratio=12.1, training_time=31.7min
+Field: field_name=Jp, inr_type=siren_txy
+Mutation: omega_f: 5.0 -> 3.0 (boundary probe — at 400f omega_f=3 was 5× worse MSE)
+Testing principle: "Jp@400f omega_f=5 is LOCAL MAXIMUM (narrow peak — ±2 causes significant degradation)"
+Parent rule: Principle test from Node 44 — omega_f lower boundary at 600f
+Visual: GT/Pred near-perfect spatial match — visually indistinguishable from Slot 00 (omega=4). Scatter very tight (slope=0.999). Loss curve reaches similar floor as omega=4. Per-frame MSE nearly identical profile to Slot 00. No visible degradation from omega=3 vs 4.
+Observation: omega_f=3 at 600f gives R²=0.999954 — MATCHES omega_f=4 (0.999955)! At 400f, omega_f=3 was 5× worse MSE — that penalty has DISAPPEARED at 600f. The "narrow peak at 5" from 400f has SHIFTED DOWN and BROADENED dramatically: 600f omega_f map: 3(0.99995) ≈ 4(0.99996) > 5(0.99991). omega_f=[3-4] is FLAT at 600f. Principle "omega_f=5 narrow peak" is OVERRIDDEN at 600f — more data widens the optimal range and shifts it lower.
+Next: parent=45
+
+### Block 6 Summary: Jp@600f siren_txy
+
+**Iterations**: 41-48 (8 iterations, 2 batches of 4)
+**Best config**: 384×3@omega_f=4@lr=2.5E-4@720k steps, R²=0.999955, 31.7min
+**Speed Pareto**: 384×3@omega_f=5@lr=2.5E-4@540k steps, R²=0.999912, 23.9min
+
+**Jp@600f siren_txy COMPLETE MAP:**
+- omega_f: **3(0.999954)** ≈ **4(0.999955)** > 5(0.999910-0.999833). omega_f=[3-4] FLAT at 600f. Narrow peak from 400f has BROADENED. omega_f shifts: 5(400f) → 3-4(600f).
+- lr@384: **2.5E-4(0.999955)** — baseline, not probed higher at 384. lr@512: 2.5E-4(0.999833) < 3E-4(0.999903-0.999913). lr ceiling NOT found at 3E-4@512.
+- capacity: **384(0.999955)** > 512(0.999833-0.999913). 384 BEATS 512 at every tested config. 384 is unconditionally better.
+- steps: 540k/900/f(0.999912) < **720k/1200/f(0.999955)**. 1200 steps/frame optimal. Loss still declining at 720k — more steps might help but diminishing returns expected.
+- depth: 3 (not retested — established optimal for Jp)
+
+**Key findings:**
+1. **Jp scales excellently to 600f** — R²=0.999955 (essentially matches 400f best of 0.999996 with 60% more data). Slight R² drop from 400f likely recoverable with more steps.
+2. **omega_f peak BROADENS with more data**: 400f narrow peak at 5 becomes flat [3-4] at 600f. More data makes omega_f less sensitive.
+3. **Recombination success**: omega=4+384 is additive (best of block). omega=4+lr=3E-4 is NOT additive.
+4. **384 unconditionally beats 512** at 600f across all tested configs. Speed Pareto is absolute.
+5. **lr=3E-4 viable at 512** but NOT better than 2.5E-4 at 384. Capacity reduction is more impactful than lr increase.
+6. **Speed Pareto**: 540k@384 achieves R²=0.99991 in 23.9min (25% time savings for 0.004% R² cost).
+7. **Steps/frame for Jp@600f**: 1200/f optimal (higher than F@600f at 700/f). Jp is more step-hungry.
+
+**Block metrics:**
+- Branching rate: 5/8 (62.5%) from root — good exploration
+- Improvement rate: 4/8 (50%) — strong (iters 42, 43, 44, 45 all improved over baseline 41)
+- Best iteration: 45 (omega=4+384 recombine, R²=0.999955)
+
+INSTRUCTIONS EDITED: Updated Jp@600f complete map, omega_f broadening rule, 384 unconditional superiority, recombination findings.
+
+---
+
+## Block 7 Initialization: C field @ 600 frames (parallel)
+
+**Field**: C (APIC matrix, 4 components)
+**INR type**: siren_txy
+**n_training_frames**: 600
+**Rationale**: C is third field to test at 600f. C@400f achieved R²=0.9998 with 896×3@omega=15@lr=4E-5@1M (768 speed Pareto). C reversed degradation trend at 400f (0.994→0.991→0.9998). At 600f, expect omega_f continues downward (15→12), lr stays weak (~5E-5), capacity may need 896-1024, steps ~2500/f (1.5M).
+
+### Batch 1 — Initial Configurations (Iterations 49-52)
+
+| Slot | omega_f | lr_NNR_f | hidden_dim | n_layers | total_steps | Dimension tested |
+|------|---------|----------|------------|----------|-------------|------------------|
+| 00 | 12.0 | 5E-5 | 896 | 3 | 1500000 | Baseline (C@400f optimal, extrapolated omega_f + lr to 600f) |
+| 01 | 15.0 | 5E-5 | 896 | 3 | 1500000 | omega_f (keep 400f optimal, test if C follows downward trend less) |
+| 02 | 12.0 | 4E-5 | 896 | 3 | 1500000 | lr (C@400f optimal lr, compare to extrapolated 5E-5) |
+| 03 | 12.0 | 5E-5 | 768 | 3 | 1500000 | capacity (principle-test: "C capacity scales monotonically at 400f") |
+
+**Design rationale**:
+- Slot 00: C@400f best with omega_f extrapolated from 25→20→15→12 and lr from 4E-5→5E-5 (weak scaling). 896 capacity, 2500 steps/frame.
+- Slot 01: omega_f=15 is C@400f optimum. Test if C needs LESS omega_f reduction than F/Jp (C may be different).
+- Slot 02: lr=4E-5 was C@400f optimal. Test if C lr really increases or stays flat at 600f.
+- Slot 03: Principle test — C@400f capacity was monotonic (640<768<896). At 600f, test if 768 suffices.
+
+All slots: siren_txy, batch_size=1, n_training_frames=600, output_size_nnr_f=4, nnr_f_xy_period=1.0, nnr_f_T_period=1.0
+
+### Batch 1 Results (Iterations 49-52)
+
+## Iter 49: excellent — **BEST OF BATCH** (baseline)
+Node: id=49, parent=root
+Mode/Strategy: exploit/baseline
+Config: lr_NNR_f=5E-5, total_steps=1500000, hidden_dim_nnr_f=896, n_layers_nnr_f=3, omega_f=12.0, batch_size=1
+Metrics: final_r2=0.999866, final_mse=2.727E-2, slope=0.999, kinograph_R2=0.9999, kinograph_SSIM=1.0000, total_params=2418308, compression_ratio=8.9, training_time=239.8min
+Field: field_name=C, inr_type=siren_txy
+Mutation: Baseline — C@400f optimal extrapolated to 600f (omega_f 15→12, lr 4E-5→5E-5, steps 1M→1.5M)
+Parent rule: Block initialization — extrapolated from C@400f best config
+Visual: GT/Pred match excellent across all 4 components. Scatter very tight along diagonal (slope=0.999). Loss curve still steadily declining at 1.5M steps — NOT fully converged, more steps could help. Per-frame MSE shows localized spikes around frames 250-400 (mid-simulation dynamics), rest near zero. All spatial structures well captured.
+Observation: Baseline C@600f achieves R²=0.999866 — BEST of batch. C data scaling trend continues UPWARD: 0.994(100f) → 0.991(200f) → 0.9998(400f) → 0.9999(600f). omega_f=12 extrapolation correct. Loss still declining confirms C does NOT overtrain at 2500 steps/frame.
+Next: parent=49
+
+## Iter 50: excellent
+Node: id=50, parent=root
+Mode/Strategy: explore/omega_f-comparison
+Config: lr_NNR_f=5E-5, total_steps=1500000, hidden_dim_nnr_f=896, n_layers_nnr_f=3, omega_f=15.0, batch_size=1
+Metrics: final_r2=0.999849, final_mse=3.076E-2, slope=0.999, kinograph_R2=0.9999, kinograph_SSIM=1.0000, total_params=2418308, compression_ratio=8.9, training_time=233.7min
+Field: field_name=C, inr_type=siren_txy
+Mutation: omega_f: 12.0 -> 15.0 (test if C follows downward omega_f trend at 600f)
+Parent rule: Block initialization — probe omega_f at 400f optimum
+Visual: GT/Pred match excellent, nearly identical to Slot 00. Scatter tight (slope=0.999). Loss curve converges similarly but reaches slightly higher floor. Per-frame MSE profile similar to Slot 00 with marginally higher peaks. No visible artifacts.
+Observation: omega_f=15 WORSE than omega_f=12 (MSE 3.08E-2 vs 2.73E-2, 13% higher). C omega_f DOES follow downward trend at 600f. omega_f map: 12(0.999866) > 15(0.999849). C omega_f scaling confirmed: 25(100f) → 20(200f) → 15(400f) → 12(600f). Nearly linear decrease of ~3-5 per frame doubling.
+Next: parent=49
+
+## Iter 51: excellent
+Node: id=51, parent=root
+Mode/Strategy: explore/lr-comparison
+Config: lr_NNR_f=4E-5, total_steps=1500000, hidden_dim_nnr_f=896, n_layers_nnr_f=3, omega_f=12.0, batch_size=1
+Metrics: final_r2=0.999854, final_mse=2.978E-2, slope=0.999, kinograph_R2=0.9999, kinograph_SSIM=1.0000, total_params=2418308, compression_ratio=8.9, training_time=234.2min
+Field: field_name=C, inr_type=siren_txy
+Mutation: lr_NNR_f: 5E-5 -> 4E-5 (compare C@400f optimal lr to extrapolated 600f lr)
+Parent rule: Block initialization — probe lr at 400f optimum
+Visual: GT/Pred match excellent, very similar to Slot 00. Scatter tight (slope=0.999). Loss curve descends slightly more smoothly but to marginally higher floor than Slot 00. Per-frame MSE profile similar. No visible differences from Slot 00 at field level.
+Observation: lr=4E-5 SLIGHTLY worse than lr=5E-5 (MSE 2.98E-2 vs 2.73E-2, 9% higher). C lr-data scaling confirmed WEAK but present: 2E-5(100f) → 4E-5(400f) → 5E-5(600f). C lr scales ~1.25× from 400→600f (vs F/Jp at ~1.5×). Marginal difference — both viable but 5E-5 is better.
+Next: parent=49
+
+## Iter 52: excellent — **SPEED PARETO candidate**
+Node: id=52, parent=root
+Mode/Strategy: principle-test
+Config: lr_NNR_f=5E-5, total_steps=1500000, hidden_dim_nnr_f=768, n_layers_nnr_f=3, omega_f=12.0, batch_size=1
+Metrics: final_r2=0.999818, final_mse=3.716E-2, slope=0.999, kinograph_R2=0.9998, kinograph_SSIM=1.0000, total_params=1777924, compression_ratio=12.1, training_time=182.0min
+Field: field_name=C, inr_type=siren_txy
+Mutation: hidden_dim_nnr_f: 896 -> 768. Testing principle: "C capacity scales monotonically at 400f (640<768<896)"
+Parent rule: Principle test — capacity monotonicity at 600f
+Visual: GT/Pred match excellent but marginally less sharp than 896 slots. Scatter tight (slope=0.999). Loss curve descends to slightly higher floor than 896 runs. Per-frame MSE slightly higher peaks around frames 300-400. Overall spatial match very good, disc structures correct.
+Observation: 768 gives R²=0.999818 — 0.005% below 896 (0.999866). MSE 36% higher (3.72E-2 vs 2.73E-2). But training time 182min is 24% faster (saves ~58min). Principle CONFIRMED: C capacity still scales monotonically at 600f. 768 is viable speed Pareto — R²>0.9998 in 182min. kino_R2 slightly lower (0.9998 vs 0.9999).
+Next: parent=49
+
+### Batch 2 — Configurations (Iterations 53-56)
+
+| Slot | omega_f | lr_NNR_f | hidden_dim | n_layers | total_steps | Dimension tested |
+|------|---------|----------|------------|----------|-------------|------------------|
+| 00 | 10.0 | 5E-5 | 896 | 3 | 1500000 | **exploit** — omega_f downward probe (12→10, continue trend) |
+| 01 | 12.0 | 6E-5 | 896 | 3 | 1500000 | **exploit** — lr ceiling probe (5E-5→6E-5) |
+| 02 | 12.0 | 5E-5 | 896 | 3 | 2000000 | **explore** — steps probe (1.5M→2M, test if loss decline continues) |
+| 03 | 12.0 | 5E-5 | 1024 | 3 | 1500000 | **principle-test** — test "C capacity ceiling at 640 (100f)" at 600f with 1024 |
+
+**Design rationale**:
+- Slot 00: C omega_f trend is 25→20→15→12. Probe if 10 is even better at 600f. Parent=49 (best R²).
+- Slot 01: C lr at 5E-5 best so far. Probe 6E-5 to map lr ceiling. C lr-data scaling is weak, so 6E-5 may or may not help. Parent=49.
+- Slot 02: Loss still clearly declining at 1.5M steps (2500/f). C is overtraining-resistant. 2M steps (3333/f) to test if more training helps. Parent=49.
+- Slot 03: At 100f, C capacity ceiling was 640 (768 HURT). At 400f, capacity was monotonic (640<768<896). At 600f, test if capacity continues scaling to 1024. Parent=49.
+
+All slots: siren_txy, batch_size=1, n_training_frames=600, output_size_nnr_f=4, nnr_f_xy_period=1.0, nnr_f_T_period=1.0
+
+

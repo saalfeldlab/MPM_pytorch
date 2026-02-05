@@ -105,7 +105,7 @@ CLUSTER_ROOT_DIR = f"{CLUSTER_HOME}/Graph/MPM_pytorch"
 
 
 def submit_cluster_job(slot, config_path, analysis_log_path, config_file_field,
-                       field_name, log_dir, root_dir, erase=True):
+                       field_name, log_dir, root_dir, erase=True, node_name='a100'):
     """Submit a single INR training job to the cluster WITHOUT -K (non-blocking).
 
     Returns the LSF job ID string, or None if submission failed.
@@ -146,7 +146,7 @@ def submit_cluster_job(slot, config_path, analysis_log_path, config_file_field,
     # Submit WITHOUT -K (non-blocking); A100 queue
     ssh_cmd = (
         f"ssh allierc@login1 \"cd {CLUSTER_ROOT_DIR} && "
-        f"bsub -n 8 -gpu 'num=1' -q gpu_a100 -W 6000 "
+        f"bsub -n 8 -gpu 'num=1' -q gpu_{node_name} -W 6000 "
         f"-o '{cluster_stdout}' -e '{cluster_stderr}' "
         f"'bash {cluster_script}'\""
     )
@@ -331,6 +331,10 @@ if __name__ == "__main__":
     claude_cfg = source_data.get('claude', {})
     n_iter_block = claude_cfg.get('n_iter_block', 8)
     ucb_c = claude_cfg.get('ucb_c', 1.414)
+    claude_node_name = claude_cfg.get('node_name', 'a100')
+
+    if start_iteration == 1 and not args.resume:
+        print(f"\033[94mCluster node: gpu_{claude_node_name}\033[0m")
 
     # -----------------------------------------------------------------------
     # Initialize N_PARALLEL slot configs
@@ -402,6 +406,13 @@ if __name__ == "__main__":
                 print(f"\033[93m  slot {slot}: created from source → {target}\033[0m")
         else:
             print(f"\033[93m  slot {slot}: preserving {target} (resuming)\033[0m")
+
+    # When resuming, read node_name from slot 0 config (may have been modified)
+    if start_iteration > 1 or args.resume:
+        with open(config_paths[0], 'r') as f:
+            slot0_data = yaml.safe_load(f)
+        claude_node_name = slot0_data.get('claude', {}).get('node_name', claude_node_name)
+        print(f"\033[94mCluster node: gpu_{claude_node_name}\033[0m")
 
     # -----------------------------------------------------------------------
     # Shared file paths
@@ -569,7 +580,8 @@ Write the planned mutations to the working memory file."""
                     field_name=field_name,
                     log_dir=exploration_dir,
                     root_dir=root_dir,
-                    erase=True
+                    erase=True,
+                    node_name=claude_node_name
                 )
                 if jid:
                     job_ids[slot] = jid
@@ -656,7 +668,8 @@ Fix the bug. Do NOT make other changes."""
                             field_name=field_name,
                             log_dir=exploration_dir,
                             root_dir=root_dir,
-                            erase=True
+                            erase=True,
+                            node_name=claude_node_name
                         )
                         if jid:
                             retry_results = wait_for_cluster_jobs(

@@ -85,3 +85,4 @@ training:
 claude:
   field_name: S
   ucb_c: 1.414
+  node_name: a100

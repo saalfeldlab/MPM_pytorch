@@ -240,3 +240,183 @@ New block explores the hardest field (S) at 400 frames. CosineAnnealingLR + grad
 | 02 | lr=1.5E-5 (lower lr probe) | 25 |
 | 03 | omega_f=42 (refine map, principle-test) | 25 |
 
+
+============================================================
+=== Batch 29-32 ===
+============================================================
+All tasks complete. Here's the summary:
+
+## Batch Analysis (Iterations 29-32) — Block 4 END
+
+### Results
+
+| Slot | Iter | Mutation | R² | kino_R2 | Time |
+|------|------|----------|-----|---------|------|
+| 00 | 29 | omega_f: 48→**55** | **0.970** | 0.940 | 290min |
+| 01 | 30 | steps: 1M→1.5M | 0.963 | 0.922 | 435min |
+| 02 | 31 | lr: 2E-5→1.5E-5 | 0.965 | 0.933 | 291min |
+| 03 | 32 | omega_f: 48→42 | 0.952 | 0.906 | 290min |
+
+### Key Findings
+- **Iter 29 is BEST IN BLOCK** (R²=0.970): omega_f=55 beats all previous. S omega_f map: 36→42→48→55, nearly linear **upward** trend — S is the ONLY field where omega_f INCREASES with more frames.
+- **1.5M steps OVERTRAINS** (Iter 30): CosineAnnealingLR reaches T_max at 1M, extra steps are wasted.
+- **lr=1.5E-5 slightly better** (Iter 31): R²=0.965 vs 0.960 at omega_f=48. S lr has mild low-end flexibility.
+- **omega_f=42 worse** (Iter 32): Confirms monotonic upward omega_f trend for S.
+
+### Block 4 Summary
+S@400f best: 1280×3@omega_f=55@lr=2E-5@1M steps, R²=0.970, 290min. Data scaling HELPS S enormously (+0.241 vs S@100f). omega_f counter-trend confirmed and strengthened.
+
+### Block 5 Setup: F@600 frames
+Pushing to 600 frames with F (most scalable field). 4 slots test: baseline (omega_f=8, lr=1.2E-4, 420k steps), omega_f=7, lr=1.8E-4, and 360k steps (600/f efficiency test).
+
+
+============================================================
+=== Batch 33-36 ===
+============================================================
+Done. Here's the summary:
+
+## Batch 1 Results (Iterations 33-36): F@600f siren_txy
+
+| Iter | Mutation | R² | MSE | kino_R2 | kino_SSIM | Time |
+|------|----------|-----|-----|---------|-----------|------|
+| 33 | Baseline (omega=8, lr=1.2E-4, 700/f) | 0.999940 | 2.90E-5 | 0.9999 | 0.9954 | 24.2min |
+| 34 | omega_f=7 | 0.999919 | 3.90E-5 | 0.9999 | 0.9940 | 24.4min |
+| **35** | **lr=1.8E-4** | **0.999970** | **1.44E-5** | **1.0000** | **0.9976** | **24.4min** |
+| 36 | 360k steps (600/f) | 0.999922 | 3.74E-5 | 0.9999 | 0.9941 | 20.9min |
+
+**Key findings:**
+- **lr=1.8E-4 is NEW BEST** (R²=0.99997, MSE 2× lower than baseline). lr ceiling continues rising: 5E-5(200f) → 1.2E-4(400f) → 1.8E-4(600f)
+- **omega_f FULLY PLATEAUED at 8**: 12(100f) → 9(200f) → 8(400f) → 8(600f). omega_f=7 degrades.
+- **Steps/frame efficiency trend SLOWS**: 600/f is insufficient at 600f (unlike 800/f at 400f). Need ≥700/f.
+- F scales to 600f with NO diminishing returns (R²=0.99997 matches 400f ceiling)
+
+## Batch 2 Configs (Iterations 37-40):
+
+| Slot | omega_f | lr | Steps | Role |
+|------|---------|-----|-------|------|
+| 00 | 8.0 | **2.2E-4** | 420k | exploit — probe lr ceiling |
+| 01 | **10.0** | **1.8E-4** | 420k | exploit — test omega_f upper at optimal lr |
+| 02 | 8.0 | 1.8E-4 | **500k** | explore — more training (loss declining) |
+| 03 | 8.0 | **1.8E-4** | **360k** | principle-test — high lr compensates fewer steps? |
+
+
+============================================================
+=== Batch 37-40 ===
+============================================================
+All tasks complete. Here's the summary:
+
+## Block 5 Results (F@600f) — Iterations 37-40
+
+| Iter | Mutation | R² | MSE | kino_SSIM | Time |
+|------|----------|-----|-----|-----------|------|
+| 37 | lr=2.2E-4 (exploit) | 0.999975 | 1.20E-5 | 0.9980 | 24.2min |
+| **38** | **omega_f=10@lr=1.8E-4** | **0.999983** | **8.05E-6** | **0.9987** | **24.1min** |
+| 39 | 500k steps (explore) | 0.999973 | 1.29E-5 | 0.9978 | 28.5min |
+| 40 | lr=1.8E-4@360k (principle-test) | 0.999965 | 1.69E-5 | 0.9973 | 20.6min |
+
+**Block 5 best**: Iter 38 — 256x4@omega_f=10@lr=1.8E-4@420k, R²=0.999983, 24.1min
+
+### Key Block 5 Discoveries
+1. **omega_f-lr INTERACTION**: omega_f=10 beats 8 at high lr (1.8E-4), but 8=10 at moderate lr. Higher lr unlocks higher frequency capacity.
+2. **F POSITIVE data scaling to 600f**: R²=0.999983 EXCEEDS 400f best (0.99995).
+3. **lr ceiling NOT found at 2.2E-4**: Wide tolerance [1.2-2.2]E-4.
+4. **Overtraining confirmed**: 500k steps (833/f) no better than 420k (700/f).
+
+### Block 6 Setup: Jp@600f siren_txy
+
+| Slot | omega_f | lr | hidden_dim | total_steps | Dimension |
+|------|---------|-----|------------|-------------|-----------|
+| 00 | 5.0 | 2.5E-4 | 512 | 720k | Baseline |
+| 01 | 4.0 | 2.5E-4 | 512 | 720k | omega_f (test downward shift) |
+| 02 | 5.0 | 3E-4 | 512 | 720k | lr (probe ceiling) |
+| 03 | 5.0 | 2.5E-4 | 384 | 720k | capacity (principle-test: 384 Pareto) |
+
+
+============================================================
+=== Batch 41-44 ===
+============================================================
+All tasks complete. Here's the summary:
+
+## Batch 41-44 Results (Jp@600f, Block 6, Batch 1)
+
+All 4 slots achieved **excellent** results (R² > 0.9998):
+
+| Iter | Config | R² | MSE | slope | Time |
+|------|--------|------|-----|-------|------|
+| 41 | 512×3, omega=5, lr=2.5E-4 | 0.999833 | 6.01E-2 | 0.996 | 46.4min |
+| 42 | 512×3, omega=**4**, lr=2.5E-4 | 0.999906 | 3.25E-2 | 0.998 | 46.6min |
+| 43 | 512×3, omega=5, lr=**3E-4** | 0.999903 | 3.28E-2 | 0.998 | 46.4min |
+| 44 | **384**×3, omega=5, lr=2.5E-4 | **0.999910** | **3.13E-2** | 0.998 | **31.6min** |
+
+**Key findings:**
+- **384 speed Pareto CONFIRMED at 600f** — iter 44 achieves best R², lowest MSE, and 32% faster training
+- **omega_f=4** slightly improves over omega_f=5 at 600f — continuing the downward trend (5@400f → 4@600f)
+- **lr=3E-4** is viable at 600f — lr ceiling rises: 2E-4(400f) → ≥3E-4(600f), matching ~1.5× per 1.5× frames
+- Baseline (iter 41) was weakest — all mutations improved over it
+
+## Next Batch (45-48) Configs Set:
+
+| Slot | Strategy | Key change |
+|------|----------|------------|
+| 00 | Recombine | 384 + omega=4 (best of both mutations) |
+| 01 | Recombine | 512 + omega=4 + lr=3E-4 |
+| 02 | Speed probe | 384, steps 720k→540k (900/f) |
+| 03 | Boundary test | 384, omega=3 (lower boundary) |
+
+
+============================================================
+=== Batch 45-48 ===
+============================================================
+All tasks complete. Here's the summary:
+
+## Batch 2 Results (Iterations 45-48) — Block 6 END
+
+| Slot | Iter | Config | R² | MSE | slope | Time | Rating |
+|------|------|--------|-----|-----|-------|------|--------|
+| 00 | 45 | 384×3@omega=4@lr=2.5E-4@720k | **0.999955** | **1.55E-2** | 0.999 | 31.7min | **BEST** |
+| 01 | 46 | 512×3@omega=4@lr=3E-4@720k | 0.999913 | 3.08E-2 | 0.998 | 46.6min | Excellent |
+| 02 | 47 | 384×3@omega=5@lr=2.5E-4@540k | 0.999912 | 3.05E-2 | 0.998 | **23.9min** | **Speed Pareto** |
+| 03 | 48 | 384×3@omega=3@lr=2.5E-4@720k | 0.999954 | 1.55E-2 | 0.999 | 31.7min | Excellent |
+
+**Key Block 6 findings:**
+- **Jp@600f R²=0.999955** — excellent data scaling (near 400f quality with 50% more data)
+- **omega_f peak BROADENS with data**: 400f narrow peak at 5 → 600f FLAT [3-4]. omega_f=3 matches omega_f=4 (0.99995 ≈ 0.99996), whereas at 400f omega_f=3 was 5× worse
+- **384 unconditionally beats 512** at every tested config — speed Pareto is absolute
+- **Recombination**: omega_f + capacity is additive; omega_f + lr is NOT additive
+
+**Next block (Block 7):** C@600f siren_txy. All 4 configs set:
+- Slot 00: omega=12, lr=5E-5, 896×3, 1.5M steps (baseline extrapolation)
+- Slot 01: omega=15, lr=5E-5, 896×3, 1.5M steps (keep 400f omega)
+- Slot 02: omega=12, lr=4E-5, 896×3, 1.5M steps (keep 400f lr)
+- Slot 03: omega=12, lr=5E-5, 768×3, 1.5M steps (capacity principle-test)
+
+
+============================================================
+=== Batch 49-52 ===
+============================================================
+All tasks complete. Here's the summary:
+
+## Batch 1 Results (Iterations 49-52): C@600f siren_txy
+
+All 4 slots achieved **excellent** results (R² > 0.9998). C continues its upward data scaling trend.
+
+| Iter | Config mutation | R² | MSE | Time |
+|------|----------------|-----|-----|------|
+| **49** | **Baseline** (omega=12, lr=5E-5, 896) | **0.999866** | 2.73E-2 | 240min |
+| 50 | omega_f: 12→15 | 0.999849 | 3.08E-2 | 234min |
+| 51 | lr: 5E-5→4E-5 | 0.999854 | 2.98E-2 | 234min |
+| 52 | hidden_dim: 896→768 | 0.999818 | 3.72E-2 | 182min |
+
+**Key findings:**
+- **omega_f=12 CONFIRMED** over 15 — C follows downward trend: 25(100f)→20(200f)→15(400f)→12(600f)
+- **lr=5E-5 marginally better** than 4E-5 — C lr-data scaling is weak (1.25× from 400→600f)
+- **Capacity monotonicity CONFIRMED** at 600f — 896 > 768 (0.005% gap, 24% time savings for 768)
+- **Loss still declining** at 1.5M steps — C does not overtrain, more steps may help
+- C data scaling continues upward: 0.994(100f)→0.991(200f)→0.9998(400f)→**0.9999(600f)**
+
+## Next Batch (Iterations 53-56) configured:
+- **Slot 00**: omega_f=10 (continue downward probe)
+- **Slot 01**: lr=6E-5 (lr ceiling probe)
+- **Slot 02**: 2M steps (test if more training helps)
+- **Slot 03**: hidden_dim=1024 (capacity scaling probe)
+

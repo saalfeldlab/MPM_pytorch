@@ -174,7 +174,13 @@ if __name__ == "__main__":
 
                     print(f"\033[93mmodified {target_config}: dataset='{llm_task_name}', n_epochs={claude_n_epochs}, data_augmentation_loop={claude_data_augmentation_loop}\033[0m")
             else:
-                print(f"\033[93mpreserving {target_config} (resuming from iter {start_iteration})\033[0m")
+                # Check if resuming from a parallel run (_00.yaml exists)
+                parallel_slot0_config = f"{config_root}/{pre}{llm_task_name}_00.yaml"
+                if os.path.exists(parallel_slot0_config):
+                    shutil.copy2(parallel_slot0_config, target_config)
+                    print(f"\033[93mcopied {parallel_slot0_config} -> {target_config} (resuming from parallel run)\033[0m")
+                else:
+                    print(f"\033[93mpreserving {target_config} (resuming from iter {start_iteration})\033[0m")
 
         # Update config_list to use the Claude-modified config
         config_list = [llm_task_name]

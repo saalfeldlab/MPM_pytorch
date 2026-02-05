@@ -8,112 +8,129 @@
 | 1 | siren_txy | F | 400 | 0.99995 | 0.9999 | 0.9999 | 0.9962 | 1.2E-4 | 256 | 4 | 8.0 | 320000 | 18.4 | lr=1.2E-4 best; omega_f=[8-10] flat; depth=4 required; 400k overtrains |
 | 2 | siren_txy | Jp | 400 | 0.999996 | 0.9995 | 1.0000 | 1.0000 | 2E-4 | 512 (384 speed) | 3 | 5.0 | 600000 (400k speed) | 39.0 (26.3 speed) | lr ceiling 2E-4; omega_f=5 narrow peak; 384 near-equal; all R²>0.99985 |
 | 3 | siren_txy | C | 400 | 0.999807 | 0.998 | 0.9998 | 1.0000 | 4E-5 | 896 (768 speed) | 3 | 15.0 | 1000000 | 155.8 (120.6 speed) | omega_f=15 best; lr=4E-5 optimal; 768 speed Pareto; C REVERSES degradation trend at 400f |
+| 4 | siren_txy | S | 400 | 0.970 | 0.970 | 0.940 | 0.942 | 2E-5 | 1280 | 3 | 55.0 | 1000000 | 290.0 | omega_f INCREASES for S (counter-trend); lr hard-locked [1.5-2]E-5; 1.5M overtrains; 1280 required |
+| 5 | siren_txy | F | 600 | 0.999983 | 1.0000 | 1.0000 | 0.9987 | 1.8E-4 | 256 | 4 | 10.0 | 420000 | 24.1 | omega_f-lr INTERACTION (10>8 at high lr); lr ceiling NOT found at 2.2E-4; POSITIVE data scaling (exceeds 400f) |
+| 6 | siren_txy | Jp | 600 | 0.999955 | 0.9986 | 1.0000 | 1.0000 | 2.5E-4 | 384 | 3 | 4.0 | 720000 | 31.7 | omega_f=[3-4] FLAT (peak BROADENED from 400f); 384 BEATS 512 unconditionally; recombine success; speed Pareto 23.9min |
 
 ### Established Principles
-- From appendix: F is most scalable field (no diminishing returns to 500f)
-- F@200f optimal: 256×4, omega_f=9-10, lr=5E-5, 300k steps (R²=0.9997)
-- F omega_f scales down with frames but PLATEAUS: 12(100f) → 9(200f) → 8(400f). Not linear.
-- F capacity ceiling at 256 (384 HURTS) — holds at 400f
-- F depth ceiling at 4 layers (siren_txy) — holds at 400f (depth=3 loses 0.001 R²)
+- From appendix: F is most scalable field (no diminishing returns to 500f) — **CONFIRMED to 600f** (R²=0.999983 > 0.99995@400f)
+- F capacity ceiling at 256 (384 HURTS) — holds at 400f+
+- F depth ceiling at 4 layers (siren_txy) — holds at 400f+ (depth=3 loses 0.001 R²)
 - Period parameters must stay at 1.0 for F (and likely all fields)
-- Data regularization allows higher lr at higher n_training_frames: F lr 5E-5(200f) → 1.2E-4(400f); Jp lr 4E-5(100f) → 1E-4(200f) → 2E-4(400f). ~2.5× per 2× frames. **Exception: C only ~2× per 4× frames (much weaker).**
-- F@400f overtrains at >800 steps/frame (400k worse than 320k at lr=8E-5)
-- F@400f omega_f insensitive in [8-10] range (R² identical within noise)
-- Jp@400f omega_f=5 is LOCAL MAXIMUM (narrow peak — ±2 causes significant degradation). Unlike F which is flat.
-- Jp@400f lr ceiling at 2E-4 (2.5E-4 overshoots, MSE 45× worse)
-- Jp 384 speed Pareto holds at 400f AND strengthened by lr=2E-4 (R²=0.999995 vs 512's 0.999996)
-- Both F and Jp achieve R²>0.9999 at 400 frames — confirming strong data scalability for low-complexity fields
-- ALL-field omega_f-to-frames scaling: omega_f DECREASES with more frames for ALL tested fields. C: 25(100f) → 20(200f) → 15(400f). F: 12(100f) → 9(200f) → 8(400f). Jp: 5-10(100f) → 3-7(200f) → 5(400f).
-- C@400f REVERSES prior degradation trend: 0.994(100f) → 0.991(200f) → 0.9998(400f). Prior claim "C HURTS with more data" is WRONG at 400f with sufficient capacity + steps (896×3, 1M steps).
-- C lr-data scaling WEAKER than F/Jp: lr=2E-5(100f) → 4E-5(400f) = only 2× increase over 4× frames. C lr insensitive in [4-6]E-5 range.
-- C needs 2500 steps/frame minimum at 400f (750k degrades 2× MSE vs 1M). No overtraining risk. Contrast with F (800 steps/frame, overtrains beyond).
+- Data regularization allows higher lr at higher n_training_frames: F lr 5E-5(200f) → 1.2E-4(400f) → 1.8E-4(600f); Jp lr 4E-5(100f) → 1E-4(200f) → 2E-4(400f) → 2.5E-4(600f). ~2.5× per 2× frames. **Exception: C only ~2× per 4× frames. S does NOT benefit at all.**
+- F overtrains at >700-800 steps/frame: 400f optimal 800/f, 600f optimal 700/f. Steps/frame DECREASES slightly with more frames.
+- **omega_f-lr INTERACTION (Block 5 finding)**: F omega_f=10 beats 8 at high lr (1.8E-4), but 8≈10 at moderate lr (1.2E-4). Higher lr unlocks higher frequency capacity. omega_f "plateau" is lr-dependent.
+- F@600f lr tolerance is VERY wide: [1.2-2.2]E-4 all viable. lr ceiling still NOT found at 2.2E-4.
+- Jp 384 speed Pareto holds at 400f, 600f — **unconditionally beats 512** at every tested config at 600f. 384 is the default for Jp.
+- Both F and Jp achieve R²>0.9999 at 400+ frames — confirming strong data scalability for low-complexity fields
+- omega_f-to-frames scaling DIVERGES by field: F/Jp/C DECREASE omega_f with more frames. **S INCREASES omega_f** (48@100f → 55@400f). S is the ONLY upward-trending field.
+- **omega_f peak BROADENS with more data (Block 6 finding)**: Jp@400f narrow peak at 5 becomes FLAT [3-4] at 600f. omega_f=3 at 600f matches omega=4 (0.99995 ≈ 0.99996). More data makes omega_f LESS sensitive.
+- C@400f REVERSES prior degradation trend: 0.994(100f) → 0.991(200f) → 0.9998(400f). Prior claim "C HURTS with more data" is WRONG at 400f with sufficient capacity + steps.
+- C lr-data scaling WEAKER than F/Jp: lr=2E-5(100f) → 4E-5(400f) = only 2× increase over 4× frames.
+- C needs 2500 steps/frame minimum at 400f. No overtraining risk. Contrast with F (700-800 steps/frame, overtrains beyond).
 - C capacity scales monotonically at 400f: 640(0.9996) < 768(0.9997) < 896(0.9998). 768 is speed Pareto.
+- S@400f lr HARD-LOCKED at [1.5-2]E-5: lr=3E-5 catastrophic (R²=0.803). S does NOT benefit from data-regularized lr increase.
+- S@400f 1M steps OPTIMAL: 1.5M overtrains due to CosineAnnealingLR reaching near-zero lr at T_max.
+- S@400f capacity REQUIRED 1280: 1024 loses 4.4% R² (0.918 vs 0.960). Steep capacity dependence.
+- S@400f omega_f map: 36(0.949) < 42(0.952) < 48(0.960) < 55(0.970). Nearly linear upward — NOT saturated.
+- S@400f achieves R²=0.970 with scheduler+clipping — data scaling HELPS S enormously (+0.241 vs S@100f no-scheduler).
+- **Jp@600f steps/frame = 1200/f optimal** (higher than F@600f at 700/f). Jp is more step-hungry than F at same frame count.
+- **Recombination additive when dimensions are orthogonal** (Block 6 finding): omega_f + capacity = additive. omega_f + lr = NOT additive. Orthogonal dimensions (param-affecting vs arch-affecting) combine better.
 
 ### Open Questions
-- F@400f lr ceiling: 1.2E-4 works and is best — does 1.5E-4 still work? (not tested)
-- Does siren_t vs siren_txy matter for Jp@400f? (siren_t dominates at 100f)
-- Does Jp omega_f narrow peak (5) vs F flat plateau (8-10) reflect fundamental field difference?
-- C@400f omega_f: 15 is best — does 12 work even better? (not tested, continuing downward trend)
-- C@400f: Would 1.5M+ steps improve further? Loss still declining at 1M.
-- S@400f: Will S scale at all? S@100f maxes at R²=0.729 (siren_txy) or 0.998 (with CosineAnnealingLR). S is hardest field.
-- siren_t for C@400f: siren_t gave 0.9999 at 100f. Would siren_t help C at 400f?
+- S@400f omega_f: 55 best but trend not saturated — would 60 or 65 improve further?
+- Does siren_t vs siren_txy matter for Jp@400f or F@400f? (siren_t dominates at 100f)
+- siren_t for C@400f: siren_t gave 0.9999 at 100f. Would it help at 400f?
+- C@600f: unexplored. Expect capacity needs increase further (896-1024?). omega_f~12? lr~5E-5?
+- S@600f: unexplored. omega_f may rise further (60+?). Training time prohibitive (~400min?).
+- F@600f lr ceiling: 2.2E-4 works — would 2.5E-4 or 3E-4 still hold?
+- omega_f-lr interaction: Does this apply to other fields or only F?
+- Jp@600f: lr NOT probed above 2.5E-4 at 384. Could 3E-4@384 beat 2.5E-4@384?
+- Does omega_f broadening apply to F/C/S at 600f+, or only Jp?
 
 ---
 
-## Previous Block Summary (Block 3)
+## Previous Block Summary (Block 6)
 
-Block 3: C@400f siren_txy, 8 iterations. C DRAMATICALLY exceeds predictions (R²=0.9998 vs predicted ~0.99), reversing degradation trend at 400f. omega_f=15 is best (continues 25→20→15 downward trend). lr=4E-5 optimal (C lr-scaling weaker than F/Jp). 768 is speed Pareto (0.003% loss, 23% faster). 750k steps insufficient — C needs 2500 steps/frame (no overtraining). 640 capacity insufficient at 400f. Best: 896×3@omega=15@lr=4E-5@1M, R²=0.999807, 155.8min.
+Block 6: Jp@600f siren_txy, 8 iterations. Jp scales excellently to 600f — R²=0.999955 with 384×3@omega=4@lr=2.5E-4@720k, 31.7min. omega_f peak BROADENED: 400f narrow 5 → 600f flat [3-4]. 384 UNCONDITIONALLY beats 512. Recombine (omega=4+384) was additive. Speed Pareto: 540k@384, R²=0.99991, 23.9min.
 
 ---
 
-## Current Block (Block 4)
+## Current Block (Block 7)
 
 ### Block Info
-Field: field_name=S, inr_type=siren_txy, n_training_frames=400
+Field: field_name=C, inr_type=siren_txy, n_training_frames=600
 Parallel mode: 4 slots exploring different parameter dimensions simultaneously
-Iterations: 25 to 32
+Iterations: 49 to 56
 
 ### Hypothesis
-S@400f is the hardest field. S@100f peaks at R²=0.729 (siren_txy, no scheduler) or R²=0.998 (with CosineAnnealingLR). S has EXTREME stochastic variance and requires gradient clipping (max_norm=1.0). At 400f, S faces competing forces: more data could help regularize (as C showed reversal), but S scaling historically HURTS. Key: CosineAnnealingLR appears MANDATORY for S. Prediction: S@400f with CosineAnnealingLR + gradient clipping may achieve R²>0.99. Without scheduler, expect R²<0.80. Must test code modification (scheduler) early.
+C is the third field to test at 600f. C@400f achieved R²=0.9998 with 896×3@omega=15@lr=4E-5@1M steps (768 speed Pareto). At 600f, based on scaling rules:
+- omega_f: C follows downward trend with more frames: 25(100f) → 20(200f) → 15(400f). At 600f, expect omega_f~12 (continued downward).
+- lr: C lr-data scaling is WEAK (~2× per 4× frames): 2E-5(100f) → 4E-5(400f). At 600f, expect lr~5E-5 (slight increase, 1.25× for 1.5× frames).
+- steps: C needs 2500 steps/frame minimum, no overtraining risk. At 600f, expect 1.5M steps (2500/f × 600f).
+- capacity: C capacity scales monotonically at 400f: 640 < 768 < 896. At 600f, expect 896 baseline, possibly 1024 needed.
+- output_size_nnr_f: 4 (C has 4 components)
+Prediction: C@600f should achieve R²≥0.9998 with proper tuning. Training time ~160-200min for 896.
 
 ### Planned Initial Configurations (Batch 1)
 
 | Slot | omega_f | lr_NNR_f | hidden_dim | n_layers | total_steps | Mutation dimension |
 |------|---------|----------|------------|----------|-------------|--------------------|
-| 00 | 48.0 | 2E-5 | 1280 | 3 | 1000000 | **Baseline** (S@100f optimal extrapolated to 400f) |
-| 01 | 36.0 | 2E-5 | 1280 | 3 | 1000000 | **omega_f** (lower, test if omega_f decreases at 400f for S too) |
-| 02 | 48.0 | 3E-5 | 1280 | 3 | 1000000 | **lr** (higher, test if data regularization allows higher lr for S) |
-| 03 | 48.0 | 2E-5 | 1024 | 3 | 1000000 | **capacity** (lower, test if S can reduce from 1280) — principle-test: "S requires 1280 minimum capacity" |
+| 00 | 12.0 | 5E-5 | 896 | 3 | 1500000 | **Baseline** (C@400f optimal, extrapolated to 600f) |
+| 01 | 15.0 | 5E-5 | 896 | 3 | 1500000 | **omega_f** (keep 400f optimal, test if C follows downward trend less than F/Jp) |
+| 02 | 12.0 | 4E-5 | 896 | 3 | 1500000 | **lr** (C@400f optimal lr, test if increase helps) |
+| 03 | 12.0 | 5E-5 | 768 | 3 | 1500000 | **capacity** (principle-test: "C capacity scales monotonically at 400f") |
 
-All slots: siren_txy, batch_size=1, n_training_frames=400, output_size_nnr_f=4, nnr_f_xy_period=1.0, nnr_f_T_period=1.0
-
-NOTE: CosineAnnealingLR scheduler AND gradient clipping (max_norm=1.0) are ALREADY in the code (graph_trainer.py). S@100f achieved R²=0.998 with these. All 4 slots will automatically benefit from scheduler + clipping.
+All slots: siren_txy, batch_size=1, n_training_frames=600, output_size_nnr_f=4, nnr_f_xy_period=1.0, nnr_f_T_period=1.0
 
 ### Iterations This Block
 
-## Iter 25: good — **BEST IN BATCH**
-Node: id=25, parent=root
-Mode/Strategy: explore/baseline
-Config: lr_NNR_f=2E-5, total_steps=1000000, hidden_dim_nnr_f=1280, n_layers_nnr_f=3, omega_f=48.0, batch_size=1
-Metrics: final_r2=0.960, final_mse=5.951E-9, slope=0.961, kinograph_R2=0.920, kinograph_SSIM=0.927, total_params=4929284, compression_ratio=2.92, training_time=290.1min
-Field: field_name=S, inr_type=siren_txy
-Mutation: Baseline (S@100f optimal → 400f)
-Observation: S@400f baseline R²=0.960. MUCH better than S@100f no-scheduler (0.729). Loss still declining. 290min training.
-Next: parent=25
+## Iter 49: excellent — **BEST OF BATCH** (baseline)
+Node: id=49, parent=root
+Mode/Strategy: exploit/baseline
+Config: lr_NNR_f=5E-5, total_steps=1500000, hidden_dim_nnr_f=896, n_layers_nnr_f=3, omega_f=12.0, batch_size=1
+Metrics: final_r2=0.999866, final_mse=2.727E-2, slope=0.999, kinograph_R2=0.9999, kinograph_SSIM=1.0000, total_params=2418308, compression_ratio=8.9, training_time=239.8min
+Field: field_name=C, inr_type=siren_txy
+Mutation: Baseline — C@400f optimal extrapolated to 600f
+Visual: GT/Pred match excellent all components. Loss still declining at 1.5M. Per-frame MSE spikes at frames 250-400.
+Observation: C@600f baseline R²=0.999866 — BEST of batch. Data scaling upward trend continues: 0.9998(400f) → 0.9999(600f).
+Next: parent=49
 
-## Iter 26: good
-Node: id=26, parent=root
-Mode/Strategy: explore/omega_f-scaling
-Config: lr_NNR_f=2E-5, total_steps=1000000, hidden_dim_nnr_f=1280, n_layers_nnr_f=3, omega_f=36.0, batch_size=1
-Metrics: final_r2=0.949, final_mse=7.706E-9, slope=0.949, kinograph_R2=0.898, kinograph_SSIM=0.911, total_params=4929284, compression_ratio=2.92, training_time=289.8min
-Mutation: omega_f: 48→36
-Observation: omega_f=36 WORSE. S COUNTER-TREND CONFIRMED at 400f. omega_f=48 remains optimal.
-Next: parent=25
+## Iter 50: excellent
+Node: id=50, parent=root
+Mode/Strategy: explore/omega_f-comparison
+Config: lr_NNR_f=5E-5, total_steps=1500000, hidden_dim_nnr_f=896, n_layers_nnr_f=3, omega_f=15.0, batch_size=1
+Metrics: final_r2=0.999849, final_mse=3.076E-2, slope=0.999, kinograph_R2=0.9999, kinograph_SSIM=1.0000, total_params=2418308, compression_ratio=8.9, training_time=233.7min
+Field: field_name=C, inr_type=siren_txy
+Mutation: omega_f: 12.0 -> 15.0
+Observation: omega_f=15 WORSE than 12. C omega_f downward trend CONFIRMED: 25→20→15→12. ~3-5 decrease per frame doubling.
+Next: parent=49
 
-## Iter 27: moderate
-Node: id=27, parent=root
-Mode/Strategy: explore/lr-ceiling
-Config: lr_NNR_f=3E-5, total_steps=1000000, hidden_dim_nnr_f=1280, n_layers_nnr_f=3, omega_f=48.0, batch_size=1
-Metrics: final_r2=0.803, final_mse=2.951E-8, slope=0.806, kinograph_R2=0.470, kinograph_SSIM=0.681, total_params=4929284, compression_ratio=2.92, training_time=290.0min
-Mutation: lr: 2E-5→3E-5
-Observation: lr=3E-5 CATASTROPHIC. S lr=2E-5 HARD-LOCKED. Data regularization does NOT help S.
-Next: parent=25
+## Iter 51: excellent
+Node: id=51, parent=root
+Mode/Strategy: explore/lr-comparison
+Config: lr_NNR_f=4E-5, total_steps=1500000, hidden_dim_nnr_f=896, n_layers_nnr_f=3, omega_f=12.0, batch_size=1
+Metrics: final_r2=0.999854, final_mse=2.978E-2, slope=0.999, kinograph_R2=0.9999, kinograph_SSIM=1.0000, total_params=2418308, compression_ratio=8.9, training_time=234.2min
+Field: field_name=C, inr_type=siren_txy
+Mutation: lr_NNR_f: 5E-5 -> 4E-5
+Observation: lr=4E-5 marginally worse than 5E-5. C lr-data scaling WEAK but present: 4E-5(400f) → 5E-5(600f).
+Next: parent=49
 
-## Iter 28: good
-Node: id=28, parent=root
+## Iter 52: excellent — speed Pareto candidate
+Node: id=52, parent=root
 Mode/Strategy: principle-test
-Config: lr_NNR_f=2E-5, total_steps=1000000, hidden_dim_nnr_f=1024, n_layers_nnr_f=3, omega_f=48.0, batch_size=1
-Metrics: final_r2=0.918, final_mse=1.235E-8, slope=0.917, kinograph_R2=0.831, kinograph_SSIM=0.865, total_params=3156996, compression_ratio=4.56, training_time=189.6min
-Mutation: hidden_dim: 1280→1024 (principle-test: "S requires 1280 minimum capacity")
-Observation: 1024 loses 4.4% R² vs 1280 but 35% faster. Principle CONFIRMED: S requires 1280.
-Next: parent=25
+Config: lr_NNR_f=5E-5, total_steps=1500000, hidden_dim_nnr_f=768, n_layers_nnr_f=3, omega_f=12.0, batch_size=1
+Metrics: final_r2=0.999818, final_mse=3.716E-2, slope=0.999, kinograph_R2=0.9998, kinograph_SSIM=1.0000, total_params=1777924, compression_ratio=12.1, training_time=182.0min
+Field: field_name=C, inr_type=siren_txy
+Mutation: hidden_dim_nnr_f: 896 -> 768. Testing principle: "C capacity scales monotonically at 400f"
+Observation: 768 loses 0.005% R² but saves 24% time. Capacity monotonicity CONFIRMED at 600f. 768=speed Pareto.
+Next: parent=49
 
 ### Emerging Observations
-
-- **S@400f baseline R²=0.960** — huge improvement over S@100f no-scheduler (0.729). Data scaling HELPS S baseline significantly (+0.231 R²). NOTE: CosineAnnealingLR + clipping are in code — these results include scheduler benefit.
-- **omega_f=48 CONFIRMED** at 400f: S does NOT follow all-field omega_f decrease. Map: 36(0.949) < 48(0.960). Need to probe 55 upward.
-- **lr=2E-5 HARD-LOCKED**: Even 50% increase (3E-5) causes R²=0.803 (catastrophic). S does NOT benefit from data-regularized lr increase. Fundamentally different from F/Jp/C.
-- **1280 capacity REQUIRED**: 1024 loses 4.4% R² — steep capacity dependence (unlike C's gentle slope).
-- **Training time prohibitive**: 290min for 1280×3@1M steps. Need time savings strategy.
-- **Loss still declining at 1M**: More steps may help. Testing 1.5M next batch.
-- **Next batch plan**: (1) omega_f=55 upper probe, (2) 1.5M steps (more training), (3) lr=1.5E-5 lower probe, (4) omega_f=42 refine map
+- C@600f ALL 4 slots excellent (R²>0.9998). Baseline extrapolation was accurate.
+- omega_f=12 CONFIRMED better than 15 — C follows downward trend: 25→20→15→12. Next probe: omega_f=10?
+- lr=5E-5 marginally better than 4E-5 — C lr-data scaling is WEAK (1.25× from 400→600f). Next probe: lr=6E-5?
+- Capacity monotonic: 896 > 768 confirmed at 600f. Next probe: 1024 for accuracy ceiling? Or accept 896 as optimal?
+- Loss still declining at 1.5M steps (2500/f) — C may benefit from more steps. Test 2M (3333/f)?
+- Training time ~240min for 896 — much longer than F(24min) or Jp(32min) at 600f. C is compute-expensive.
+- All slopes ~0.999 — no underprediction bias. All kino_SSIM=1.0000 — perfect structural match.

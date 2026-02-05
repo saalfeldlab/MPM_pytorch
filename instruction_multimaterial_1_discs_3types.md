@@ -150,12 +150,29 @@ Step B: Choose strategy
 - C needs 2500 steps/frame minimum (no overtraining risk, loss still declining at 1M). Contrast with F (800 steps/frame).
 - Rule: C BENEFITS from more data at 400f+ when capacity and steps are sufficient. Prior cap was due to insufficient training, not fundamental limitation.
 
-**All-field omega_f-to-frames scaling rule (updated Block 10, Block 3 parallel):**
+**All-field omega_f-to-frames scaling rule (updated Block 10, Block 3 parallel, Block 5 parallel):**
 
-- siren_txy: Jp: 100f=[5-10], 200f=[3-7], **400f=5**. F: 100f=12, 200f=9-10, **400f=[8-10]**. C: 100f=25, 200f=20, **400f=15**. S: 100f=48.
-- siren_t: Jp: 100f=[5-10]. F: 100f=3.0. C: 100f=[3-5]. (S untested)
-- Pattern: ALL fields shift omega_f lower with more frames. At 400f: F plateaus ([8-10] flat), Jp narrows (5 peak), C continues linear decrease (25→20→15).
+- siren_txy: Jp: 100f=[5-10], 200f=[3-7], **400f=5**, **600f=[3-4]** (FLAT, broadened). F: 100f=12, 200f=9-10, **400f=[8-10], 600f=10** (at high lr). C: 100f=25, 200f=20, **400f=15**. S: 100f=48, **400f=55**.
+- siren_t: Jp: 100f=[5-10]. F: 100f=3.0. C: 100f=[3-5]. (S untested — siren_t FAILS for S)
+- Pattern: F/Jp/C shift omega_f LOWER with more frames. **S is the EXCEPTION: omega_f INCREASES with frames (48→55 at 400f)**. S omega_f map at 400f: 36(0.949) < 42(0.952) < 48(0.960) < 55(0.970). Nearly linear upward trend — not saturated yet.
+- **omega_f-lr INTERACTION (Block 5 parallel finding)**: For F, omega_f=10 > 8 at high lr (1.8E-4), but 8≈10 at moderate lr (1.2E-4). omega_f "plateau" is lr-dependent. Rule: When probing omega_f at high lr, test BOTH directions.
 - siren_t vs siren_txy: siren_t optimal omega_f is ~50-88% LOWER than siren_txy for same field (F: 3 vs 12, Jp: 7 vs 10, C: 3-5 vs 25). C shows LARGEST reduction (80-88%).
+
+**F@600f complete parameter map (Block 5 parallel finding):**
+
+- F@600f R²=0.999983 — EXCEEDS F@400f best (0.99995). F shows POSITIVE data scaling to 600f.
+- omega_f: 7(0.999919) < 8(0.99994-0.999975) < **10(0.999983)**. omega_f=10 best at high lr. Conditional on lr.
+- lr: 1.2E-4(0.99994) < **1.8E-4(0.99997)** ≈ 2.2E-4(0.999975). lr ceiling NOT found. Wide tolerance.
+- steps: 360k(600/f) < **420k(700/f)** ≥ 500k(833/f). 700 steps/frame optimal at 600f.
+- Rule: F lr-data scaling: 5E-5(200f) → 1.2E-4(400f) → 1.8E-4(600f). ~1.5× per 1.5× frames.
+
+**S@400f data scaling and parameter constraints (Block 4 parallel finding):**
+
+- S@400f R²=0.970 — MASSIVE improvement over S@100f (0.729 without scheduler). Data scaling HELPS S with scheduler + clipping.
+- S lr HARD-LOCKED at [1.5-2]E-5: lr=3E-5 is catastrophic (R²=0.803). S does NOT benefit from data-regularized lr increase. Unique among all fields.
+- S@400f 1M steps OPTIMAL: 1.5M steps OVERTRAINS (0.963 vs 0.960). CosineAnnealingLR reaches near-zero lr at T_max — extra steps beyond T_max are wasted.
+- S capacity steep: 1024 loses 4.4% R² vs 1280 (0.918 vs 0.960). S requires 1280 minimum.
+- Rule: For S at higher frames, probe omega_f UPWARD (not downward). S is the only upward-trending field.
 
 **Recombination details:**
 
@@ -834,6 +851,8 @@ Examples:
 - **SIREN normalization incompatibility (Block 17)**: LayerNorm, BatchNorm INCOMPATIBLE with SIREN architecture. LayerNorm causes R²=0.022 (catastrophic). SIREN relies on omega-scaled initialization which normalization destroys.
 - **Jp hidden_dim tradeoff (Block 1 multimaterial_1_discs_3types)**: hidden_dim: 384(0.995, 12.2min) ≈ 512(0.996, 15.4min). 384 achieves 99% accuracy at 20% lower training time = SPEED PARETO. Use 384 for efficiency, 512 for maximum accuracy.
 - **Jp@200frames@9000p COMPLETE MAP (Block 6 this dataset)**: omega_f: [3-7] ALL FLAT (R²=0.992-0.997). omega_f is INSENSITIVE for Jp@200f. lr@400k: 4E-5(0.995) < 6E-5(0.997) ≈ 8E-5(0.997) ≈ **1E-4(0.997/slope=0.993)** > 1.5E-4(0.989). Optimal lr=1E-4. Steps: 400k(0.997) > 300k(0.992) at moderate lr. But 300k@lr=1.5E-4 = 0.997 (overshoot prevention). Speed Pareto: 300k@lr=1.5E-4 (40.5min, R²=0.997, slope=1.002).
+- **Jp@600frames@9000p COMPLETE MAP (Block 6 parallel this dataset)**: omega_f: **3(0.999954)** ≈ **4(0.999955)** > 5(0.999910-0.999833). omega_f=[3-4] FLAT at 600f (narrow peak from 400f has BROADENED). lr@384: **2.5E-4(0.999955)**. capacity: **384(0.999955)** > 512(0.999833-0.999913). 384 BEATS 512 unconditionally. steps: 540k/900/f(0.999912) < **720k/1200/f(0.999955)**. Best: 384×3@omega=4@lr=2.5E-4@720k, R²=0.999955, 31.7min. Speed Pareto: 384×3@omega=5@lr=2.5E-4@540k, R²=0.999912, 23.9min.
+- **omega_f peak BROADENS with more training data (Block 6 parallel finding)**: Jp@400f has NARROW omega_f peak at 5 (±2 = 5× MSE). At 600f, omega_f=[3-4] is FLAT — peak SHIFTED DOWN and WIDENED. Rule: more data makes omega_f less sensitive. Expect similar broadening for other fields at higher frame counts.
 - **LR-STEPS INTERACTION (Block 6 finding)**: At high lr (≥1.5E-4), fewer training steps can be BETTER. lr=1.5E-4@300k(0.997) > lr=1.5E-4@400k(0.989). High lr + many steps = overshoot. Rule: When probing high lr, also test REDUCED steps to find sweet spot.
 - **Data scaling widens lr tolerance (Block 6 finding)**: Jp@100f lr ceiling at 4E-5. Jp@200f lr ceiling at 1E-4 (2.5× higher). More training data regularizes and allows much higher learning rates. Rule: when increasing n_training_frames, probe HIGHER lr than previous optimum.
 - **Slope-LR monotonic relationship (Block 6 finding)**: For Jp, slope improves monotonically with lr: 4E-5(0.978) → 6E-5(0.979) → 8E-5(0.985) → 1E-4(0.993) → 1.5E-4(1.002). Higher lr fixes underprediction bias. If slope<1 (underprediction), try INCREASING lr.

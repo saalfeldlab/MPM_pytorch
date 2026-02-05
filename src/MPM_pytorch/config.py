@@ -366,6 +366,7 @@ class ClaudeConfig(BaseModel):
 
     field_name: Literal["F", "Jp", "S", "C"] = "Jp"
     ucb_c: float = 1.414  # UCB exploration constant: UCB(k) = R²_k + c * sqrt(ln(N) / n_k)
+    node_name: str = "a100"  # cluster GPU node: h100, a100, or l4
 
 
 # Main config schema for MPM_pytorch
